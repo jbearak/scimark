@@ -28,8 +28,7 @@
   "activationEvents": [
     "onLanguage:markdown",
     "onCommand:criticmarkup.nextChange",
-    "onCommand:criticmarkup.prevChange",
-    "onCommand:criticmarkup.test"
+    "onCommand:criticmarkup.prevChange"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -42,11 +41,6 @@
       {
         "command": "criticmarkup.prevChange",
         "title": "Previous Change",
-        "category": "CriticMarkup"
-      },
-      {
-        "command": "criticmarkup.test",
-        "title": "Test",
         "category": "CriticMarkup"
       }
     ],

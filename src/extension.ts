@@ -132,8 +132,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register commands
 	context.subscriptions.push(
 		vscode.commands.registerCommand('criticmarkup.nextChange', () => changes.next()),
-		vscode.commands.registerCommand('criticmarkup.prevChange', () => changes.prev()),
-		vscode.commands.registerCommand('criticmarkup.test', () => console.log('CriticMarkup Test'))
+		vscode.commands.registerCommand('criticmarkup.prevChange', () => changes.prev())
 	);
 
 	// Update decorations when active editor changes

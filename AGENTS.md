@@ -36,7 +36,7 @@ Notes:
 ### Entry point: `src/extension.ts`
 
 Responsibilities:
-- Activation: fires on `onLanguage:markdown` and on CriticMarkup commands (`criticmarkup.nextChange`, `criticmarkup.prevChange`, `criticmarkup.test`).
+- Activation: fires on `onLanguage:markdown` and on CriticMarkup commands (`criticmarkup.nextChange`, `criticmarkup.prevChange`).
 - Syntax patterns: regexes for the five CriticMarkup types in `patterns`.
 - Decorations: creates theme-aware `TextEditorDecorationType`s for each CriticMarkup kind.
 - Event wiring: updates decorations on editor changes, document edits, and theme switches.
