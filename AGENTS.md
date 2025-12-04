@@ -109,3 +109,45 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.md`.
+
+
+## VS Code Extension Development
+
+### Building the Extension
+
+Compile TypeScript to JavaScript:
+
+```sh
+bun run compile
+```
+
+Watch mode for development:
+
+```sh
+bun run watch
+```
+
+### Packaging the Extension
+
+Package the extension into a `.vsix` file:
+
+```sh
+bunx vsce package
+```
+
+This creates `vscode-criticmarkup-0.2.0.vsix` in the project root.
+
+### Installing the Extension
+
+Install the packaged extension:
+
+```sh
+code --install-extension vscode-criticmarkup-0.2.0.vsix
+```
+
+Or via VS Code UI:
+1. Open Extensions view (Cmd+Shift+X)
+2. Click "..." menu → "Install from VSIX..."
+3. Select the `.vsix` file
+
+After installation, reload VS Code to activate the extension.
