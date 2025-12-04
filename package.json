@@ -1,83 +1,82 @@
 {
-	"name": "vscode-criticmarkup",
-	"displayName": "CriticMarkup for Visual Studio Code",
-	"description": "A CriticMarkup extension for Visual Studio Code.",
-	"version": "0.2.0",
-	"engines": {
-		"vscode": "^1.31.0"
-	},
-	"categories": [
-		"Snippets",
-		"Programming Languages",
-		"Other"
-	],
-	"keywords": [
-		"markdown",
-		"criticmarkup",
-		"critic markup"
-	],
-	"publisher": "jloow",
-	"license": "SEE LICENSE IN LICENSE.txt",
-	"bugs": {
-		"url": "https://github.com/jloow/vscode-criticmarkup/issues"
-	},
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/jloow/vscode-criticmarkup.git"
-	},
-	"activationEvents": [
-		"onLanguage:markdown",
-		"onCommand:criticmarkup.nextChange",
-		"onCommand:criticmarkup.prevChange",
-		"onCommand:criticmarkup.test"
-	],
-	"main": "./out/extension.js",
-	"contributes": {
-		"commands": [
-			{
-				"command": "criticmarkup.nextChange",
-				"title": "Next Change",
-				"category": "CriticMarkup"
-			},
-			{
-				"command": "criticmarkup.prevChange",
-				"title": "Previous Change",
-				"category": "CriticMarkup"
-			},
-			{
-				"command": "criticmarkup.test",
-				"title": "Test",
-				"category": "CriticMarkup"
-			}
-		],
-		"snippets": [
-			{
-				"language": "markdown",
-				"path": "./snippets.json"
-			}
-		],
-		"grammars": [
-			{
-				"path": "./syntaxes/criticmarkup.json",
-				"scopeName": "criticmarkup.injection",
-				"injectTo": [
-					"text.html.markdown"
-				]
-			}
-		]
-	},
-	"scripts": {
-		"vscode:prepublish": "bun run compile",
-		"compile": "tsc -p ./",
-		"watch": "tsc -watch -p ./",
-		"postinstall": "node ./node_modules/vscode/bin/install",
-		"test": "bun run compile && node ./node_modules/vscode/bin/test"
-	},
-	"devDependencies": {
-		"@types/mocha": "^2.2.42",
-		"@types/node": "^10.14.4",
-		"tslint": "^5.14.0",
-		"typescript": "^3.3.4000",
-		"vscode": "^1.1.33"
-	}
+  "name": "vscode-criticmarkup",
+  "displayName": "CriticMarkup for Visual Studio Code",
+  "description": "A CriticMarkup extension for Visual Studio Code.",
+  "version": "0.2.0",
+  "engines": {
+    "vscode": "^1.31.0"
+  },
+  "categories": [
+    "Snippets",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "criticmarkup",
+    "critic markup"
+  ],
+  "publisher": "jloow",
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "bugs": {
+    "url": "https://github.com/jloow/vscode-criticmarkup/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jloow/vscode-criticmarkup.git"
+  },
+  "activationEvents": [
+    "onLanguage:markdown",
+    "onCommand:criticmarkup.nextChange",
+    "onCommand:criticmarkup.prevChange",
+    "onCommand:criticmarkup.test"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "criticmarkup.nextChange",
+        "title": "Next Change",
+        "category": "CriticMarkup"
+      },
+      {
+        "command": "criticmarkup.prevChange",
+        "title": "Previous Change",
+        "category": "CriticMarkup"
+      },
+      {
+        "command": "criticmarkup.test",
+        "title": "Test",
+        "category": "CriticMarkup"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "markdown",
+        "path": "./snippets.json"
+      }
+    ],
+    "grammars": [
+      {
+        "path": "./syntaxes/criticmarkup.json",
+        "scopeName": "criticmarkup.injection",
+        "injectTo": [
+          "text.html.markdown"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "bun run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/mocha": "^2.2.42",
+    "@types/node": "^10.14.4",
+    "@types/vscode": "^1.31.0",
+    "tslint": "^5.14.0",
+    "typescript": "^5.9.3"
+  },
+  "private": true
 }
