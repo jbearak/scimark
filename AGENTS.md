@@ -36,15 +36,12 @@ Notes:
 ### Entry point: `src/extension.ts`
 
 Responsibilities:
-- Activation: fires on `onLanguage:markdown` and on CriticMarkup commands (`criticmarkup.nextChange`, `criticmarkup.prevChange`).
-- Syntax patterns: regexes for the five CriticMarkup types in `patterns`.
-- Decorations: creates theme-aware `TextEditorDecorationType`s for each CriticMarkup kind.
-- Event wiring: updates decorations on editor changes, document edits, and theme switches.
+- Activation: Registers CriticMarkup commands (`criticmarkup.nextChange`, `criticmarkup.prevChange`).
+- Note: The extension does not actively scan the document in the background. Navigation commands calculate positions on-demand.
 
 Key flows:
-- Theme colors: `getThemeColors()` maps VS Code theme kinds (Light, Dark, HighContrast, HighContrastLight) to stable colors.
-- Decoration lifecycle: `createDecorations()` disposes and recreates decoration types when themes change to avoid leaks.
-- Pattern matching + apply: `updateDecorations()` scans the document text and assigns ranges per pattern, then calls `editor.setDecorations(...)` for each type.
+- Commands: `nextChange` and `prevChange` invoke logic in `src/changes.ts` to find the next/previous occurrence relative to the cursor.
+- Syntax Highlighting: Handled entirely by the TextMate grammar in `syntaxes/criticmarkup.json`, which injects scopes into Markdown documents. No manual decoration logic is used.
 
 Related resources:
 - `snippets.json` — snippet bodies for CriticMarkup syntax

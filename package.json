@@ -36,14 +36,12 @@
       {
         "command": "criticmarkup.nextChange",
         "title": "CriticMarkup: Next Change",
-        "icon": "$(arrow-down)",
-        "enablement": "criticmarkup.hasChanges"
+        "icon": "$(arrow-down)"
       },
       {
         "command": "criticmarkup.prevChange",
         "title": "CriticMarkup: Previous Change",
-        "icon": "$(arrow-up)",
-        "enablement": "criticmarkup.hasChanges"
+        "icon": "$(arrow-up)"
       }
     ],
     "menus": {
