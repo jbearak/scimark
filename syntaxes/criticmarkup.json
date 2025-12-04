@@ -11,57 +11,27 @@
 		"addition": {
 			"begin": "\\{\\+\\+",
 			"end": "\\+\\+\\}",
-			"name": "markup.inserted.criticmarkup",
-			"patterns": [
-				{
-					"match": ".",
-					"name": "markup.inserted.criticmarkup"
-				}
-			]
+			"name": "markup.inserted.criticmarkup"
 		},
 		"deletion": {
 			"begin": "\\{--",
 			"end": "--\\}",
-			"name": "markup.deleted.criticmarkup",
-			"patterns": [
-				{
-					"match": ".",
-					"name": "markup.deleted.criticmarkup"
-				}
-			]
+			"name": "markup.deleted.criticmarkup"
 		},
 		"substitution": {
 			"begin": "\\{\\~\\~",
 			"end": "\\~\\~\\}",
-			"name": "markup.changed.criticmarkup",
-			"patterns": [
-				{
-					"match": ".",
-					"name": "markup.changed.criticmarkup"
-				}
-			]
+			"name": "markup.changed.criticmarkup"
 		},
 		"comment": {
 			"begin": "\\{>>",
 			"end": "<<\\}",
-			"name": "comment.block.criticmarkup",
-			"patterns": [
-				{
-					"match": ".",
-					"name": "comment.block.criticmarkup"
-				}
-			]
+			"name": "comment.block.criticmarkup"
 		},
 		"highlight": {
 			"begin": "\\{==",
 			"end": "==\\}",
-			"name": "markup.highlight.criticmarkup",
-			"patterns": [
-				{
-					"match": ".",
-					"name": "markup.highlight.criticmarkup"
-				}
-			]
+			"name": "markup.highlight.criticmarkup"
 		}
 	},
     "scopeName": "criticmarkup.injection"

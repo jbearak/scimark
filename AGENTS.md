@@ -41,7 +41,7 @@ Responsibilities:
 
 Key flows:
 - Commands: `nextChange` and `prevChange` invoke logic in `src/changes.ts` to find the next/previous occurrence relative to the cursor.
-- Syntax Highlighting: Handled entirely by the TextMate grammar in `syntaxes/criticmarkup.json`, which injects scopes into Markdown documents. No manual decoration logic is used.
+- Syntax Highlighting: Handled entirely by the TextMate grammar in `syntaxes/criticmarkup.json`, which injects scopes into Markdown documents. No manual decoration logic is used. The grammar uses efficient block rules to avoid per-character tokenization.
 
 Related resources:
 - `snippets.json` — snippet bodies for CriticMarkup syntax
