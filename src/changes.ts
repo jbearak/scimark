@@ -6,6 +6,8 @@ const patterns = [
 	/\{\~\~([\s\S]+?)\~\~\}/g,
 	/\{>>([\s\S]+?)<<\}/g,
 	/\{==([\s\S]+?)==\}/g,
+	/\~\~([\s\S]+?)\~\~/g,
+	/<!--([\s\S]+?)-->/g,
 ];
 
 export function getAllMatches(document: vscode.TextDocument): vscode.Range[] {
@@ -20,9 +22,27 @@ export function getAllMatches(document: vscode.TextDocument): vscode.Range[] {
 			ranges.push(new vscode.Range(startPos, endPos));
 		}
 	}
-	// Sort ranges by start position
-	ranges.sort((a, b) => a.start.compareTo(b.start));
-	return ranges;
+	// Sort ranges by start position, then by end position (longest first) to ensure efficient filtering
+	ranges.sort((a, b) => {
+		const startDiff = a.start.compareTo(b.start);
+		if (startDiff !== 0) {
+			return startDiff;
+		}
+		return b.end.compareTo(a.end);
+	});
+
+	// Filter out contained ranges (O(N) pass)
+	const filteredRanges: vscode.Range[] = [];
+	let lastKept: vscode.Range | undefined;
+
+	for (const range of ranges) {
+		if (!lastKept || !lastKept.contains(range)) {
+			filteredRanges.push(range);
+			lastKept = range;
+		}
+	}
+	
+	return filteredRanges;
 }
 
 export function next() {
