@@ -43,7 +43,9 @@ To cycle between changes, use the Command Palette and the commands
 
 ### Multi-line Support
 
-All CriticMarkup patterns fully support spanning multiple lines, including patterns with empty lines within them. This allows you to mark up entire paragraphs or sections:
+All CriticMarkup patterns support spanning multiple lines, including patterns with empty lines within them. This allows you to mark up entire paragraphs or sections.
+
+**Note**: For best syntax highlighting results, start multi-line patterns at the beginning of a line. Patterns that start mid-line will still work for navigation and preview, but syntax highlighting will only apply to the first line due to VS Code TextMate grammar limitations.
 
 **Addition spanning multiple lines:**
 ```
@@ -131,6 +133,8 @@ The syntax highlight colors can be changed by modifying the following
   let know.
 
 ## Limitations
+
+- **Multi-line syntax highlighting**: Due to limitations in VS Code's TextMate grammar engine, multi-line CriticMarkup patterns that start mid-line (after other text on the same line) will only have syntax highlighting applied to the first line. The pattern will still work correctly for navigation and preview rendering, but the visual highlighting in the editor will be incomplete. For best results, start multi-line patterns at the beginning of a line.
 
 - **Performance**: While the extension handles multi-line patterns efficiently for typical documents, very large documents (10,000+ lines) with many complex multi-line patterns may experience slight delays in syntax highlighting or navigation.
 
