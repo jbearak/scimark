@@ -36,12 +36,12 @@
       {
         "command": "criticmarkup.nextChange",
         "title": "Comment or Markup: Next",
-        "icon": "$(arrow-down)"
+        "icon": "$(chevron-down)"
       },
       {
         "command": "criticmarkup.prevChange",
         "title": "Comment or Markup: Previous",
-        "icon": "$(arrow-up)"
+        "icon": "$(chevron-up)"
       },
       {
         "command": "criticmarkup.markAddition",
