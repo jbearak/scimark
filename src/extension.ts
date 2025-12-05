@@ -112,39 +112,41 @@ function applyFormatting(formatter: (text: string) => formatting.TextTransformat
 		return;
 	}
 
+	// Store original selections and their transformations before the edit
+	const selectionsData = editor.selections.map(selection => {
+		const text = editor.document.getText(selection);
+		const transformation = formatter(text);
+		return {
+			selection,
+			transformation,
+			text
+		};
+	});
+
 	editor.edit(editBuilder => {
 		// Process each selection (supports multi-cursor)
-		for (const selection of editor.selections) {
-			const text = editor.document.getText(selection);
-			const transformation = formatter(text);
-			editBuilder.replace(selection, transformation.newText);
+		for (const data of selectionsData) {
+			editBuilder.replace(data.selection, data.transformation.newText);
 		}
 	}).then(success => {
 		if (success) {
 			// Handle cursor positioning for commands that need it
 			const newSelections: vscode.Selection[] = [];
 			
-			for (let i = 0; i < editor.selections.length; i++) {
-				const selection = editor.selections[i];
-				const text = editor.document.getText(selection);
-				const transformation = formatter(text);
-				
-				if (transformation.cursorOffset !== undefined) {
-					// Position cursor at the specified offset
-					const newPosition = selection.start.translate(0, transformation.cursorOffset);
+			for (const data of selectionsData) {
+				if (data.transformation.cursorOffset !== undefined) {
+					// Position cursor at the specified offset from the start of the replaced text
+					const newPosition = data.selection.start.translate(0, data.transformation.cursorOffset);
 					newSelections.push(new vscode.Selection(newPosition, newPosition));
 				} else {
-					// Keep the default selection behavior
-					newSelections.push(selection);
+					// Keep the default selection behavior (select the newly inserted text)
+					const endPosition = data.selection.start.translate(0, data.transformation.newText.length);
+					newSelections.push(new vscode.Selection(data.selection.start, endPosition));
 				}
 			}
 			
-			// Update selections if we have cursor positioning
-			if (newSelections.some((sel, i) => {
-				const text = editor.document.getText(editor.selections[i]);
-				const transformation = formatter(text);
-				return transformation.cursorOffset !== undefined;
-			})) {
+			// Update selections if we have any cursor positioning
+			if (newSelections.length > 0) {
 				editor.selections = newSelections;
 			}
 		}
