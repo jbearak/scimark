@@ -78,17 +78,25 @@
     - Test CriticMarkup in inline code (should not be processed)
     - _Requirements: 8.3, 8.4_
 
-- [x] 6. Create preview stylesheet
-  - [x] 6.1 Create CSS file with CriticMarkup styling
-    - Create `media/criticmarkup.css`
-    - Define styles for all five CriticMarkup types
-    - Use colors matching editor defaults (green, red, orange, blue, purple)
+- [ ] 6. Create theme-aware preview stylesheet
+  - [x] 6.1 Create CSS file with theme-aware CriticMarkup styling
+    - Create `media/criticmarkup.css` with CSS custom properties
+    - Define default (light theme) color palette using CSS variables
+    - Define dark theme color palette using `@media (prefers-color-scheme: dark)`
+    - Apply CSS variables to all five CriticMarkup type styles
+    - Use brighter colors for dark themes and darker colors for light themes
     - Add semi-transparent backgrounds for readability
-    - _Requirements: 6.1, 6.3_
+    - _Requirements: 6.1, 6.2, 6.4, 6.5_
 
-  - [x] 6.2 Write unit test for default colors
-    - Verify CSS contains expected color values
-    - _Requirements: 6.3_
+  - [x] 6.2 Write unit test for theme-aware colors
+    - Verify CSS contains CSS custom properties for both themes
+    - Verify light theme uses darker color values
+    - Verify dark theme uses brighter color values
+    - _Requirements: 6.1, 6.2, 6.4, 6.5_
+
+  - [x] 6.3 Write property test for theme-aware color adaptation
+    - **Property 7: Theme-aware color adaptation**
+    - **Validates: Requirements 6.1, 6.2, 6.4, 6.5**
 
 - [x] 7. Integrate plugin with VS Code extension
   - [x] 7.1 Update extension activation to register plugin

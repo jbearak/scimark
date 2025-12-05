@@ -1,33 +1,63 @@
-/* CriticMarkup Preview Styles */
+/* CriticMarkup Preview Styles - Theme Aware */
+
+/* Default (Light Theme) Colors */
+:root {
+  --criticmarkup-addition-color: #008800;
+  --criticmarkup-addition-bg: rgba(0, 136, 0, 0.1);
+  --criticmarkup-deletion-color: #cc0000;
+  --criticmarkup-deletion-bg: rgba(204, 0, 0, 0.1);
+  --criticmarkup-substitution-color: #dd6600;
+  --criticmarkup-substitution-bg: rgba(221, 102, 0, 0.1);
+  --criticmarkup-comment-color: #0066cc;
+  --criticmarkup-comment-bg: rgba(0, 102, 204, 0.1);
+  --criticmarkup-highlight-color: #9933aa;
+  --criticmarkup-highlight-bg: rgba(153, 51, 170, 0.15);
+}
+
+/* Dark Theme Colors */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --criticmarkup-addition-color: #00dd00;
+    --criticmarkup-addition-bg: rgba(0, 221, 0, 0.15);
+    --criticmarkup-deletion-color: #ff4444;
+    --criticmarkup-deletion-bg: rgba(255, 68, 68, 0.15);
+    --criticmarkup-substitution-color: #ff9944;
+    --criticmarkup-substitution-bg: rgba(255, 153, 68, 0.15);
+    --criticmarkup-comment-color: #5599ff;
+    --criticmarkup-comment-bg: rgba(85, 153, 255, 0.15);
+    --criticmarkup-highlight-color: #cc66dd;
+    --criticmarkup-highlight-bg: rgba(204, 102, 221, 0.2);
+  }
+}
 
 /* Addition - green with semi-transparent background */
 .criticmarkup-addition {
-  color: #00bb00;
-  background-color: rgba(0, 187, 0, 0.1);
+  color: var(--criticmarkup-addition-color);
+  background-color: var(--criticmarkup-addition-bg);
 }
 
 /* Deletion - red with semi-transparent background and strikethrough */
 .criticmarkup-deletion {
-  color: #dd0000;
-  background-color: rgba(221, 0, 0, 0.1);
+  color: var(--criticmarkup-deletion-color);
+  background-color: var(--criticmarkup-deletion-bg);
   text-decoration: line-through;
 }
 
 /* Substitution - orange with semi-transparent background */
 .criticmarkup-substitution {
-  color: #ff8600;
-  background-color: rgba(255, 134, 0, 0.1);
+  color: var(--criticmarkup-substitution-color);
+  background-color: var(--criticmarkup-substitution-bg);
 }
 
-/* Comment - light blue with semi-transparent background and italic */
+/* Comment - blue with semi-transparent background and italic */
 .criticmarkup-comment {
-  color: #4a9eff;
-  background-color: rgba(74, 158, 255, 0.15);
+  color: var(--criticmarkup-comment-color);
+  background-color: var(--criticmarkup-comment-bg);
   font-style: italic;
 }
 
 /* Highlight - purple with semi-transparent background */
 .criticmarkup-highlight {
-  color: #aa53a9;
-  background-color: rgba(170, 83, 169, 0.2);
+  color: var(--criticmarkup-highlight-color);
+  background-color: var(--criticmarkup-highlight-bg);
 }

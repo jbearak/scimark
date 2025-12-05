@@ -71,13 +71,15 @@ This feature adds CriticMarkup syntax highlighting support to VS Code's built-in
 
 ### Requirement 6
 
-**User Story:** As a user, I want the preview styling to match the editor syntax highlighting colors, so that I have a consistent visual experience across both views.
+**User Story:** As a user, I want the preview styling to adapt to my active VS Code theme (light or dark), so that CriticMarkup colors remain readable and consistent with my theme preference.
 
 #### Acceptance Criteria
 
-1. WHEN the Extension renders CriticMarkup in the preview THEN the Extension SHALL use colors consistent with the editor syntax highlighting
-2. WHEN a user customizes editor token colors for CriticMarkup THEN the Extension SHALL apply those same colors in the preview
-3. WHEN default colors are used THEN the Extension SHALL use green for additions, red for deletions, orange for substitutions, blue for comments, and purple for highlights
+1. WHEN the Markdown Preview renders in a dark theme THEN the Extension SHALL use colors optimized for dark backgrounds
+2. WHEN the Markdown Preview renders in a light theme THEN the Extension SHALL use colors optimized for light backgrounds
+3. WHEN the theme changes THEN the Extension SHALL automatically update preview colors without requiring a reload
+4. WHEN default colors are used in dark themes THEN the Extension SHALL use bright green for additions, bright red for deletions, bright orange for substitutions, bright blue for comments, and bright purple for highlights
+5. WHEN default colors are used in light themes THEN the Extension SHALL use darker green for additions, darker red for deletions, darker orange for substitutions, darker blue for comments, and darker purple for highlights
 
 ### Requirement 7
 

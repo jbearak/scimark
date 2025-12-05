@@ -97,34 +97,64 @@ const patterns: CriticMarkupPattern[] = [
 
 ### 2. Preview Stylesheet (`media/criticmarkup.css`)
 
-CSS file that defines visual styling for CriticMarkup elements in the preview.
+CSS file that defines theme-aware visual styling for CriticMarkup elements in the preview.
 
 ```css
+/* Default (Light Theme) Colors */
+:root {
+  --criticmarkup-addition-color: #008800;
+  --criticmarkup-addition-bg: rgba(0, 136, 0, 0.1);
+  --criticmarkup-deletion-color: #cc0000;
+  --criticmarkup-deletion-bg: rgba(204, 0, 0, 0.1);
+  --criticmarkup-substitution-color: #dd6600;
+  --criticmarkup-substitution-bg: rgba(221, 102, 0, 0.1);
+  --criticmarkup-comment-color: #0066cc;
+  --criticmarkup-comment-bg: rgba(0, 102, 204, 0.1);
+  --criticmarkup-highlight-color: #9933aa;
+  --criticmarkup-highlight-bg: rgba(153, 51, 170, 0.15);
+}
+
+/* Dark Theme Colors */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --criticmarkup-addition-color: #00dd00;
+    --criticmarkup-addition-bg: rgba(0, 221, 0, 0.15);
+    --criticmarkup-deletion-color: #ff4444;
+    --criticmarkup-deletion-bg: rgba(255, 68, 68, 0.15);
+    --criticmarkup-substitution-color: #ff9944;
+    --criticmarkup-substitution-bg: rgba(255, 153, 68, 0.15);
+    --criticmarkup-comment-color: #5599ff;
+    --criticmarkup-comment-bg: rgba(85, 153, 255, 0.15);
+    --criticmarkup-highlight-color: #cc66dd;
+    --criticmarkup-highlight-bg: rgba(204, 102, 221, 0.2);
+  }
+}
+
 .criticmarkup-addition {
-  color: #00bb00;
-  background-color: rgba(0, 187, 0, 0.1);
+  color: var(--criticmarkup-addition-color);
+  background-color: var(--criticmarkup-addition-bg);
 }
 
 .criticmarkup-deletion {
-  color: #dd0000;
-  background-color: rgba(221, 0, 0, 0.1);
+  color: var(--criticmarkup-deletion-color);
+  background-color: var(--criticmarkup-deletion-bg);
   text-decoration: line-through;
 }
 
 .criticmarkup-substitution {
-  color: #ff8600;
-  background-color: rgba(255, 134, 0, 0.1);
+  color: var(--criticmarkup-substitution-color);
+  background-color: var(--criticmarkup-substitution-bg);
 }
 
 .criticmarkup-comment {
-  color: #0000bb;
-  background-color: rgba(0, 0, 187, 0.1);
+  color: var(--criticmarkup-comment-color);
+  background-color: var(--criticmarkup-comment-bg);
   font-style: italic;
 }
 
 .criticmarkup-highlight {
-  color: #aa53a9;
-  background-color: rgba(170, 83, 169, 0.2);
+  color: var(--criticmarkup-highlight-color);
+  background-color: var(--criticmarkup-highlight-bg);
 }
 ```
 
@@ -223,6 +253,12 @@ After analyzing the acceptance criteria, several properties can be consolidated 
 
 **Validates: Requirements 8.2**
 
+### Property 7: Theme-aware color adaptation
+
+*For any* CriticMarkup element type, the CSS should define different color values for light and dark themes using media queries, ensuring readability in both contexts.
+
+**Validates: Requirements 6.1, 6.2, 6.4, 6.5**
+
 ## Error Handling
 
 ### Invalid or Malformed Markup
@@ -295,12 +331,17 @@ To handle nested Markdown correctly, the plugin must:
 
 ### CSS Styling Approach
 
-The CSS will use:
+The CSS will use CSS custom properties (variables) and media queries to support theme-aware colors:
 
-- Color values matching the editor syntax highlighting defaults
+- Use `prefers-color-scheme` media query to detect light vs dark themes
+- Define separate color palettes for light and dark themes
+- Use CSS custom properties for maintainability
 - Semi-transparent background colors for better readability
 - Appropriate text decorations (strikethrough for deletions, etc.)
-- Sufficient contrast for accessibility
+- Sufficient contrast for accessibility in both themes
+
+**Theme Detection:**
+VS Code's Markdown preview automatically includes the `vscode-body` class and respects the `prefers-color-scheme` media query, allowing CSS to adapt to the active theme.
 
 ### Performance Considerations
 
