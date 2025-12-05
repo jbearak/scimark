@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as changes from './changes';
 import * as formatting from './formatting';
+import { criticmarkupPlugin } from './preview/criticmarkup-plugin';
 
 export function activate(context: vscode.ExtensionContext) {
 	// Register existing navigation commands
@@ -92,6 +93,13 @@ export function activate(context: vscode.ExtensionContext) {
 			applyFormatting((text) => formatting.formatHeading(text, 6))
 		)
 	);
+
+	// Return markdown-it plugin for preview integration
+	return {
+		extendMarkdownIt(md: any) {
+			return md.use(criticmarkupPlugin);
+		}
+	};
 }
 
 /**

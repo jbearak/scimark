@@ -1,0 +1,33 @@
+/* CriticMarkup Preview Styles */
+
+/* Addition - green with semi-transparent background */
+.criticmarkup-addition {
+  color: #00bb00;
+  background-color: rgba(0, 187, 0, 0.1);
+}
+
+/* Deletion - red with semi-transparent background and strikethrough */
+.criticmarkup-deletion {
+  color: #dd0000;
+  background-color: rgba(221, 0, 0, 0.1);
+  text-decoration: line-through;
+}
+
+/* Substitution - orange with semi-transparent background */
+.criticmarkup-substitution {
+  color: #ff8600;
+  background-color: rgba(255, 134, 0, 0.1);
+}
+
+/* Comment - blue with semi-transparent background and italic */
+.criticmarkup-comment {
+  color: #0000bb;
+  background-color: rgba(0, 0, 187, 0.1);
+  font-style: italic;
+}
+
+/* Highlight - purple with semi-transparent background */
+.criticmarkup-highlight {
+  color: #aa53a9;
+  background-color: rgba(170, 83, 169, 0.2);
+}

@@ -337,13 +337,18 @@
           "text.html.markdown"
         ]
       }
-    ]
+    ],
+    "markdown.previewStyles": [
+      "./media/criticmarkup.css"
+    ],
+    "markdown.markdownItPlugins": true
   },
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/mocha": "^2.2.42",
     "@types/node": "^10.14.4",
     "@types/vscode": "^1.31.0",
@@ -351,5 +356,8 @@
     "tslint": "^5.14.0",
     "typescript": "^5.9.3"
   },
-  "private": true
+  "private": true,
+  "dependencies": {
+    "markdown-it": "^14.1.0"
+  }
 }
