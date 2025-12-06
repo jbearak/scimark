@@ -177,14 +177,24 @@
     "menus": {
       "editor/title": [
         {
+          "submenu": "markdown.formatting",
+          "when": "editorLangId == markdown && !isInDiffEditor",
+          "group": "navigation@1"
+        },
+        {
+          "submenu": "markdown.annotations",
+          "when": "editorLangId == markdown && !isInDiffEditor",
+          "group": "navigation@2"
+        },
+        {
           "command": "criticmarkup.prevChange",
           "when": "editorLangId == markdown && !isInDiffEditor",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
           "command": "criticmarkup.nextChange",
           "when": "editorLangId == markdown && !isInDiffEditor",
-          "group": "navigation"
+          "group": "navigation@4"
         }
       ],
       "editor/context": [
