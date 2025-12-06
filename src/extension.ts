@@ -107,16 +107,16 @@ export function activate(context: vscode.ExtensionContext) {
 			applyFormatting((text) => formatting.formatLink(text))
 		),
 		vscode.commands.registerCommand('markdown.formatBulletedList', () => 
-			applyFormatting((text) => formatting.wrapLines(text, '- '))
+			applyLineBasedFormatting((text) => formatting.wrapLines(text, '- '))
 		),
 		vscode.commands.registerCommand('markdown.formatNumberedList', () => 
-			applyFormatting((text) => formatting.wrapLinesNumbered(text))
+			applyLineBasedFormatting((text) => formatting.wrapLinesNumbered(text))
 		),
 		vscode.commands.registerCommand('markdown.formatTaskList', () => 
-			applyFormatting((text) => formatting.formatTaskList(text))
+			applyLineBasedFormatting((text) => formatting.formatTaskList(text))
 		),
 		vscode.commands.registerCommand('markdown.formatQuoteBlock', () => 
-			applyFormatting((text) => formatting.wrapLines(text, '> ', true))
+			applyLineBasedFormatting((text) => formatting.wrapLines(text, '> ', true))
 		)
 	);
 
