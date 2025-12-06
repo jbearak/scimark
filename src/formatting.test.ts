@@ -948,3 +948,253 @@ describe('Property 3: Column alignment consistency', () => {
     );
   });
 });
+
+// Feature: markdown-table-reflow, Property 5: Column alignment preservation
+// Validates: Requirements 4.1, 4.2, 4.3, 4.4, 4.5
+describe('Property 5: Column alignment preservation', () => {
+  it('should preserve alignment specifications for all column types when reflowing tables', () => {
+    // Generator for column alignment
+    const alignmentArb = fc.constantFrom<ColumnAlignment>('left', 'right', 'center', 'default');
+    
+    // Generator for table cell content (strings without pipes or newlines)
+    const cellContentArb = fc.string({ minLength: 1, maxLength: 15 })
+      .filter(s => !s.includes('|') && !s.includes('\n') && s.trim().length > 0);
+    
+    // Generator for a complete table with header, separator, and data rows
+    const tableWithAlignmentArb = fc.integer({ min: 2, max: 5 }).chain(numCols => {
+      return fc.tuple(
+        // Header row
+        fc.array(cellContentArb, { minLength: numCols, maxLength: numCols }),
+        // Alignments for each column
+        fc.array(alignmentArb, { minLength: numCols, maxLength: numCols }),
+        // Data rows (1-4 rows)
+        fc.integer({ min: 1, max: 4 }).chain(numRows =>
+          fc.array(
+            fc.array(cellContentArb, { minLength: numCols, maxLength: numCols }),
+            { minLength: numRows, maxLength: numRows }
+          )
+        )
+      );
+    });
+    
+    fc.assert(
+      fc.property(tableWithAlignmentArb, ([header, alignments, dataRows]) => {
+        // Build separator row based on alignments
+        const separatorCells = alignments.map(align => {
+          switch (align) {
+            case 'left': return ':---';
+            case 'right': return '---:';
+            case 'center': return ':---:';
+            case 'default': return '---';
+          }
+        });
+        
+        // Build the markdown table
+        const headerLine = '| ' + header.join(' | ') + ' |';
+        const separatorLine = '| ' + separatorCells.join(' | ') + ' |';
+        const dataLines = dataRows.map(row => '| ' + row.join(' | ') + ' |');
+        const tableText = [headerLine, separatorLine, ...dataLines].join('\n');
+        
+        // Reflow the table
+        const result = reflowTable(tableText);
+        
+        // Parse the reflowed table
+        const parsed = parseTable(result.newText);
+        if (!parsed) {
+          return false;
+        }
+        
+        // Check that all alignments are preserved
+        if (parsed.alignments.length !== alignments.length) {
+          return false;
+        }
+        
+        for (let i = 0; i < alignments.length; i++) {
+          if (parsed.alignments[i] !== alignments[i]) {
+            return false;
+          }
+        }
+        
+        // Also verify that the separator row in the output contains the correct indicators
+        const lines = result.newText.split('\n');
+        if (lines.length < 2) {
+          return false;
+        }
+        
+        const outputSeparatorLine = lines[1];
+        const outputSeparatorCells = outputSeparatorLine.split('|').slice(1, -1).map(c => c.trim());
+        
+        for (let i = 0; i < alignments.length; i++) {
+          const cell = outputSeparatorCells[i];
+          const expectedAlign = alignments[i];
+          
+          switch (expectedAlign) {
+            case 'left':
+              if (!cell.startsWith(':') || cell.endsWith(':')) {
+                return false;
+              }
+              break;
+            case 'right':
+              if (cell.startsWith(':') || !cell.endsWith(':')) {
+                return false;
+              }
+              break;
+            case 'center':
+              if (!cell.startsWith(':') || !cell.endsWith(':')) {
+                return false;
+              }
+              break;
+            case 'default':
+              if (cell.includes(':')) {
+                return false;
+              }
+              break;
+          }
+        }
+        
+        return true;
+      }),
+      { numRuns: 100 }
+    );
+  });
+});
+
+// Unit tests for alignment preservation
+describe('Table Alignment Preservation Unit Tests', () => {
+  it('should preserve left-aligned columns (:---)', () => {
+    const input = '| Name | Age |\n| :--- | :--- |\n| Alice | 30 |\n| Bob | 25 |';
+    const result = reflowTable(input);
+    
+    // Parse the result to check alignment
+    const parsed = parseTable(result.newText);
+    if (!parsed) {
+      throw new Error('Failed to parse reflowed table');
+    }
+    
+    // Check that alignments are preserved
+    if (parsed.alignments[0] !== 'left' || parsed.alignments[1] !== 'left') {
+      throw new Error(`Expected left alignment for both columns, got ${parsed.alignments[0]} and ${parsed.alignments[1]}`);
+    }
+    
+    // Check that the separator row contains the alignment indicators
+    const lines = result.newText.split('\n');
+    const separatorLine = lines[1];
+    if (!separatorLine.includes(':---')) {
+      throw new Error(`Expected separator line to contain ':---' but got: ${separatorLine}`);
+    }
+  });
+
+  it('should preserve right-aligned columns (---:)', () => {
+    const input = '| Name | Age |\n| ---: | ---: |\n| Alice | 30 |\n| Bob | 25 |';
+    const result = reflowTable(input);
+    
+    // Parse the result to check alignment
+    const parsed = parseTable(result.newText);
+    if (!parsed) {
+      throw new Error('Failed to parse reflowed table');
+    }
+    
+    // Check that alignments are preserved
+    if (parsed.alignments[0] !== 'right' || parsed.alignments[1] !== 'right') {
+      throw new Error(`Expected right alignment for both columns, got ${parsed.alignments[0]} and ${parsed.alignments[1]}`);
+    }
+    
+    // Check that the separator row contains the alignment indicators
+    const lines = result.newText.split('\n');
+    const separatorLine = lines[1];
+    if (!separatorLine.includes('---:')) {
+      throw new Error(`Expected separator line to contain '---:' but got: ${separatorLine}`);
+    }
+  });
+
+  it('should preserve center-aligned columns (:---:)', () => {
+    const input = '| Name | Age |\n| :---: | :---: |\n| Alice | 30 |\n| Bob | 25 |';
+    const result = reflowTable(input);
+    
+    // Parse the result to check alignment
+    const parsed = parseTable(result.newText);
+    if (!parsed) {
+      throw new Error('Failed to parse reflowed table');
+    }
+    
+    // Check that alignments are preserved
+    if (parsed.alignments[0] !== 'center' || parsed.alignments[1] !== 'center') {
+      throw new Error(`Expected center alignment for both columns, got ${parsed.alignments[0]} and ${parsed.alignments[1]}`);
+    }
+    
+    // Check that the separator row contains the alignment indicators
+    const lines = result.newText.split('\n');
+    const separatorLine = lines[1];
+    if (!separatorLine.includes(':---:')) {
+      throw new Error(`Expected separator line to contain ':---:' but got: ${separatorLine}`);
+    }
+  });
+
+  it('should preserve default alignment (---)', () => {
+    const input = '| Name | Age |\n| --- | --- |\n| Alice | 30 |\n| Bob | 25 |';
+    const result = reflowTable(input);
+    
+    // Parse the result to check alignment
+    const parsed = parseTable(result.newText);
+    if (!parsed) {
+      throw new Error('Failed to parse reflowed table');
+    }
+    
+    // Check that alignments are preserved
+    if (parsed.alignments[0] !== 'default' || parsed.alignments[1] !== 'default') {
+      throw new Error(`Expected default alignment for both columns, got ${parsed.alignments[0]} and ${parsed.alignments[1]}`);
+    }
+    
+    // Check that the separator row contains only hyphens (no colons)
+    const lines = result.newText.split('\n');
+    const separatorLine = lines[1];
+    // Extract the separator cells
+    const separatorCells = separatorLine.split('|').slice(1, -1).map(c => c.trim());
+    for (const cell of separatorCells) {
+      if (cell.includes(':')) {
+        throw new Error(`Expected separator cells to not contain colons for default alignment, but got: ${cell}`);
+      }
+      if (!/^-+$/.test(cell)) {
+        throw new Error(`Expected separator cells to contain only hyphens, but got: ${cell}`);
+      }
+    }
+  });
+
+  it('should preserve mixed alignments in a single table', () => {
+    const input = '| Name | Age | Score | Status |\n| :--- | ---: | :---: | --- |\n| Alice | 30 | 95 | Active |\n| Bob | 25 | 87 | Inactive |';
+    const result = reflowTable(input);
+    
+    // Parse the result to check alignment
+    const parsed = parseTable(result.newText);
+    if (!parsed) {
+      throw new Error('Failed to parse reflowed table');
+    }
+    
+    // Check that alignments are preserved correctly
+    const expectedAlignments: ColumnAlignment[] = ['left', 'right', 'center', 'default'];
+    for (let i = 0; i < expectedAlignments.length; i++) {
+      if (parsed.alignments[i] !== expectedAlignments[i]) {
+        throw new Error(`Expected alignment ${expectedAlignments[i]} for column ${i}, got ${parsed.alignments[i]}`);
+      }
+    }
+    
+    // Check that the separator row contains the correct alignment indicators
+    const lines = result.newText.split('\n');
+    const separatorLine = lines[1];
+    const separatorCells = separatorLine.split('|').slice(1, -1).map(c => c.trim());
+    
+    // Check each cell for correct alignment indicator
+    if (!separatorCells[0].startsWith(':') || separatorCells[0].endsWith(':')) {
+      throw new Error(`Expected left alignment (:---) for column 0, got: ${separatorCells[0]}`);
+    }
+    if (separatorCells[1].startsWith(':') || !separatorCells[1].endsWith(':')) {
+      throw new Error(`Expected right alignment (---:) for column 1, got: ${separatorCells[1]}`);
+    }
+    if (!separatorCells[2].startsWith(':') || !separatorCells[2].endsWith(':')) {
+      throw new Error(`Expected center alignment (:---:) for column 2, got: ${separatorCells[2]}`);
+    }
+    if (separatorCells[3].includes(':')) {
+      throw new Error(`Expected default alignment (---) for column 3, got: ${separatorCells[3]}`);
+    }
+  });
+});

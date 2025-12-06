@@ -23,21 +23,26 @@ The table reflow command will follow the same pattern as other markdown formatti
 
 **Interface**:
 ```typescript
+type ColumnAlignment = 'left' | 'right' | 'center' | 'default';
+
 interface TableRow {
   cells: string[];
   isSeparator: boolean;
+  alignments?: ColumnAlignment[]; // Only present for separator rows
 }
 
 interface ParsedTable {
   rows: TableRow[];
   columnWidths: number[];
+  alignments: ColumnAlignment[]; // Alignment for each column
 }
 ```
 
 **Functions**:
-- `parseTable(text: string): ParsedTable | null` - Parses markdown table text into structured data
+- `parseTable(text: string): ParsedTable | null` - Parses markdown table text into structured data, including alignment information
 - `isTableRow(line: string): boolean` - Determines if a line is a valid table row
 - `isSeparatorRow(line: string): boolean` - Determines if a line is a header separator
+- `parseAlignment(cell: string): ColumnAlignment` - Extracts alignment from a separator cell (`:---`, `---:`, `:---:`, or `---`)
 
 ### 2. Table Formatting
 
@@ -74,15 +79,24 @@ Add command definition and menu entry with proper group positioning to create di
 
 ## Data Models
 
+### ColumnAlignment
+Type representing the alignment of a table column:
+- `'left'` - Left-aligned (`:---`)
+- `'right'` - Right-aligned (`---:`)
+- `'center'` - Center-aligned (`:---:`)
+- `'default'` - Default alignment (`---`)
+
 ### TableRow
 Represents a single row in a markdown table:
 - `cells: string[]` - Array of cell contents (trimmed)
 - `isSeparator: boolean` - True if this is the header separator row
+- `alignments?: ColumnAlignment[]` - Column alignments (only present for separator rows)
 
 ### ParsedTable
 Represents the complete parsed table structure:
 - `rows: TableRow[]` - All rows in the table
 - `columnWidths: number[]` - Maximum width for each column
+- `alignments: ColumnAlignment[]` - Alignment specification for each column
 
 ## Correctness Properties
 
@@ -114,6 +128,10 @@ Property 3: Column alignment consistency
 Property 4: Whitespace preservation within cells
 *For any* table cell containing leading or trailing spaces, reflowing should preserve those spaces within the cell content (distinct from the padding added for alignment).
 **Validates: Requirements 3.4**
+
+Property 5: Column alignment preservation
+*For any* valid markdown table with a separator row containing alignment indicators (`:---` for left, `---:` for right, `:---:` for center, `---` for default), reflowing should preserve the alignment specification for each column in the reformatted separator row.
+**Validates: Requirements 4.1, 4.2, 4.3, 4.4, 4.5**
 
 ## Error Handling
 
@@ -150,6 +168,7 @@ Property tests to implement:
 2. **Separator Preservation Property**: Generate random tables with separator rows, reflow them, and verify separator remains valid
 3. **Alignment Property**: Generate random tables, reflow them, and verify all pipes align vertically and cells are properly padded
 4. **Whitespace Preservation Property**: Generate tables with cells containing leading/trailing spaces, reflow them, and verify those spaces are preserved
+5. **Column Alignment Preservation Property**: Generate random tables with various column alignment specifications (left, right, center, default), reflow them, and verify alignment indicators are preserved in the separator row
 
 Each property-based test will be implemented as a single test that validates its corresponding correctness property.
 
@@ -171,8 +190,24 @@ Each property-based test will be implemented as a single test that validates its
 ### Row Formatting
 
 1. For content rows: `| {cell_content}{padding} |` where padding brings total to column width
-2. For separator rows: `| {hyphens} |` where hyphens count equals column width
+2. For separator rows: Format based on alignment:
+   - Left (`:---`): `:` + hyphens to fill column width
+   - Right (`---:`): hyphens to fill column width + `:`
+   - Center (`:---:`): `:` + hyphens to fill column width - 2 + `:`
+   - Default (`---`): hyphens to fill column width
 3. Maintain single space between pipe and content: `| content |`
+
+### Alignment Detection
+
+1. Parse separator row cells to detect alignment indicators
+2. Check for leading colon (left or center alignment)
+3. Check for trailing colon (right or center alignment)
+4. Determine alignment type:
+   - Leading and trailing colon → center
+   - Leading colon only → left
+   - Trailing colon only → right
+   - No colons → default
+5. Store alignment information in ParsedTable for use during formatting
 
 ### Integration Points
 

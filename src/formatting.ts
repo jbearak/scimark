@@ -250,11 +250,17 @@ export function formatTaskList(text: string): TextTransformation {
 }
 
 /**
+ * Type representing the alignment of a table column
+ */
+export type ColumnAlignment = 'left' | 'right' | 'center' | 'default';
+
+/**
  * Interface representing a single row in a markdown table
  */
 export interface TableRow {
   cells: string[];
   isSeparator: boolean;
+  alignments?: ColumnAlignment[]; // Only present for separator rows
 }
 
 /**
@@ -263,6 +269,7 @@ export interface TableRow {
 export interface ParsedTable {
   rows: TableRow[];
   columnWidths: number[];
+  alignments: ColumnAlignment[]; // Alignment for each column
 }
 
 /**
@@ -314,6 +321,28 @@ export function isSeparatorRow(line: string): boolean {
 }
 
 /**
+ * Extracts alignment from a separator cell
+ * @param cell - The separator cell content (e.g., ":---", "---:", ":---:", "---")
+ * @returns The column alignment type
+ */
+export function parseAlignment(cell: string): ColumnAlignment {
+  const trimmed = cell.trim();
+  
+  const hasLeadingColon = trimmed.startsWith(':');
+  const hasTrailingColon = trimmed.endsWith(':');
+  
+  if (hasLeadingColon && hasTrailingColon) {
+    return 'center';
+  } else if (hasLeadingColon) {
+    return 'left';
+  } else if (hasTrailingColon) {
+    return 'right';
+  } else {
+    return 'default';
+  }
+}
+
+/**
  * Parses markdown table text into structured data
  * @param text - The table text to parse
  * @returns ParsedTable object with rows and column widths, or null if not a valid table
@@ -340,9 +369,16 @@ export function parseTable(text: string): ParsedTable | null {
     // This means cell content is defined as the trimmed text between pipes
     const cells = parts.slice(1, -1).map(cell => cell.trim());
     
+    // If this is a separator row, parse alignments
+    let alignments: ColumnAlignment[] | undefined;
+    if (isSep) {
+      alignments = cells.map(cell => parseAlignment(cell));
+    }
+    
     return {
       cells,
-      isSeparator: isSep
+      isSeparator: isSep,
+      alignments
     };
   });
   
@@ -360,9 +396,15 @@ export function parseTable(text: string): ParsedTable | null {
     }
   }
   
+  // Extract alignments from the separator row (if present)
+  const separatorRow = rows.find(row => row.isSeparator);
+  const alignments: ColumnAlignment[] = separatorRow?.alignments || 
+    new Array(columnCount).fill('default');
+  
   return {
     rows,
-    columnWidths
+    columnWidths,
+    alignments
   };
 }
 
@@ -383,14 +425,34 @@ export function formatContentRow(cells: string[], columnWidths: number[]): strin
 }
 
 /**
- * Formats a separator row with hyphens
+ * Formats a separator row with hyphens and alignment indicators
  * @param columnWidths - Array of column widths
+ * @param alignments - Array of column alignments (optional, defaults to 'default' for all columns)
  * @returns Formatted separator row string
  */
-export function formatSeparatorRow(columnWidths: number[]): string {
+export function formatSeparatorRow(columnWidths: number[], alignments?: ColumnAlignment[]): string {
   // Each separator cell should have at least 3 hyphens (standard markdown)
   // or match the column width, whichever is greater
-  const cells = columnWidths.map(width => '-'.repeat(Math.max(width, 3)));
+  const cells = columnWidths.map((width, i) => {
+    const minWidth = Math.max(width, 3);
+    const alignment = alignments?.[i] || 'default';
+    
+    switch (alignment) {
+      case 'left':
+        // :--- (colon + hyphens)
+        return ':' + '-'.repeat(minWidth - 1);
+      case 'right':
+        // ---: (hyphens + colon)
+        return '-'.repeat(minWidth - 1) + ':';
+      case 'center':
+        // :---: (colon + hyphens + colon)
+        return ':' + '-'.repeat(Math.max(minWidth - 2, 1)) + ':';
+      case 'default':
+      default:
+        // --- (just hyphens)
+        return '-'.repeat(minWidth);
+    }
+  });
   return '| ' + cells.join(' | ') + ' |';
 }
 
@@ -407,12 +469,12 @@ export function reflowTable(text: string): TextTransformation {
     return { newText: text };
   }
   
-  const { rows, columnWidths } = parsed;
+  const { rows, columnWidths, alignments } = parsed;
   
   // Format each row
   const formattedRows = rows.map(row => {
     if (row.isSeparator) {
-      return formatSeparatorRow(columnWidths);
+      return formatSeparatorRow(columnWidths, alignments);
     } else {
       return formatContentRow(row.cells, columnWidths);
     }

@@ -47,3 +47,15 @@ This feature adds a "Reflow Table" command to the Markdown Formatting context me
 3. WHEN a table is reflowed THEN the Extension SHALL calculate column width based on the widest content in each column
 4. WHEN a table is reflowed THEN the Extension SHALL preserve leading and trailing spaces within cell content
 5. WHEN a table is reflowed THEN the Extension SHALL maintain consistent spacing between pipes and cell content
+
+### Requirement 4
+
+**User Story:** As a markdown user, I want column alignment specifications to be preserved when reflowing tables, so that my intended text alignment (left, right, center) is maintained.
+
+#### Acceptance Criteria
+
+1. WHEN a table with left-aligned columns is reflowed THEN the Extension SHALL preserve the left alignment indicator (`:---`) in the separator row
+2. WHEN a table with right-aligned columns is reflowed THEN the Extension SHALL preserve the right alignment indicator (`---:`) in the separator row
+3. WHEN a table with center-aligned columns is reflowed THEN the Extension SHALL preserve the center alignment indicator (`:---:`) in the separator row
+4. WHEN a table with default alignment is reflowed THEN the Extension SHALL preserve the default alignment indicator (`---`) in the separator row
+5. WHEN a table has mixed column alignments is reflowed THEN the Extension SHALL preserve each column's alignment independently

@@ -12,6 +12,14 @@
     - **Validates: Requirements 1.4**
     - _Requirements: 1.4_
 
+  - [x] 1.3 Add alignment detection to table parsing
+    - Create `ColumnAlignment` type definition
+    - Write `parseAlignment()` function to extract alignment from separator cells
+    - Update `parseTable()` to detect and store column alignments
+    - Update `TableRow` interface to include optional alignments array
+    - Update `ParsedTable` interface to include alignments array
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
+
 - [x] 2. Implement table formatting logic
   - [x] 2.1 Create column width calculation function
     - Write logic to calculate maximum width for each column
@@ -23,6 +31,12 @@
     - Write logic to format separator rows with hyphens
     - Ensure single space between pipes and content
     - _Requirements: 3.1, 3.2, 3.5_
+
+  - [x] 2.2.1 Update separator row formatting to preserve alignment
+    - Modify `formatSeparatorRow()` to accept alignments parameter
+    - Implement alignment-aware separator formatting (`:---`, `---:`, `:---:`, `---`)
+    - Ensure alignment indicators are positioned correctly with proper hyphen counts
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
   - [x] 2.3 Write property test for alignment consistency
     - **Property 3: Column alignment consistency**
@@ -45,12 +59,25 @@
     - **Validates: Requirements 3.4**
     - _Requirements: 3.4_
 
+  - [x] 2.6.1 Write property test for alignment preservation
+    - **Property 5: Column alignment preservation**
+    - **Validates: Requirements 4.1, 4.2, 4.3, 4.4, 4.5**
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
+
   - [x] 2.7 Write unit tests for table formatting
     - Test basic 2x2 table formatting
     - Test tables with empty cells
     - Test tables with varying column widths
     - Test malformed table handling
     - _Requirements: 1.3, 3.1, 3.2, 3.3_
+
+  - [x] 2.7.1 Write unit tests for alignment preservation
+    - Test left-aligned columns (`:---`)
+    - Test right-aligned columns (`---:`)
+    - Test center-aligned columns (`:---:`)
+    - Test default alignment (`---`)
+    - Test mixed alignments in a single table
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
 - [x] 3. Register command and update menu configuration
   - [x] 3.1 Register markdown.reflowTable command in extension.ts
@@ -66,4 +93,7 @@
     - _Requirements: 1.1, 1.2_
 
 - [x] 4. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 5. Final checkpoint - Ensure all alignment tests pass
   - Ensure all tests pass, ask the user if questions arise.
