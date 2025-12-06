@@ -91,6 +91,9 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('markdown.formatBoldItalic', () => 
 			applyFormatting((text) => formatting.formatBoldItalic(text))
 		),
+		vscode.commands.registerCommand('markdown.formatStrikethrough', () => 
+			applyFormatting((text) => formatting.wrapSelection(text, '~~', '~~'))
+		),
 		vscode.commands.registerCommand('markdown.formatUnderline', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '<u>', '</u>'))
 		),
@@ -100,11 +103,17 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('markdown.formatCodeBlock', () => 
 			applyFormatting((text) => formatting.wrapCodeBlock(text))
 		),
+		vscode.commands.registerCommand('markdown.formatLink', () => 
+			applyFormatting((text) => formatting.formatLink(text))
+		),
 		vscode.commands.registerCommand('markdown.formatBulletedList', () => 
 			applyFormatting((text) => formatting.wrapLines(text, '- '))
 		),
 		vscode.commands.registerCommand('markdown.formatNumberedList', () => 
 			applyFormatting((text) => formatting.wrapLinesNumbered(text))
+		),
+		vscode.commands.registerCommand('markdown.formatTaskList', () => 
+			applyFormatting((text) => formatting.formatTaskList(text))
 		),
 		vscode.commands.registerCommand('markdown.formatQuoteBlock', () => 
 			applyFormatting((text) => formatting.wrapLines(text, '> ', true))

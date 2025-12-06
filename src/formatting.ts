@@ -208,3 +208,43 @@ export function deletionAndComment(text: string, authorName?: string | null): Te
     cursorOffset
   };
 }
+
+/**
+ * Formats text as a markdown link
+ * @param text - The text to use as link text (or URL if empty selection)
+ * @returns TextTransformation with link formatting, cursor positioned for URL
+ */
+export function formatLink(text: string): TextTransformation {
+  if (text.trim() === '') {
+    // Empty selection: insert link template with cursor in link text position
+    return {
+      newText: '[]()',
+      cursorOffset: 1
+    };
+  }
+  
+  // Check if text looks like a URL
+  const urlPattern = /^https?:\/\//i;
+  if (urlPattern.test(text.trim())) {
+    // Text is a URL: use it as the href, cursor in link text position
+    return {
+      newText: `[](${text})`,
+      cursorOffset: 1
+    };
+  }
+  
+  // Text is link text: cursor in URL position
+  return {
+    newText: `[${text}]()`,
+    cursorOffset: text.length + 3
+  };
+}
+
+/**
+ * Prepends task list checkbox to each line
+ * @param text - The text to process
+ * @returns TextTransformation with task list formatting
+ */
+export function formatTaskList(text: string): TextTransformation {
+  return wrapLines(text, '- [ ] ');
+}

@@ -92,6 +92,10 @@
         "title": "Bold Italic"
       },
       {
+        "command": "markdown.formatStrikethrough",
+        "title": "Strikethrough"
+      },
+      {
         "command": "markdown.formatUnderline",
         "title": "Underline"
       },
@@ -104,12 +108,20 @@
         "title": "Code Block"
       },
       {
+        "command": "markdown.formatLink",
+        "title": "Link"
+      },
+      {
         "command": "markdown.formatBulletedList",
         "title": "Bulleted List"
       },
       {
         "command": "markdown.formatNumberedList",
         "title": "Numbered List"
+      },
+      {
+        "command": "markdown.formatTaskList",
+        "title": "Task List"
       },
       {
         "command": "markdown.formatQuoteBlock",
@@ -247,19 +259,29 @@
           "group": "1_format@3"
         },
         {
-          "command": "markdown.formatUnderline",
+          "command": "markdown.formatStrikethrough",
           "when": "editorLangId == markdown",
           "group": "1_format@4"
         },
         {
-          "command": "markdown.formatInlineCode",
+          "command": "markdown.formatUnderline",
           "when": "editorLangId == markdown",
           "group": "1_format@5"
         },
         {
-          "command": "markdown.formatCodeBlock",
+          "command": "markdown.formatInlineCode",
           "when": "editorLangId == markdown",
           "group": "1_format@6"
+        },
+        {
+          "command": "markdown.formatCodeBlock",
+          "when": "editorLangId == markdown",
+          "group": "1_format@7"
+        },
+        {
+          "command": "markdown.formatLink",
+          "when": "editorLangId == markdown",
+          "group": "1_format@8"
         },
         {
           "command": "markdown.formatBulletedList",
@@ -272,9 +294,14 @@
           "group": "2_lists@2"
         },
         {
-          "command": "markdown.formatQuoteBlock",
+          "command": "markdown.formatTaskList",
           "when": "editorLangId == markdown",
           "group": "2_lists@3"
+        },
+        {
+          "command": "markdown.formatQuoteBlock",
+          "when": "editorLangId == markdown",
+          "group": "2_lists@4"
         },
         {
           "submenu": "markdown.heading",
