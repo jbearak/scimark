@@ -158,7 +158,7 @@ Please use the following checklists to manually verify the code integrity and fu
     - [ ] Tables with missing pipes at start/end.
     - [ ] Tables with varying row lengths.
     - [ ] Tables with empty cells.
-- [ ] **Author Insertion**: Confirm author name is inserted *after* the opening tag `{>>@Name: ` and cursor is placed after the colon.
+- [ ] **Author Insertion**: Confirm author name is inserted *after* the opening tag `{>>Name: ` and cursor is placed after the colon.
 
 ### `src/changes.ts`
 - [ ] **Regex Correctness**: Verify `combinedPattern` captures all 5 CriticMarkup types + HTML comments.

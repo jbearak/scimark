@@ -167,7 +167,7 @@ Comments can automatically include author names and timestamps. Configure this b
 
 Example comment with author attribution:
 ```markdown
-{>>@username (2024-12-06 16:30): This needs clarification.<<}
+{>>username (2024-12-06 16:30): This needs clarification.<<}
 ```
 
 ## Extension Settings

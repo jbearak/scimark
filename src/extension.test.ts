@@ -254,8 +254,8 @@ describe('Command Handler Unit Tests', () => {
       authorName = 'TestUser';
       result = formatting.wrapSelection('', '{>>', '<<}', 3, authorName);
       
-      expect(result.newText).toBe('{>>@TestUser: <<}');
-      expect(result.cursorOffset).toBe(14); // 3 + '@TestUser: '.length
+      expect(result.newText).toBe('{>>TestUser: <<}');
+      expect(result.cursorOffset).toBe(13); // 3 + 'TestUser: '.length
 
       // Scenario 3: Settings changed - author names disabled
       authorName = null;
@@ -268,15 +268,15 @@ describe('Command Handler Unit Tests', () => {
       authorName = 'NewUser';
       result = formatting.wrapSelection('', '{>>', '<<}', 3, authorName);
       
-      expect(result.newText).toBe('{>>@NewUser: <<}');
-      expect(result.cursorOffset).toBe(13); // 3 + '@NewUser: '.length
+      expect(result.newText).toBe('{>>NewUser: <<}');
+      expect(result.cursorOffset).toBe(12); // 3 + 'NewUser: '.length
 
       // Scenario 5: Test with highlight-and-comment
       authorName = 'Alice';
       result = formatting.highlightAndComment('important', authorName);
       
-      expect(result.newText).toBe('{==important==}{>>@Alice: <<}');
-      expect(result.cursorOffset).toBe(26); // Position after '@Alice: '
+      expect(result.newText).toBe('{==important==}{>>Alice: <<}');
+      expect(result.cursorOffset).toBe(25); // Position after 'Alice: '
 
       // Scenario 6: Highlight-and-comment without author
       authorName = null;
