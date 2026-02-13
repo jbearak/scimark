@@ -100,7 +100,7 @@ Updates the version field in `package.json` using `npm version` command with `--
 create_git_commit_and_tag(new_version: string) -> exit_code
 ```
 
-Creates a git commit with message "chore: bump version to X.Y.Z" and a lightweight tag "vX.Y.Z". Does not push automatically (per requirements).
+Creates a git commit with message "chore: bump version to X.Y.Z" and an annotated tag "vX.Y.Z". Does not push automatically (per requirements).
 
 ### Error Handling
 

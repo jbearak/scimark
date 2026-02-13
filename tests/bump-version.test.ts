@@ -320,7 +320,7 @@ test("Feature: version-bump-script, Property 5: Commit Message Format - verify c
           execSync(`npm version "${expectedVersion}" --no-git-tag-version`, { cwd: tempDir, timeout: 10000 });
           execSync("git add package.json package-lock.json", { cwd: tempDir });
           execSync(`git commit -m "chore: bump version to ${expectedVersion}"`, { cwd: tempDir });
-          execSync(`git tag "v${expectedVersion}"`, { cwd: tempDir });
+          execSync(`git tag -a "v${expectedVersion}" -m "Version ${expectedVersion}"`, { cwd: tempDir });
           
           // Get the latest commit message
           const commitMessage = execSync("git log -1 --pretty=format:%s", { 

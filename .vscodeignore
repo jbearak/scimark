@@ -43,3 +43,5 @@ example.qmd
 bun.lock
 setup.sh
 media/**/*.test.ts
+scripts/**
+tests/**

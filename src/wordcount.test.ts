@@ -23,22 +23,22 @@ mock.module('vscode', () => ({
   },
 }));
 
-const { countWords, isTextDocument } = await import('./wordcount');
+const { countwords, isTextDocument } = await import('./wordcount');
 
 describe('Word Count Property Tests', () => {
   // Feature: word-count-status-bar, Property 1: Status bar text format
   // Validates: Requirements 1.4
   describe('Property 1: Status bar text format', () => {
-    it('should format status bar text as "$(book) N Words" for any non-negative integer', () => {
+    it('should format status bar text as "$(book) N words" for any non-negative integer', () => {
       fc.assert(
         fc.property(
           fc.nat(), // Generate non-negative integers
           (wordCount) => {
-            // Expected format: "$(book) N Words"
-            const expectedFormat = `$(book) ${wordCount} Words`;
+            // Expected format: "$(book) N words"
+            const expectedFormat = `$(book) ${wordCount} words`;
             
             // Verify the format matches the expected pattern
-            const regex = /^\$\(book\) \d+ Words$/;
+            const regex = /^\$\(book\) \d+ words$/;
             const matches = regex.test(expectedFormat);
             
             // Also verify the exact word count is present
@@ -56,15 +56,15 @@ describe('Word Count Property Tests', () => {
         fc.property(
           fc.constantFrom(0, 1, 10, 100, 1000, 10000, 999999),
           (wordCount) => {
-            const formatted = `$(book) ${wordCount} Words`;
+            const formatted = `$(book) ${wordCount} words`;
             
             // Verify format structure
             const parts = formatted.split(' ');
             const hasBookIcon = parts[0] === '$(book)';
             const hasWordCount = parts[1] === wordCount.toString();
-            const hasWordsLabel = parts[2] === 'Words';
+            const haswordsLabel = parts[2] === 'words';
             
-            return hasBookIcon && hasWordCount && hasWordsLabel && parts.length === 3;
+            return hasBookIcon && hasWordCount && haswordsLabel && parts.length === 3;
           }
         ),
         { numRuns: 100 }
@@ -91,7 +91,7 @@ describe('Word Count Property Tests', () => {
           (words, separator) => {
             // Generate text by joining words with the separator
             const text = words.join(separator);
-            const result = countWords(text);
+            const result = countwords(text);
             
             // The word count should equal the number of words we joined
             return result === words.length;
@@ -113,7 +113,7 @@ describe('Word Count Property Tests', () => {
               text += separators[i % separators.length] + words[i];
             }
             
-            const result = countWords(text);
+            const result = countwords(text);
             
             // Should count the correct number of words regardless of whitespace type
             return result === words.length;
@@ -134,8 +134,8 @@ describe('Word Count Property Tests', () => {
           fc.string().filter(s => s.trim() === ''), // leading whitespace
           fc.string().filter(s => s.trim() === ''), // trailing whitespace
           (text, leading, trailing) => {
-            const withoutWhitespace = countWords(text);
-            const withWhitespace = countWords(leading + text + trailing);
+            const withoutWhitespace = countwords(text);
+            const withWhitespace = countwords(leading + text + trailing);
             
             // Word count should be identical
             return withoutWhitespace === withWhitespace;
@@ -155,8 +155,8 @@ describe('Word Count Property Tests', () => {
             const leading = ' '.repeat(leadingCount);
             const trailing = ' '.repeat(trailingCount);
             
-            const withoutWhitespace = countWords(text);
-            const withWhitespace = countWords(leading + text + trailing);
+            const withoutWhitespace = countwords(text);
+            const withWhitespace = countwords(leading + text + trailing);
             
             return withoutWhitespace === withWhitespace;
           }
@@ -235,11 +235,11 @@ describe('Word Count Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 200 }),
           (text) => {
             // Calculate word count of the text
-            const expectedCount = countWords(text);
+            const expectedCount = countwords(text);
             
             // Simulate a single selection containing this text
             // In the actual implementation, this would be the selected text
-            const actualCount = countWords(text);
+            const actualCount = countwords(text);
             
             // The word count should match
             return actualCount === expectedCount;
@@ -255,11 +255,11 @@ describe('Word Count Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 100 }), { minLength: 1, maxLength: 5 }),
           (selections) => {
             // Calculate expected count: sum of word counts of each selection
-            const expectedCount = selections.reduce((sum, text) => sum + countWords(text), 0);
+            const expectedCount = selections.reduce((sum, text) => sum + countwords(text), 0);
             
             // Simulate multiple selections by joining with spaces (as per implementation)
             const combinedText = selections.join(' ');
-            const actualCount = countWords(combinedText);
+            const actualCount = countwords(combinedText);
             
             // The word count should equal the sum of individual counts
             return actualCount === expectedCount;
@@ -276,7 +276,7 @@ describe('Word Count Property Tests', () => {
           (emptySelections) => {
             // All selections are empty
             const combinedText = emptySelections.join(' ');
-            const actualCount = countWords(combinedText);
+            const actualCount = countwords(combinedText);
             
             // Word count should be 0 for empty selections
             return actualCount === 0;
@@ -298,11 +298,11 @@ describe('Word Count Property Tests', () => {
           ),
           (selections) => {
             // Calculate expected count: sum of word counts of each selection
-            const expectedCount = selections.reduce((sum, text) => sum + countWords(text), 0);
+            const expectedCount = selections.reduce((sum, text) => sum + countwords(text), 0);
             
             // Simulate multiple selections by joining with spaces
             const combinedText = selections.join(' ');
-            const actualCount = countWords(combinedText);
+            const actualCount = countwords(combinedText);
             
             // The word count should equal the sum of individual counts
             return actualCount === expectedCount;
@@ -322,10 +322,10 @@ describe('Word Count Property Tests', () => {
           fc.string({ minLength: 0, maxLength: 500 }),
           (documentText) => {
             // Calculate expected word count for the entire document
-            const expectedCount = countWords(documentText);
+            const expectedCount = countwords(documentText);
             
             // When no text is selected, the implementation uses the entire document text
-            const actualCount = countWords(documentText);
+            const actualCount = countwords(documentText);
             
             // The word count should match
             return actualCount === expectedCount;
@@ -350,10 +350,10 @@ describe('Word Count Property Tests', () => {
           ),
           (documentText) => {
             // Calculate expected word count
-            const expectedCount = countWords(documentText);
+            const expectedCount = countwords(documentText);
             
             // Simulate no selection - use entire document
-            const actualCount = countWords(documentText);
+            const actualCount = countwords(documentText);
             
             // The word count should match
             return actualCount === expectedCount;
@@ -375,7 +375,7 @@ describe('Word Count Property Tests', () => {
             const expectedCount = words.length;
             
             // Calculate actual word count
-            const actualCount = countWords(documentText);
+            const actualCount = countwords(documentText);
             
             // The word count should match the number of words
             return actualCount === expectedCount;
@@ -404,7 +404,7 @@ describe('Word Count Property Tests', () => {
             const documentText = markdownElements.join(' ');
             
             // Calculate word count
-            const actualCount = countWords(documentText);
+            const actualCount = countwords(documentText);
             
             // Word count should be non-negative and reasonable
             return actualCount >= 0 && actualCount <= markdownElements.length * 2;
@@ -419,129 +419,129 @@ describe('Word Count Property Tests', () => {
 describe('Word Count Unit Tests', () => {
   describe('Empty and whitespace-only strings', () => {
     it('should return 0 for empty string', () => {
-      expect(countWords('')).toBe(0);
+      expect(countwords('')).toBe(0);
     });
 
     it('should return 0 for whitespace-only string', () => {
-      expect(countWords('   ')).toBe(0);
-      expect(countWords('\t\t')).toBe(0);
-      expect(countWords('\n\n')).toBe(0);
-      expect(countWords(' \t \n ')).toBe(0);
+      expect(countwords('   ')).toBe(0);
+      expect(countwords('\t\t')).toBe(0);
+      expect(countwords('\n\n')).toBe(0);
+      expect(countwords(' \t \n ')).toBe(0);
     });
   });
 
   describe('Single word', () => {
     it('should return 1 for single word', () => {
-      expect(countWords('hello')).toBe(1);
-      expect(countWords('world')).toBe(1);
-      expect(countWords('test')).toBe(1);
+      expect(countwords('hello')).toBe(1);
+      expect(countwords('world')).toBe(1);
+      expect(countwords('test')).toBe(1);
     });
 
     it('should return 1 for single word with leading/trailing whitespace', () => {
-      expect(countWords('  hello  ')).toBe(1);
-      expect(countWords('\thello\t')).toBe(1);
-      expect(countWords('\nhello\n')).toBe(1);
+      expect(countwords('  hello  ')).toBe(1);
+      expect(countwords('\thello\t')).toBe(1);
+      expect(countwords('\nhello\n')).toBe(1);
     });
   });
 
   describe('Multiple words', () => {
     it('should count words separated by single spaces', () => {
-      expect(countWords('hello world')).toBe(2);
-      expect(countWords('one two three')).toBe(3);
-      expect(countWords('the quick brown fox')).toBe(4);
+      expect(countwords('hello world')).toBe(2);
+      expect(countwords('one two three')).toBe(3);
+      expect(countwords('the quick brown fox')).toBe(4);
     });
 
     it('should count words separated by multiple spaces', () => {
-      expect(countWords('hello  world')).toBe(2);
-      expect(countWords('one   two   three')).toBe(3);
+      expect(countwords('hello  world')).toBe(2);
+      expect(countwords('one   two   three')).toBe(3);
     });
 
     it('should count words separated by tabs', () => {
-      expect(countWords('hello\tworld')).toBe(2);
-      expect(countWords('one\ttwo\tthree')).toBe(3);
+      expect(countwords('hello\tworld')).toBe(2);
+      expect(countwords('one\ttwo\tthree')).toBe(3);
     });
 
     it('should count words separated by newlines', () => {
-      expect(countWords('hello\nworld')).toBe(2);
-      expect(countWords('one\ntwo\nthree')).toBe(3);
+      expect(countwords('hello\nworld')).toBe(2);
+      expect(countwords('one\ntwo\nthree')).toBe(3);
     });
 
     it('should count words separated by mixed whitespace', () => {
-      expect(countWords('hello \t world')).toBe(2);
-      expect(countWords('one\n\ttwo  \n three')).toBe(3);
+      expect(countwords('hello \t world')).toBe(2);
+      expect(countwords('one\n\ttwo  \n three')).toBe(3);
     });
   });
 
   describe('Hyphenated words', () => {
     it('should count hyphenated words as single words', () => {
-      expect(countWords('hello-world')).toBe(1);
-      expect(countWords('well-known')).toBe(1);
-      expect(countWords('state-of-the-art')).toBe(1);
+      expect(countwords('hello-world')).toBe(1);
+      expect(countwords('well-known')).toBe(1);
+      expect(countwords('state-of-the-art')).toBe(1);
     });
 
     it('should count multiple hyphenated words correctly', () => {
-      expect(countWords('hello-world foo-bar')).toBe(2);
-      expect(countWords('well-known state-of-the-art technology')).toBe(3);
+      expect(countwords('hello-world foo-bar')).toBe(2);
+      expect(countwords('well-known state-of-the-art technology')).toBe(3);
     });
   });
 
-  describe('Words with numbers', () => {
+  describe('words with numbers', () => {
     it('should count words containing numbers as single words', () => {
-      expect(countWords('test123')).toBe(1);
-      expect(countWords('hello123world')).toBe(1);
-      expect(countWords('version2')).toBe(1);
+      expect(countwords('test123')).toBe(1);
+      expect(countwords('hello123world')).toBe(1);
+      expect(countwords('version2')).toBe(1);
     });
 
     it('should count multiple words with numbers correctly', () => {
-      expect(countWords('test123 hello456')).toBe(2);
-      expect(countWords('version2 update3 patch4')).toBe(3);
+      expect(countwords('test123 hello456')).toBe(2);
+      expect(countwords('version2 update3 patch4')).toBe(3);
     });
 
     it('should count pure numbers as words', () => {
-      expect(countWords('123')).toBe(1);
-      expect(countWords('123 456')).toBe(2);
-      expect(countWords('3.14')).toBe(1);
+      expect(countwords('123')).toBe(1);
+      expect(countwords('123 456')).toBe(2);
+      expect(countwords('3.14')).toBe(1);
     });
   });
 
-  describe('Words with special characters', () => {
+  describe('words with special characters', () => {
     it('should count words with punctuation as single words', () => {
-      expect(countWords('hello!')).toBe(1);
-      expect(countWords('world?')).toBe(1);
-      expect(countWords('test.')).toBe(1);
+      expect(countwords('hello!')).toBe(1);
+      expect(countwords('world?')).toBe(1);
+      expect(countwords('test.')).toBe(1);
     });
 
     it('should count words with apostrophes as single words', () => {
-      expect(countWords("don't")).toBe(1);
-      expect(countWords("it's")).toBe(1);
-      expect(countWords("we're")).toBe(1);
+      expect(countwords("don't")).toBe(1);
+      expect(countwords("it's")).toBe(1);
+      expect(countwords("we're")).toBe(1);
     });
 
     it('should count words with special characters correctly', () => {
-      expect(countWords('hello@world')).toBe(1);
-      expect(countWords('test#tag')).toBe(1);
-      expect(countWords('user@example.com')).toBe(1);
+      expect(countwords('hello@world')).toBe(1);
+      expect(countwords('test#tag')).toBe(1);
+      expect(countwords('user@example.com')).toBe(1);
     });
   });
 
   describe('Real-world examples', () => {
     it('should count words in typical sentences', () => {
-      expect(countWords('The quick brown fox jumps over the lazy dog.')).toBe(9);
-      expect(countWords('Hello, world!')).toBe(2);
-      expect(countWords('This is a test.')).toBe(4);
+      expect(countwords('The quick brown fox jumps over the lazy dog.')).toBe(9);
+      expect(countwords('Hello, world!')).toBe(2);
+      expect(countwords('This is a test.')).toBe(4);
     });
 
     it('should count words in markdown-like text', () => {
-      expect(countWords('# Heading')).toBe(2);
-      expect(countWords('**bold** text')).toBe(2);
-      expect(countWords('`code` snippet')).toBe(2);
+      expect(countwords('# Heading')).toBe(2);
+      expect(countwords('**bold** text')).toBe(2);
+      expect(countwords('`code` snippet')).toBe(2);
     });
 
     it('should count words in multi-line text', () => {
       const text = `First line
 Second line
 Third line`;
-      expect(countWords(text)).toBe(6);
+      expect(countwords(text)).toBe(6);
     });
   });
 });

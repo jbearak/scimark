@@ -156,7 +156,7 @@ export class WordCountController {
     const wordCount = countWords(text);
 
     // Format status bar text as "$(book) N Words"
-    this.statusBarItem.text = `$(book) ${wordCount} Words`;
+    this.statusBarItem.text = `$(book) ${wordCount} words`;
 
     // Show status bar item
     this.statusBarItem.show();

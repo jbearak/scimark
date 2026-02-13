@@ -86,7 +86,7 @@ if git rev-parse "$TAG" >/dev/null 2>&1; then
 fi
 
 # Update version using npm
-npm version "$NEW_VERSION" --no-git-tag-version
+npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version
 
 # Git operations
 git add package.json
