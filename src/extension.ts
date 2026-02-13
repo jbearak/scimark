@@ -5,6 +5,11 @@ import * as author from './author';
 import { mdmarkupPlugin } from './preview/mdmarkup-plugin';
 import { WordCountController } from './wordcount';
 import { convertDocx, CitationKeyFormat } from './converter';
+import {
+	getOutputBasePath,
+	getOutputConflictMessage,
+	getOutputConflictScenario,
+} from './output-conflicts';
 
 export function activate(context: vscode.ExtensionContext) {
 	// Register existing navigation commands
@@ -135,8 +140,41 @@ export function activate(context: vscode.ExtensionContext) {
 				const result = await convertDocx(new Uint8Array(data), format);
 
 				const basePath = uri.fsPath.replace(/\.docx$/i, '');
-				const mdUri = vscode.Uri.file(basePath + '.md');
-				const bibUri = vscode.Uri.file(basePath + '.bib');
+				let mdUri = vscode.Uri.file(basePath + '.md');
+				let bibUri = vscode.Uri.file(basePath + '.bib');
+				const hasBibtex = Boolean(result.bibtex);
+				const mdExists = await fileExists(mdUri);
+				const bibExists = hasBibtex ? await fileExists(bibUri) : false;
+				const conflictScenario = getOutputConflictScenario(mdExists, bibExists);
+
+				if (conflictScenario) {
+					const choice = await vscode.window.showWarningMessage(
+						getOutputConflictMessage(basePath, conflictScenario),
+						{ modal: true },
+						'Overwrite',
+						'Choose New Name',
+						'Cancel'
+					);
+
+					if (!choice || choice === 'Cancel') {
+						return;
+					}
+
+					if (choice === 'Choose New Name') {
+						const selectedUri = await vscode.window.showSaveDialog({
+							defaultUri: mdUri,
+							filters: { 'Markdown': ['md'] },
+							saveLabel: 'Choose output file name'
+						});
+						if (!selectedUri) {
+							return;
+						}
+
+						const selectedBasePath = getOutputBasePath(selectedUri.fsPath);
+						mdUri = vscode.Uri.file(selectedBasePath + '.md');
+						bibUri = vscode.Uri.file(selectedBasePath + '.bib');
+					}
+				}
 
 				await vscode.workspace.fs.writeFile(mdUri, Buffer.from(result.markdown, 'utf-8') as any);
 				if (result.bibtex) {
@@ -319,3 +357,12 @@ function applyTableFormatting(formatter: (text: string) => formatting.TextTransf
 }
 
 export function deactivate() {}
+
+async function fileExists(uri: vscode.Uri): Promise<boolean> {
+	try {
+		await vscode.workspace.fs.stat(uri);
+		return true;
+	} catch {
+		return false;
+	}
+}
