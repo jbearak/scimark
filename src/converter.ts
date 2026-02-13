@@ -32,10 +32,47 @@ export interface ZoteroCitation {
   items: CitationMetadata[];
 }
 
+/** Character-level formatting flags */
+export interface RunFormatting {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikethrough: boolean;
+  highlight: boolean;
+  superscript: boolean;
+  subscript: boolean;
+}
+
+/** List metadata for a paragraph */
+export interface ListMeta {
+  type: 'bullet' | 'ordered';
+  level: number; // 0-based indentation level
+}
+
+export const DEFAULT_FORMATTING: RunFormatting = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strikethrough: false,
+  highlight: false,
+  superscript: false,
+  subscript: false,
+};
+
 export type ContentItem =
-  | { type: 'text'; text: string; commentIds: Set<string> }
+  | {
+      type: 'text';
+      text: string;
+      commentIds: Set<string>;
+      formatting: RunFormatting;
+      href?: string;           // hyperlink URL if inside w:hyperlink
+    }
   | { type: 'citation'; text: string; commentIds: Set<string>; pandocKeys: string[] }
-  | { type: 'para' };
+  | {
+      type: 'para';
+      headingLevel?: number;   // 1–6 if heading, undefined otherwise
+      listMeta?: ListMeta;     // present if list item
+    };
 
 export type CitationKeyFormat = 'authorYearTitle' | 'authorYear' | 'numeric';
 
@@ -137,6 +174,77 @@ function extractFieldInstructions(nodes: any[]): string[] {
 
   walk(nodes);
   return results;
+}
+
+// Formatting helpers
+
+/** Detect OOXML boolean toggle pattern */
+export function isToggleOn(children: any[], tagName: string): boolean {
+  const element = children.find(child => child[tagName] !== undefined);
+  if (!element) return false;
+  
+  const val = getAttr(element, 'val');
+  if (!val) return true; // present with no w:val attribute → true
+  return val === 'true' || val === '1';
+}
+
+/** Parse run properties and return RunFormatting */
+export function parseRunProperties(rPrChildren: any[]): RunFormatting {
+  const formatting: RunFormatting = { ...DEFAULT_FORMATTING };
+  
+  formatting.bold = isToggleOn(rPrChildren, 'w:b');
+  formatting.italic = isToggleOn(rPrChildren, 'w:i');
+  formatting.strikethrough = isToggleOn(rPrChildren, 'w:strike');
+  
+  // underline: w:u with w:val ≠ "none"
+  const uElement = rPrChildren.find(child => child['w:u'] !== undefined);
+  if (uElement) {
+    const val = getAttr(uElement, 'val');
+    formatting.underline = val !== 'none';
+  }
+  
+  // highlight: w:highlight with w:val ≠ "none", OR w:shd with w:fill ≠ "" and ≠ "auto"
+  const highlightElement = rPrChildren.find(child => child['w:highlight'] !== undefined);
+  if (highlightElement) {
+    const val = getAttr(highlightElement, 'val');
+    formatting.highlight = val !== 'none';
+  } else {
+    const shdElement = rPrChildren.find(child => child['w:shd'] !== undefined);
+    if (shdElement) {
+      const fill = getAttr(shdElement, 'fill');
+      formatting.highlight = fill !== '' && fill !== 'auto';
+    }
+  }
+  
+  // superscript/subscript: w:vertAlign
+  const vertAlignElement = rPrChildren.find(child => child['w:vertAlign'] !== undefined);
+  if (vertAlignElement) {
+    const val = getAttr(vertAlignElement, 'val');
+    formatting.superscript = val === 'superscript';
+    formatting.subscript = val === 'subscript';
+  }
+  
+  return formatting;
+}
+
+/** Apply formatting delimiters in nesting order */
+export function wrapWithFormatting(text: string, fmt: RunFormatting): string {
+  let result = text;
+  
+  // Apply in reverse nesting order (innermost to outermost)
+  // If both superscript and subscript are true, superscript takes precedence
+  if (fmt.superscript) {
+    result = `<sup>${result}</sup>`;
+  } else if (fmt.subscript) {
+    result = `<sub>${result}</sub>`;
+  }
+  if (fmt.highlight) result = `==${result}==`;
+  if (fmt.underline) result = `<u>${result}</u>`;
+  if (fmt.strikethrough) result = `~~${result}~~`;
+  if (fmt.italic) result = `*${result}*`;
+  if (fmt.bold) result = `**${result}**`;
+  
+  return result;
 }
 
 // Comment extraction
@@ -348,7 +456,12 @@ export async function extractDocumentContent(
             if (inCitationField) {
               citationTextParts.push(text);
             } else {
-              content.push({ type: 'text', text, commentIds: new Set(activeComments) });
+              content.push({ 
+                type: 'text', 
+                text, 
+                commentIds: new Set(activeComments),
+                formatting: DEFAULT_FORMATTING
+              });
             }
           }
         } else if (key === 'w:p') {

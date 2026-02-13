@@ -11,6 +11,9 @@ import {
   generateBibTeX,
   convertDocx,
   generateCitationKey,
+  wrapWithFormatting,
+  DEFAULT_FORMATTING,
+  RunFormatting,
 } from './converter';
 
 const fixturesDir = join(__dirname, '..', 'test', 'fixtures');
@@ -206,5 +209,79 @@ describe('convertDocx (end-to-end)', () => {
     const result = await convertDocx(buf);
     expect(result.markdown).toContain('Hello');
     expect(result.bibtex).toBe('');
+  });
+});
+
+describe('wrapWithFormatting', () => {
+  // Property 1: Formatting wrapping produces correct delimiters
+  test('property: single formatting flag produces correct delimiters', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 50 }),
+        fc.constantFrom('bold', 'italic', 'strikethrough', 'underline', 'highlight', 'superscript', 'subscript'),
+        (text, formatType) => {
+          const fmt: RunFormatting = { ...DEFAULT_FORMATTING };
+          (fmt as any)[formatType] = true;
+          
+          const result = wrapWithFormatting(text, fmt);
+          
+          const delimiters = {
+            bold: ['**', '**'],
+            italic: ['*', '*'],
+            strikethrough: ['~~', '~~'],
+            underline: ['<u>', '</u>'],
+            highlight: ['==', '=='],
+            superscript: ['<sup>', '</sup>'],
+            subscript: ['<sub>', '</sub>'],
+          };
+          
+          const [open, close] = delimiters[formatType as keyof typeof delimiters];
+          expect(result.startsWith(open)).toBe(true);
+          expect(result.endsWith(close)).toBe(true);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  // Property 3: Combined formatting nesting order is consistent
+  test('property: combined formatting nesting order is consistent', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 50 }),
+        fc.record({
+          bold: fc.boolean(),
+          italic: fc.boolean(),
+          strikethrough: fc.boolean(),
+          underline: fc.boolean(),
+          highlight: fc.boolean(),
+          superscript: fc.boolean(),
+          subscript: fc.boolean(),
+        }).filter(fmt => Object.values(fmt).filter(Boolean).length >= 2),
+        (text, fmt) => {
+          const result = wrapWithFormatting(text, fmt);
+          
+          // Check nesting order: bold (outermost) → italic → strikethrough → underline → highlight → super/subscript (innermost)
+          const patterns = [];
+          if (fmt.bold) patterns.push('\\*\\*');
+          if (fmt.italic) patterns.push('\\*');
+          if (fmt.strikethrough) patterns.push('~~');
+          if (fmt.underline) patterns.push('<u>');
+          if (fmt.highlight) patterns.push('==');
+          // Superscript takes precedence over subscript
+          if (fmt.superscript) {
+            patterns.push('<sup>');
+          } else if (fmt.subscript) {
+            patterns.push('<sub>');
+          }
+          
+          // Build expected opening pattern
+          const openPattern = patterns.join('');
+          const regex = new RegExp(`^${openPattern}`);
+          expect(result).toMatch(regex);
+        }
+      ),
+      { numRuns: 100 }
+    );
   });
 });
