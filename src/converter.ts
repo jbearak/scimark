@@ -215,11 +215,12 @@ export function generateCitationKey(
 ): string {
   const clean = (s: string) => s.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
   const cleanSurname = clean(surname);
-  if (format === 'authorYear') { return `${cleanSurname}${year}`; }
+  const cleanYear = year.replace(/[^0-9]/g, '');
+  if (format === 'authorYear') { return `${cleanSurname}${cleanYear}`; }
   if (format === 'numeric') { return ''; }
   const words = title.toLowerCase().match(/\b[a-zA-Z]+\b/g) ?? [];
   const firstWord = words.find(w => !['the', 'a', 'an'].includes(w)) ?? 'unknown';
-  return `${cleanSurname}${year}${firstWord}`;
+  return `${cleanSurname}${cleanYear}${firstWord}`;
 }
 
 /**
