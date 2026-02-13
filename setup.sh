@@ -16,6 +16,12 @@ if ! command -v bun &> /dev/null; then
     exit 1
 fi
 
+# Check for node
+if ! command -v node &> /dev/null; then
+    echo "Error: node is required but not installed."
+    exit 1
+fi
+
 echo "=== mdmarkup Setup ==="
 echo ""
 

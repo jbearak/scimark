@@ -29,7 +29,6 @@ This document specifies the requirements for adding a word count status bar item
 3. WHEN the Active_Editor is closed, THE Status_Bar_Item SHALL be hidden
 4. THE Status_Bar_Item SHALL display text in the format "$(book) N words" where N is the Word_Count
 5. THE Status_Bar_Item SHALL use the "book" icon (Codicon) matching Microsoft's word count extension
-5. THE Status_Bar_Item SHALL use the "book" icon (Codicon) matching Microsoft's word count extension
 6. THE Status_Bar_Item SHALL be positioned in the left section of the Status_Bar
 7. THE Status_Bar_Item SHALL only activate for documents with language mode "markdown" or "plaintext"
 
