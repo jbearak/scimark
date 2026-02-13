@@ -123,18 +123,17 @@ export async function parseNumberingDefinitions(zip: JSZip): Promise<Map<string,
     const abstractNum = node['w:abstractNum'];
     if (!abstractNum) continue;
     
-    const abstractNumId = getAttr(abstractNum, 'abstractNumId');
+    const abstractNumId = getAttr(node, 'abstractNumId');
     const levels = new Map<string, 'bullet' | 'ordered'>();
     
     for (const lvlNode of findAllDeep(abstractNum, 'w:lvl')) {
       const lvl = lvlNode['w:lvl'];
       if (!lvl) continue;
       
-      const ilvl = getAttr(lvl, 'ilvl');
+      const ilvl = getAttr(lvlNode, 'ilvl');
       const numFmtNodes = findAllDeep(lvl, 'w:numFmt');
       if (numFmtNodes.length > 0) {
-        const numFmt = numFmtNodes[0]['w:numFmt'];
-        const val = getAttr(numFmt, 'val');
+        const val = getAttr(numFmtNodes[0], 'val');
         levels.set(ilvl, val === 'bullet' ? 'bullet' : 'ordered');
       }
     }
@@ -147,10 +146,10 @@ export async function parseNumberingDefinitions(zip: JSZip): Promise<Map<string,
     const num = node['w:num'];
     if (!num) continue;
     
-    const numId = getAttr(num, 'numId');
+    const numId = getAttr(node, 'numId');
     const abstractNumIdNodes = findAllDeep(num, 'w:abstractNumId');
     if (abstractNumIdNodes.length > 0) {
-      const abstractNumId = getAttr(abstractNumIdNodes[0]['w:abstractNumId'], 'val');
+      const abstractNumId = getAttr(abstractNumIdNodes[0], 'val');
       const levels = abstractNums.get(abstractNumId);
       if (levels) {
         numberingDefs.set(numId, levels);
