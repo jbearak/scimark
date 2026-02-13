@@ -10,8 +10,7 @@ out/**/*.test.js
 out/test-*.js
 out/__mocks__/**
 
-# Development dependencies
-node_modules/**
+# Dependencies are required at runtime in packaged extension
 .venv/**
 venv/**
 .pytest_cache/**
