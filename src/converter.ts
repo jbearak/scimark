@@ -644,17 +644,95 @@ export async function extractDocumentContent(
 
 // Markdown generation
 
-export function buildMarkdown(
-  content: ContentItem[],
-  comments: Map<string, Comment>,
-): string {
-  const output: string[] = [];
+function formattingEquals(a: RunFormatting, b: RunFormatting): boolean {
+  return a.bold === b.bold && a.italic === b.italic && a.underline === b.underline &&
+         a.strikethrough === b.strikethrough && a.highlight === b.highlight &&
+         a.superscript === b.superscript && a.subscript === b.subscript;
+}
+
+function commentSetsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
+}
+
+function mergeConsecutiveRuns(content: ContentItem[]): ContentItem[] {
+  const merged: ContentItem[] = [];
   let i = 0;
 
   while (i < content.length) {
     const item = content[i];
+    
+    if (item.type !== 'text') {
+      merged.push(item);
+      i++;
+      continue;
+    }
 
-    if (item.type === 'para') { output.push('\n\n'); i++; continue; }
+    let mergedText = item.text;
+    let j = i + 1;
+    
+    while (j < content.length) {
+      const next = content[j];
+      if (next.type !== 'text' ||
+          !formattingEquals(item.formatting, next.formatting) ||
+          item.href !== next.href ||
+          !commentSetsEqual(item.commentIds, next.commentIds)) {
+        break;
+      }
+      mergedText += next.text;
+      j++;
+    }
+
+    merged.push({
+      type: 'text',
+      text: mergedText,
+      commentIds: item.commentIds,
+      formatting: item.formatting,
+      href: item.href,
+    });
+    i = j;
+  }
+
+  return merged;
+}
+
+export function buildMarkdown(
+  content: ContentItem[],
+  comments: Map<string, Comment>,
+): string {
+  const mergedContent = mergeConsecutiveRuns(content);
+  const output: string[] = [];
+  let i = 0;
+  let lastWasList = false;
+
+  while (i < mergedContent.length) {
+    const item = mergedContent[i];
+
+    if (item.type === 'para') {
+      const isCurrentList = item.listMeta !== undefined;
+      
+      if (lastWasList && isCurrentList) {
+        output.push('\n');
+      } else {
+        output.push('\n\n');
+      }
+      
+      lastWasList = isCurrentList;
+      
+      if (item.headingLevel) {
+        output.push('#'.repeat(item.headingLevel) + ' ');
+      } else if (item.listMeta) {
+        const indent = item.listMeta.type === 'bullet' 
+          ? ' '.repeat(2 * item.listMeta.level)
+          : ' '.repeat(3 * item.listMeta.level);
+        const marker = item.listMeta.type === 'bullet' ? '- ' : '1. ';
+        output.push(indent + marker);
+      }
+      
+      i++;
+      continue;
+    }
 
     if (item.type === 'citation') {
       if (item.pandocKeys.length > 0) {
@@ -668,21 +746,8 @@ export function buildMarkdown(
 
     // text with comments
     if (item.commentIds.size > 0) {
-      let fullText = item.text;
-      const commentSet = item.commentIds;
-      const commentKey = [...commentSet].sort().join(',');
-      let j = i + 1;
-      while (j < content.length) {
-        const next = content[j];
-        if (next.type !== 'text' || next.commentIds.size !== commentSet.size) { break; }
-        const nextKey = [...next.commentIds].sort().join(',');
-        if (nextKey !== commentKey) { break; }
-        fullText += next.text;
-        j++;
-      }
-
-      output.push(`{==${fullText}==}`);
-      for (const cid of [...commentSet].sort()) {
+      output.push(`{==${item.text}==}`);
+      for (const cid of [...item.commentIds].sort()) {
         const c = comments.get(cid);
         if (!c) { continue; }
         let dateStr = '';
@@ -697,11 +762,16 @@ export function buildMarkdown(
         }
         output.push(`{>>${c.author}${dateStr}: ${c.text}<<}`);
       }
-      i = j;
+      i++;
       continue;
     }
 
-    output.push(item.text);
+    // regular text with formatting and hyperlinks
+    let formattedText = wrapWithFormatting(item.text, item.formatting);
+    if (item.href) {
+      formattedText = `[${formattedText}](${item.href})`;
+    }
+    output.push(formattedText);
     i++;
   }
 

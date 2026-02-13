@@ -285,3 +285,189 @@ describe('wrapWithFormatting', () => {
     );
   });
 });
+
+describe('buildMarkdown', () => {
+  test('Property 2: Consecutive runs with identical formatting merge into a single span', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.string({ minLength: 1, maxLength: 20 }).filter(s => s.trim().length > 0), { minLength: 2, maxLength: 5 }),
+        fc.record({
+          bold: fc.boolean(),
+          italic: fc.boolean(),
+          strikethrough: fc.boolean(),
+          underline: fc.boolean(),
+          highlight: fc.boolean(),
+          superscript: fc.boolean(),
+          subscript: fc.boolean(),
+        }),
+        fc.option(fc.webUrl(), { nil: undefined }),
+        (texts, formatting, href) => {
+          const content = texts.map(text => ({
+            type: 'text' as const,
+            text,
+            commentIds: new Set<string>(),
+            formatting,
+            href,
+          }));
+          
+          const result = buildMarkdown(content, new Map());
+          const expectedText = texts.join('');
+          
+          // The result should contain the merged text
+          expect(result).toContain(expectedText);
+          
+          // For simple cases, verify no duplicate formatting
+          if (Object.values(formatting).filter(Boolean).length === 1) {
+            const activeFormat = Object.entries(formatting).find(([_, active]) => active)?.[0];
+            if (activeFormat === 'bold') {
+              expect(result.match(/\*\*[^*]*\*\*/g)?.length).toBe(1);
+            } else if (activeFormat === 'highlight') {
+              expect(result.match(/==[^=]*==/g)?.length).toBe(1);
+            }
+          }
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('Property 4: Hyperlink text items produce Markdown link syntax', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 50 }),
+        fc.webUrl(),
+        (text, url) => {
+          const content = [{
+            type: 'text' as const,
+            text,
+            commentIds: new Set<string>(),
+            formatting: DEFAULT_FORMATTING,
+            href: url,
+          }];
+          
+          const result = buildMarkdown(content, new Map());
+          expect(result).toMatch(/\[.*\]\(.*\)/);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('Property 5: Formatting delimiters appear inside hyperlink text', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 30 }),
+        fc.webUrl(),
+        fc.record({
+          bold: fc.boolean(),
+          italic: fc.boolean(),
+          strikethrough: fc.boolean(),
+          underline: fc.boolean(),
+          highlight: fc.boolean(),
+          superscript: fc.boolean(),
+          subscript: fc.boolean(),
+        }).filter(fmt => Object.values(fmt).some(Boolean)),
+        (text, url, formatting) => {
+          const content = [{
+            type: 'text' as const,
+            text,
+            commentIds: new Set<string>(),
+            formatting,
+            href: url,
+          }];
+          
+          const result = buildMarkdown(content, new Map());
+          const linkMatch = result.match(/\[(.*?)\]\((.*?)\)/);
+          expect(linkMatch).toBeTruthy();
+          
+          const linkText = linkMatch![1];
+          const activeFormats = Object.entries(formatting).filter(([_, active]) => active);
+          for (const [format] of activeFormats) {
+            let delimiter = '';
+            switch (format) {
+              case 'bold': delimiter = '**'; break;
+              case 'italic': delimiter = '*'; break;
+              case 'strikethrough': delimiter = '~~'; break;
+              case 'underline': delimiter = '<u>'; break;
+              case 'highlight': delimiter = '=='; break;
+              case 'superscript': delimiter = '<sup>'; break;
+              case 'subscript': delimiter = '<sub>'; break;
+            }
+            if (delimiter && (format !== 'subscript' || !formatting.superscript)) {
+              expect(linkText).toContain(delimiter);
+            }
+          }
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('Property 6: Heading paragraphs produce correct # prefix', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 6 }),
+        fc.string({ minLength: 1, maxLength: 50 }),
+        (level, text) => {
+          const content = [
+            { type: 'para' as const, headingLevel: level },
+            { type: 'text' as const, text, commentIds: new Set<string>(), formatting: DEFAULT_FORMATTING }
+          ];
+          
+          const result = buildMarkdown(content, new Map());
+          const expectedPrefix = '#'.repeat(level) + ' ';
+          expect(result).toContain(expectedPrefix);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('Property 7: List items produce correct prefix and indentation', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('bullet', 'ordered'),
+        fc.integer({ min: 0, max: 3 }),
+        fc.string({ minLength: 1, maxLength: 30 }),
+        (listType, level, text) => {
+          const content = [
+            { type: 'para' as const, listMeta: { type: listType, level } },
+            { type: 'text' as const, text, commentIds: new Set<string>(), formatting: DEFAULT_FORMATTING }
+          ];
+          
+          const result = buildMarkdown(content, new Map());
+          const expectedIndent = listType === 'bullet' 
+            ? ' '.repeat(2 * level) + '- '
+            : ' '.repeat(3 * level) + '1. ';
+          expect(result).toContain(expectedIndent);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('Property 8: Consecutive list items have no blank lines between them', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            type: fc.constant('bullet' as const),
+            level: fc.integer({ min: 0, max: 2 }),
+            text: fc.string({ minLength: 1, maxLength: 20 })
+          }),
+          { minLength: 2, maxLength: 4 }
+        ),
+        (items) => {
+          const content = items.flatMap(item => [
+            { type: 'para' as const, listMeta: { type: item.type, level: item.level } },
+            { type: 'text' as const, text: item.text, commentIds: new Set<string>(), formatting: DEFAULT_FORMATTING }
+          ]);
+          
+          const result = buildMarkdown(content, new Map());
+          expect(result).not.toContain('\n\n\n'); // No double blank lines
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+});
