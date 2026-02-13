@@ -89,7 +89,7 @@ This implementation plan creates a bash shell script that automates semantic ver
     - _Requirements: 1.3_
   
   - [x] 5.3 Create git tag
-    - Create lightweight tag: `v$VERSION`
+    - Create annotated tag: `v$VERSION`
     - Do NOT push automatically
     - _Requirements: 1.3_
   

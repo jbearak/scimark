@@ -147,9 +147,9 @@ The script must:
 
 **Commit message**: `chore: bump version to X.Y.Z`
 
-**Tag name**: `vX.Y.Z` (lightweight tag, not annotated)
+**Tag name**: `vX.Y.Z` (annotated tag)
 
-The script creates a lightweight tag rather than an annotated tag for simplicity, following the raven repository pattern.
+The script creates an annotated tag with message "Version X.Y.Z" for better traceability.
 
 
 ## Correctness Properties
@@ -191,7 +191,7 @@ A property is a characteristic or behavior that should hold true across all vali
 
 ### Property 6: Tag Format
 
-*For any* version bump operation, the git tag should be a lightweight tag with name "vX.Y.Z" where X.Y.Z is the new version.
+*For any* version bump operation, the git tag should be an annotated tag with name "vX.Y.Z" where X.Y.Z is the new version.
 
 **Validates: Requirements 1.3**
 
@@ -355,7 +355,7 @@ npm version "$VERSION" --no-git-tag-version --allow-same-version >/dev/null
 # Commit and tag
 git add package.json package-lock.json
 git commit -m "chore: bump version to $VERSION"
-git tag "v$VERSION"
+git tag -a "v$VERSION" -m "Version $VERSION"
 
 echo "Version bumped to $VERSION (tag: v$VERSION)"
 echo "Run 'git push && git push --tags' to publish"
@@ -407,14 +407,14 @@ if [ -f package-lock.json ]; then
     git add package-lock.json
 fi
 git commit -m "chore: bump version to $VERSION"
-git tag "v$VERSION"
+git tag -a "v$VERSION" -m "Version $VERSION"
 ```
 
 The script:
 - Stages package.json (always modified)
 - Stages package-lock.json if it exists (updated by npm version)
 - Creates commit with conventional commit format
-- Creates lightweight tag (simpler than annotated)
+- Creates annotated tag with version message
 - Does NOT push (per requirements)
 
 ### Idempotency Considerations
