@@ -100,6 +100,10 @@
         "title": "Underline"
       },
       {
+        "command": "mdmarkup.formatHighlight",
+        "title": "Highlight"
+      },
+      {
         "command": "mdmarkup.formatInlineCode",
         "title": "Inline Code"
       },
@@ -280,19 +284,24 @@
           "group": "1_format@5"
         },
         {
-          "command": "mdmarkup.formatInlineCode",
+          "command": "mdmarkup.formatHighlight",
           "when": "editorLangId == markdown",
           "group": "1_format@6"
         },
         {
-          "command": "mdmarkup.formatCodeBlock",
+          "command": "mdmarkup.formatInlineCode",
           "when": "editorLangId == markdown",
           "group": "1_format@7"
         },
         {
-          "command": "mdmarkup.formatLink",
+          "command": "mdmarkup.formatCodeBlock",
           "when": "editorLangId == markdown",
           "group": "1_format@8"
+        },
+        {
+          "command": "mdmarkup.formatLink",
+          "when": "editorLangId == markdown",
+          "group": "1_format@9"
         },
         {
           "command": "mdmarkup.formatBulletedList",

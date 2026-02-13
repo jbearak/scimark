@@ -71,6 +71,9 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('mdmarkup.formatUnderline', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '<u>', '</u>'))
 		),
+		vscode.commands.registerCommand('mdmarkup.formatHighlight', () => 
+			applyFormatting((text) => formatting.wrapSelection(text, '==', '=='))
+		),
 		vscode.commands.registerCommand('mdmarkup.formatInlineCode', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '`', '`'))
 		),
