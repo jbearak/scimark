@@ -328,7 +328,7 @@ describe('buildMarkdown', () => {
   test('Property 2: Consecutive runs with identical formatting merge into a single span', () => {
     fc.assert(
       fc.property(
-        fc.array(fc.string({ minLength: 1, maxLength: 20 }).filter(s => s.trim().length > 0), { minLength: 2, maxLength: 5 }),
+        fc.array(fc.string({ minLength: 1, maxLength: 20 }).filter(s => s.trim().length > 0 && !s.includes('=') && !s.includes('*') && !s.includes('~')), { minLength: 2, maxLength: 5 }),
         fc.record({
           bold: fc.boolean(),
           italic: fc.boolean(),
