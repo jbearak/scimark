@@ -477,22 +477,6 @@ export function generateBibTeX(
   return entries.join('\n\n');
 }
 
-// Reference parsing (for numeric-style documents with Sources section)
-
-export function parseReferences(markdown: string): string[] {
-  const refs: string[] = [];
-  const lines = markdown.split('\n');
-  let inSources = false;
-  for (const line of lines) {
-    if (SOURCES_HEADING_RE.test(line.trim())) { inSources = true; continue; }
-    if (inSources && line.trim()) {
-      const match = line.trim().match(/^(\d+)\.(.+)$/);
-      if (match) { refs.push(match[2].trim()); }
-    }
-  }
-  return refs;
-}
-
 // Main conversion
 
 export async function convertDocx(
