@@ -41,13 +41,17 @@ Or in VS Code: Extensions → `...` menu → "Install from VSIX..."
 
 ## Documentation
 
+User guides:
 - [Usage Guide](docs/usage.md) - Full feature documentation and examples
 - [Configuration](docs/configuration.md) - All settings and customization options
 - [CriticMarkup Reference](https://github.com/CriticMarkup/CriticMarkup-toolkit) - Markup syntax specification
 
+Development and history:
+- [Development Guide](docs/development.md) - Build, test, and contribution guide
+- [Changelog](docs/CHANGELOG.md) - Release history and version notes
+
 See also:
 - [Known Issues and Limitations](#known-issues-and-limitations)
-- [Release Notes](#release-notes)
 
 ## Known Issues and Limitations
 
@@ -61,33 +65,9 @@ See also:
 
 ## Development
 
-### Build and Test
+See [Development Guide](docs/development.md) for building, testing, and contribution instructions.
 
-```bash
-# Setup dependencies
-bun install
-
-# Compile TypeScript
-bun run compile
-
-# Watch during development
-bun run watch
-
-# Run tests
-bun test
-
-# Package for distribution
-bunx vsce package
-```
-
-### Development Notes
-
-- **Language**: TypeScript
-- **Package manager**: Bun (handles all scripts and dependencies)
-- **Testing**: Bun test runner with fast-check for property-based testing
-- **Target**: ES2019
-
-For detailed development guidance, see [AGENTS.md](AGENTS.md).
+For detailed development guidance including key invariants and learnings, see [AGENTS.md](AGENTS.md).
 
 ## About This Fork
 
@@ -113,28 +93,9 @@ This extension is a major rewrite and expansion of the archived [vscode-criticma
 
 Small portions of the original remain (snippet descriptions, TextMate grammar patterns), but the vast majority is new code and assets.
 
-## Release Notes
+## Release History
 
-See [CHANGELOG.md](CHANGELOG.md) for full release history.
-
-### [0.9.1] - 2025
-
-- Added word count display for entire document or selected text
-
-### [0.9.0] - 2024-2025
-
-Major rewrite:
-- Multi-line pattern support with empty lines
-- Markdown preview rendering with theme-aware styling
-- Author attribution in comments with timestamps
-- Extensive Markdown formatting tools (20+ commands)
-- Table reflow with column alignment
-- Toolbar buttons and context menus
-- Comprehensive test coverage with property-based testing
-
-### [0.2.0] - 2019 (Original)
-
-- Initial community extension by Joel Lööw with basic syntax highlighting and snippets
+See [Changelog](docs/CHANGELOG.md) for detailed release notes and version history.
 
 ## License
 
