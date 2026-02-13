@@ -170,7 +170,10 @@ export async function extractZoteroCitations(data: Uint8Array | JSZip): Promise<
     if (!instrText.includes('ZOTERO_ITEM')) { continue; }
 
     const jsonStart = instrText.indexOf('{');
-    if (jsonStart < 0) { continue; }
+    if (jsonStart < 0) {
+      citations.push({ plainCitation: '', items: [] });
+      continue;
+    }
 
     try {
       const cslData = JSON.parse(instrText.slice(jsonStart));
