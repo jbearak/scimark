@@ -94,7 +94,7 @@ if [ -f package-lock.json ]; then
     git add package-lock.json
 fi
 git commit -m "chore: bump version to $NEW_VERSION"
-git tag "$TAG"
+git tag -a "$TAG" -m "Version $NEW_VERSION"
 
 echo "✓ Version bumped to $NEW_VERSION"
 echo "✓ Committed and tagged as $TAG"

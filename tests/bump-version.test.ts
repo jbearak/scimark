@@ -339,7 +339,7 @@ test("Feature: version-bump-script, Property 5: Commit Message Format - verify c
   );
 });
 
-test("Feature: version-bump-script, Property 6: Tag Format - verify git tag is lightweight tag with name 'vX.Y.Z'", async () => {
+test("Feature: version-bump-script, Property 6: Tag Format - verify git tag is annotated tag with name 'vX.Y.Z'", async () => {
   const { execSync } = await import("child_process");
   const { mkdtempSync, writeFileSync, rmSync } = await import("fs");
   const { join } = await import("path");
@@ -372,7 +372,7 @@ test("Feature: version-bump-script, Property 6: Tag Format - verify git tag is l
           execSync(`npm version "${expectedVersion}" --no-git-tag-version`, { cwd: tempDir, timeout: 10000 });
           execSync("git add package.json package-lock.json", { cwd: tempDir });
           execSync(`git commit -m "chore: bump version to ${expectedVersion}"`, { cwd: tempDir });
-          execSync(`git tag "${expectedTag}"`, { cwd: tempDir });
+          execSync(`git tag -a "${expectedTag}" -m "Version ${expectedVersion}"`, { cwd: tempDir });
           
           // Verify tag exists
           const tagExists = execSync(`git tag -l "${expectedTag}"`, { 
@@ -381,12 +381,12 @@ test("Feature: version-bump-script, Property 6: Tag Format - verify git tag is l
           }).trim();
           expect(tagExists).toBe(expectedTag);
           
-          // Verify it's a lightweight tag (not annotated)
+          // Verify it's an annotated tag (points to tag object, not commit)
           const tagType = execSync(`git cat-file -t "${expectedTag}"`, { 
             cwd: tempDir, 
             encoding: "utf8" 
           }).trim();
-          expect(tagType).toBe("commit"); // Lightweight tags point to commits
+          expect(tagType).toBe("tag"); // Annotated tags point to tag objects
         } finally {
           rmSync(tempDir, { recursive: true, force: true });
         }
