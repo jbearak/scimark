@@ -96,13 +96,10 @@ export async function parseRelationships(zip: JSZip): Promise<Map<string, string
   if (!parsed) { return relationships; }
 
   for (const node of findAllDeep(parsed, 'Relationship')) {
-    const rel = node.Relationship;
-    if (!rel) continue;
-    
-    const id = getAttr(rel, 'Id');
-    const type = getAttr(rel, 'Type');
-    const target = getAttr(rel, 'Target');
-    const targetMode = getAttr(rel, 'TargetMode');
+    const id = getAttr(node, 'Id');
+    const type = getAttr(node, 'Type');
+    const target = getAttr(node, 'Target');
+    const targetMode = getAttr(node, 'TargetMode');
     
     if (type.endsWith('/hyperlink') && targetMode === 'External') {
       relationships.set(id, target);
