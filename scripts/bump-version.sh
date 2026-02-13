@@ -35,7 +35,7 @@ elif [[ "$BUMP_TYPE" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     # Valid explicit version
     EXPLICIT_VERSION="$BUMP_TYPE"
 else
-    echo "Error: Invalid bump type or version '$BUMP_TYPE'"
+    echo "Error: Invalid bump type or version '$BUMP_TYPE'" >&2
     usage
 fi
 
@@ -43,7 +43,7 @@ cd "$REPO_ROOT"
 
 # Precondition: Check git is clean
 if [ -n "$(git status --porcelain)" ]; then
-    echo "Error: Working directory is not clean. Commit or stash changes first."
+    echo "Error: Working directory is not clean. Commit or stash changes first." >&2
     exit 1
 fi
 
@@ -73,15 +73,15 @@ fi
 
 # Validate version format
 if [[ ! "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-    echo "Error: Invalid version format '$NEW_VERSION'"
+    echo "Error: Invalid version format '$NEW_VERSION'" >&2
     exit 1
 fi
 
 TAG="v$NEW_VERSION"
 
 # Precondition: Check tag doesn't exist
-if git rev-parse "$TAG" >/dev/null 2>&1; then
-    echo "Error: Tag '$TAG' already exists"
+if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+    echo "Error: Tag '$TAG' already exists" >&2
     exit 1
 fi
 

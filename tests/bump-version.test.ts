@@ -1,5 +1,40 @@
 import { test, expect } from "bun:test";
 import fc from "fast-check";
+import { execSync, spawnSync } from "child_process";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync, copyFileSync } from "fs";
+import { join, resolve } from "path";
+import { tmpdir } from "os";
+
+const SOURCE_SCRIPT_PATH = resolve(process.cwd(), "scripts/bump-version.sh");
+
+function createTempRepo(initialVersion: string): string {
+  const tempDir = mkdtempSync(join(tmpdir(), "bump-version-test-"));
+  mkdirSync(join(tempDir, "scripts"), { recursive: true });
+  copyFileSync(SOURCE_SCRIPT_PATH, join(tempDir, "scripts", "bump-version.sh"));
+  execSync("chmod +x scripts/bump-version.sh", { cwd: tempDir });
+
+  execSync("git init", { cwd: tempDir });
+  execSync("git config user.email 'test@example.com'", { cwd: tempDir });
+  execSync("git config user.name 'Test User'", { cwd: tempDir });
+
+  writeFileSync(join(tempDir, "package.json"), JSON.stringify({ version: initialVersion }, null, 2));
+  writeFileSync(join(tempDir, "package-lock.json"), JSON.stringify({ version: initialVersion }, null, 2));
+  execSync("git add .", { cwd: tempDir });
+  execSync("git commit -m 'Initial commit'", { cwd: tempDir });
+
+  return tempDir;
+}
+
+function runBumpScript(repoDir: string, input?: string) {
+  const args = ["scripts/bump-version.sh"];
+  if (input !== undefined) {
+    args.push(input);
+  }
+  return spawnSync("bash", args, {
+    cwd: repoDir,
+    encoding: "utf8",
+  });
+}
 
 // Helper functions that mirror the script's validation logic
 function isValidBumpType(input: string): boolean {
@@ -27,9 +62,9 @@ function calculateBumpedVersion(currentVersion: string, bumpType: string): strin
   }
 }
 
-test("Feature: version-bump-script, Property 1: Input Validation - verify only valid bump types and semantic versions are accepted", () => {
-  fc.assert(
-    fc.property(
+test("Feature: version-bump-script, Property 1: Input Validation - verify only valid bump types and semantic versions are accepted", async () => {
+  await fc.assert(
+    fc.asyncProperty(
       fc.oneof(
         // Valid bump types
         fc.constantFrom("major", "minor", "patch"),
@@ -47,20 +82,28 @@ test("Feature: version-bump-script, Property 1: Input Validation - verify only v
           !isValidBumpType(s) && !isValidVersion(s) && s !== ""
         )
       ),
-      (input) => {
+      async (input) => {
         const shouldBeValid = isValidBumpType(input) || isValidVersion(input);
-        
-        if (shouldBeValid) {
-          expect(isValidBumpType(input) || isValidVersion(input)).toBe(true);
-        } else {
-          expect(isValidBumpType(input)).toBe(false);
-          expect(isValidVersion(input)).toBe(false);
+
+        const tempDir = createTempRepo("123.123.123");
+        try {
+          const result = runBumpScript(tempDir, input);
+
+          if (shouldBeValid) {
+            expect(result.status).toBe(0);
+            expect(result.stdout).toContain("Version bumped to");
+          } else {
+            expect(result.status).not.toBe(0);
+            expect(result.stderr).toContain("Invalid bump type or version");
+          }
+        } finally {
+          rmSync(tempDir, { recursive: true, force: true });
         }
       }
     ),
-    { numRuns: 100 }
+    { numRuns: 30 }
   );
-});
+}, 120000);
 
 test("Feature: version-bump-script, Property 2: Version Calculation Correctness - verify correct calculation for each bump type", () => {
   fc.assert(
@@ -103,60 +146,18 @@ test("Feature: version-bump-script, Property 2: Version Calculation Correctness 
 });
 
 test("Feature: version-bump-script, Property 3: Precondition Checks - verify dirty working directory rejection", async () => {
-  const { execSync } = await import("child_process");
-  const { mkdtempSync, writeFileSync, rmSync } = await import("fs");
-  const { join } = await import("path");
-  const { tmpdir } = await import("os");
-  
-  const tempDir = mkdtempSync(join(tmpdir(), "bump-version-test-"));
+  const tempDir = createTempRepo("1.0.0");
   
   try {
-    // Initialize git repo with package.json
-    execSync("git init", { cwd: tempDir });
-    execSync("git config user.email 'test@example.com'", { cwd: tempDir });
-    execSync("git config user.name 'Test User'", { cwd: tempDir });
-    
-    writeFileSync(join(tempDir, "package.json"), JSON.stringify({ version: "1.0.0" }, null, 2));
-    execSync("git add package.json", { cwd: tempDir });
-    execSync("git commit -m 'Initial commit'", { cwd: tempDir });
-    
-    // Create dirty working directory
     writeFileSync(join(tempDir, "dirty-file.txt"), "uncommitted changes");
-    
-    // Create a local script that tests the dirty directory check logic
-    const localScript = `#!/usr/bin/env bash
-set -e
-if [ -n "$(git status --porcelain)" ]; then
-    echo "Error: Working directory is not clean. Commit or stash changes first."
-    exit 1
-fi
-echo "Clean"
-`;
-    writeFileSync(join(tempDir, "check-clean.sh"), localScript);
-    execSync("chmod +x check-clean.sh", { cwd: tempDir });
-    
-    // Run script and expect failure
-    try {
-      execSync("./check-clean.sh", { 
-        cwd: tempDir, 
-        encoding: "utf8",
-        stdio: "pipe"
-      });
-      expect.unreachable("Script should have failed");
-    } catch (error: any) {
-      expect(error.status).toBe(1);
-      expect(error.stdout.toString()).toContain("Working directory is not clean");
-    }
+    const result = runBumpScript(tempDir, "patch");
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Working directory is not clean");
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
 test("Feature: version-bump-script, Property 3: Version Extraction - verify version extraction works with various package.json formatting", async () => {
-  const { execSync } = await import("child_process");
-  const { mkdtempSync, writeFileSync, rmSync } = await import("fs");
-  const { join } = await import("path");
-  const { tmpdir } = await import("os");
-  
   await fc.assert(
     fc.asyncProperty(
       fc.tuple(fc.nat(99), fc.nat(99), fc.nat(99)),
@@ -194,11 +195,6 @@ test("Feature: version-bump-script, Property 3: Version Extraction - verify vers
 });
 
 test("Feature: version-bump-script, Property 4: File Update Preservation - verify npm version preserves all other package.json fields", async () => {
-  const { execSync } = await import("child_process");
-  const { mkdtempSync, writeFileSync, readFileSync, rmSync } = await import("fs");
-  const { join } = await import("path");
-  const { tmpdir } = await import("os");
-  
   await fc.assert(
     fc.asyncProperty(
       fc.tuple(fc.nat(9), fc.nat(9), fc.nat(9)),
@@ -241,88 +237,31 @@ test("Feature: version-bump-script, Property 4: File Update Preservation - verif
 });
 
 test("Feature: version-bump-script, Property 4: Precondition Checks - verify existing tag rejection logic", async () => {
-  const { execSync } = await import("child_process");
-  const { mkdtempSync, rmSync } = await import("fs");
-  const { join } = await import("path");
-  const { tmpdir } = await import("os");
-  
-  const tempDir = mkdtempSync(join(tmpdir(), "bump-version-test-"));
+  const tempDir = createTempRepo("1.0.0");
   
   try {
-    // Initialize git repo
-    execSync("git init", { cwd: tempDir });
-    execSync("git config user.email 'test@example.com'", { cwd: tempDir });
-    execSync("git config user.name 'Test User'", { cwd: tempDir });
-    
-    // Create and commit initial file
-    execSync("touch README.md", { cwd: tempDir });
-    execSync("git add README.md", { cwd: tempDir });
-    execSync("git commit -m 'Initial commit'", { cwd: tempDir });
-    
-    // Create existing tag
     execSync("git tag v1.0.1", { cwd: tempDir });
-    
-    // Test the tag check logic directly (this is what the script does)
-    try {
-      execSync("git rev-parse v1.0.1", { 
-        cwd: tempDir, 
-        stdio: "pipe"
-      });
-      // If we get here, the tag exists (which is what we expect)
-      expect(true).toBe(true);
-    } catch (error) {
-      expect.unreachable("Tag should exist");
-    }
-    
-    // Test that non-existent tag fails
-    try {
-      execSync("git rev-parse v9.9.9", { 
-        cwd: tempDir, 
-        stdio: "pipe"
-      });
-      expect.unreachable("Non-existent tag should fail");
-    } catch (error: any) {
-      expect(error.status).not.toBe(0);
-    }
+    const result = runBumpScript(tempDir, "1.0.1");
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Tag 'v1.0.1' already exists");
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
 test("Feature: version-bump-script, Property 5: Commit Message Format - verify commit message follows exact format 'chore: bump version to X.Y.Z'", async () => {
-  const { execSync } = await import("child_process");
-  const { mkdtempSync, writeFileSync, rmSync } = await import("fs");
-  const { join } = await import("path");
-  const { tmpdir } = await import("os");
-  
   await fc.assert(
     fc.asyncProperty(
       fc.tuple(fc.nat(99), fc.nat(99), fc.nat(99)),
       fc.constantFrom("major", "minor", "patch"),
       async ([major, minor, patch], bumpType) => {
-        const tempDir = mkdtempSync(join(tmpdir(), "commit-message-test-"));
+        const currentVersion = `${major}.${minor}.${patch}`;
+        const tempDir = createTempRepo(currentVersion);
         
         try {
-          // Initialize git repo
-          execSync("git init", { cwd: tempDir });
-          execSync("git config user.email 'test@example.com'", { cwd: tempDir });
-          execSync("git config user.name 'Test User'", { cwd: tempDir });
-          
-          const currentVersion = `${major}.${minor}.${patch}`;
-          writeFileSync(join(tempDir, "package.json"), JSON.stringify({ version: currentVersion }, null, 2));
-          writeFileSync(join(tempDir, "package-lock.json"), JSON.stringify({ version: currentVersion }, null, 2));
-          
-          execSync("git add .", { cwd: tempDir });
-          execSync("git commit -m 'Initial commit'", { cwd: tempDir });
-          
-          // Simulate the script's git operations directly
           const expectedVersion = calculateBumpedVersion(currentVersion, bumpType);
-          execSync(`npm version "${expectedVersion}" --no-git-tag-version`, { cwd: tempDir, timeout: 10000 });
-          execSync("git add package.json package-lock.json", { cwd: tempDir });
-          execSync(`git commit -m "chore: bump version to ${expectedVersion}"`, { cwd: tempDir });
-          execSync(`git tag -a "v${expectedVersion}" -m "Version ${expectedVersion}"`, { cwd: tempDir });
-          
-          // Get the latest commit message
+          const result = runBumpScript(tempDir, bumpType);
+          expect(result.status).toBe(0);
           const commitMessage = execSync("git log -1 --pretty=format:%s", { 
             cwd: tempDir, 
             encoding: "utf8" 
@@ -340,41 +279,19 @@ test("Feature: version-bump-script, Property 5: Commit Message Format - verify c
 });
 
 test("Feature: version-bump-script, Property 6: Tag Format - verify git tag is annotated tag with name 'vX.Y.Z'", async () => {
-  const { execSync } = await import("child_process");
-  const { mkdtempSync, writeFileSync, rmSync } = await import("fs");
-  const { join } = await import("path");
-  const { tmpdir } = await import("os");
-  
   await fc.assert(
     fc.asyncProperty(
       fc.tuple(fc.nat(99), fc.nat(99), fc.nat(99)),
       fc.constantFrom("major", "minor", "patch"),
       async ([major, minor, patch], bumpType) => {
-        const tempDir = mkdtempSync(join(tmpdir(), "tag-format-test-"));
+        const currentVersion = `${major}.${minor}.${patch}`;
+        const tempDir = createTempRepo(currentVersion);
         
         try {
-          // Initialize git repo
-          execSync("git init", { cwd: tempDir });
-          execSync("git config user.email 'test@example.com'", { cwd: tempDir });
-          execSync("git config user.name 'Test User'", { cwd: tempDir });
-          
-          const currentVersion = `${major}.${minor}.${patch}`;
-          writeFileSync(join(tempDir, "package.json"), JSON.stringify({ version: currentVersion }, null, 2));
-          writeFileSync(join(tempDir, "package-lock.json"), JSON.stringify({ version: currentVersion }, null, 2));
-          
-          execSync("git add .", { cwd: tempDir });
-          execSync("git commit -m 'Initial commit'", { cwd: tempDir });
-          
-          // Simulate the script's git operations directly
           const expectedVersion = calculateBumpedVersion(currentVersion, bumpType);
           const expectedTag = `v${expectedVersion}`;
-          
-          execSync(`npm version "${expectedVersion}" --no-git-tag-version`, { cwd: tempDir, timeout: 10000 });
-          execSync("git add package.json package-lock.json", { cwd: tempDir });
-          execSync(`git commit -m "chore: bump version to ${expectedVersion}"`, { cwd: tempDir });
-          execSync(`git tag -a "${expectedTag}" -m "Version ${expectedVersion}"`, { cwd: tempDir });
-          
-          // Verify tag exists
+          const result = runBumpScript(tempDir, bumpType);
+          expect(result.status).toBe(0);
           const tagExists = execSync(`git tag -l "${expectedTag}"`, { 
             cwd: tempDir, 
             encoding: "utf8" 
@@ -397,62 +314,15 @@ test("Feature: version-bump-script, Property 6: Tag Format - verify git tag is a
 });
 
 test("No automatic push - verify script does not perform git push operation", async () => {
-  const { execSync } = await import("child_process");
-  const { mkdtempSync, writeFileSync, rmSync } = await import("fs");
-  const { join } = await import("path");
-  const { tmpdir } = await import("os");
-  
-  const tempDir = mkdtempSync(join(tmpdir(), "no-push-test-"));
+  const tempDir = createTempRepo("1.0.0");
   
   try {
-    // Initialize git repo
-    execSync("git init", { cwd: tempDir });
-    execSync("git config user.email 'test@example.com'", { cwd: tempDir });
-    execSync("git config user.name 'Test User'", { cwd: tempDir });
-    
-    writeFileSync(join(tempDir, "package.json"), JSON.stringify({ version: "1.0.0" }, null, 2));
-    writeFileSync(join(tempDir, "package-lock.json"), JSON.stringify({ version: "1.0.0" }, null, 2));
-    
-    // Create a local script that mimics the original but works in current directory
-    const localScript = `#!/usr/bin/env bash
-set -e
-
-# Check git is clean
-if [ -n "$(git status --porcelain)" ]; then
-    echo "Error: Working directory is not clean. Commit or stash changes first."
-    exit 1
-fi
-
-# Update version using npm
-npm version "1.0.1" --no-git-tag-version
-
-# Git operations (same as original script)
-git add package.json package-lock.json
-git commit -m "chore: bump version to 1.0.1"
-git tag "v1.0.1"
-
-echo "✓ Version bumped to 1.0.1"
-echo "✓ Committed and tagged as v1.0.1"
-echo ""
-echo "To push: git push && git push --tags"
-`;
-    
-    writeFileSync(join(tempDir, "local-bump.sh"), localScript);
-    execSync("chmod +x local-bump.sh", { cwd: tempDir });
-    
-    // Commit everything including the script to have a clean working directory
-    execSync("git add .", { cwd: tempDir });
-    execSync("git commit -m 'Initial commit'", { cwd: tempDir });
-    
-    // Run local script and capture output
-    const output = execSync("./local-bump.sh", { 
-      cwd: tempDir, 
-      encoding: "utf8" 
-    });
+    const result = runBumpScript(tempDir, "patch");
+    expect(result.status).toBe(0);
     
     // Verify script suggests manual push but doesn't do it
-    expect(output).toContain("To push: git push && git push --tags");
-    expect(output).not.toContain("Pushed to remote");
+    expect(result.stdout).toContain("To push: git push && git push --tags");
+    expect(result.stdout).not.toContain("Pushed to remote");
     
     // Verify no remote tracking exists (would be set if push occurred)
     try {

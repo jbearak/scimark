@@ -10,7 +10,7 @@ The script follows Unix conventions and uses standard tools available on macOS (
 
 The script follows a linear execution flow with validation gates:
 
-```
+```text
 Input Validation → Precondition Checks → Version Calculation → File Update → Git Operations
 ```
 
@@ -202,21 +202,21 @@ The script implements fail-fast error handling using `set -e` with clear error m
 ### Validation Errors
 
 **Invalid bump type**: 
-```
+```text
 ERROR: Invalid version format: foo
 Expected format: X.Y.Z or X.Y.Z-suffix
 ```
 Exit code: 1
 
 **Dirty working directory**:
-```
+```text
 ERROR: Working directory is not clean. Commit or stash changes first.
 [git status output]
 ```
 Exit code: 1
 
 **Tag already exists**:
-```
+```text
 ERROR: Tag v1.0.0 already exists.
 ```
 Exit code: 1
@@ -224,7 +224,7 @@ Exit code: 1
 ### File Operation Errors
 
 **Cannot read package.json**:
-```
+```text
 ERROR: Could not read current version from package.json
 ```
 Exit code: 1

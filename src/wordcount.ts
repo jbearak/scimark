@@ -100,7 +100,7 @@ export class WordCountController {
    */
   dispose(): void {
     this.statusBarItem.dispose();
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach(d => { d.dispose(); });
   }
   /**
    * Checks if the given document is a text document (markdown or plaintext).
