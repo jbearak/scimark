@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+import fc from 'fast-check';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
@@ -103,6 +104,48 @@ describe('generateCitationKey', () => {
   test('cleans special characters from surname', () => {
     expect(generateCitationKey('O\'Brien-Smith', '2020', 'Test title'))
       .toBe('obriensmith2020test');
+  });
+
+  test('property: output contains only lowercase alphanumeric chars', () => {
+    const yearArb = fc.string().map(s => s.replace(/[^0-9]/g, ''));
+    fc.assert(
+      fc.property(
+        fc.string(), yearArb, fc.string(),
+        (surname, year, title) => {
+          const key = generateCitationKey(surname, year, title);
+          expect(key).toMatch(/^[a-z0-9]*$/);
+        }
+      ),
+      { numRuns: 200 }
+    );
+  });
+
+  test('property: deterministic — same inputs produce same output', () => {
+    fc.assert(
+      fc.property(
+        fc.string(), fc.string(), fc.string(),
+        (surname, year, title) => {
+          const a = generateCitationKey(surname, year, title);
+          const b = generateCitationKey(surname, year, title);
+          expect(a).toBe(b);
+        }
+      ),
+      { numRuns: 200 }
+    );
+  });
+
+  test('property: non-empty surname with letters produces key starting with lowercase letter', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1 }).filter(s => /^[a-zA-Z]/.test(s)),
+        fc.string(), fc.string(),
+        (surname, year, title) => {
+          const key = generateCitationKey(surname, year, title);
+          expect(key).toMatch(/^[a-z]/);
+        }
+      ),
+      { numRuns: 200 }
+    );
   });
 });
 
