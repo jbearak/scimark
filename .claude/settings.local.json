@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nRemove over-engineered bump-version test suite\n\nThe 340-line property-based test file largely tested TypeScript\nreimplementations of the script''s logic rather than the script itself,\nand created excessive I/O overhead for a simple DevOps utility.\nEOF\n\\)\")",
-      "Bash(ls:*)"
-    ]
-  }
-}

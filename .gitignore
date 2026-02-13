@@ -23,3 +23,6 @@ venv/
 
 # Documentation (generated)
 vsc-extension-quickstart.md
+
+# Claude
+.claude
