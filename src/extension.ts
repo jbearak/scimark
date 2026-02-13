@@ -4,6 +4,7 @@ import * as formatting from './formatting';
 import * as author from './author';
 import { mdmarkupPlugin } from './preview/mdmarkup-plugin';
 import { WordCountController } from './wordcount';
+import { convertDocx, CitationKeyFormat } from './converter';
 
 export function activate(context: vscode.ExtensionContext) {
 	// Register existing navigation commands
@@ -115,6 +116,45 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('mdmarkup.formatHeading6', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 6))
 		)
+	);
+
+	// Register DOCX converter command
+	context.subscriptions.push(
+		vscode.commands.registerCommand('mdmarkup.convertDocx', async (uri?: vscode.Uri) => {
+			try {
+				if (!uri) {
+					const files = await vscode.window.showOpenDialog({
+						filters: { 'Word Documents': ['docx'] },
+						canSelectMany: false,
+					});
+					if (!files || files.length === 0) { return; }
+					uri = files[0];
+				}
+				const data = await vscode.workspace.fs.readFile(uri);
+				const format = vscode.workspace.getConfiguration('mdmarkup').get<CitationKeyFormat>('citationKeyFormat', 'authorYearTitle');
+				const result = await convertDocx(new Uint8Array(data), format);
+
+				const basePath = uri.fsPath.replace(/\.docx$/i, '');
+				const mdUri = vscode.Uri.file(basePath + '.md');
+				const bibUri = vscode.Uri.file(basePath + '.bib');
+
+				await vscode.workspace.fs.writeFile(mdUri, Buffer.from(result.markdown, 'utf-8') as any);
+				if (result.bibtex) {
+					await vscode.workspace.fs.writeFile(bibUri, Buffer.from(result.bibtex, 'utf-8') as any);
+				}
+
+				const mdDoc = await vscode.workspace.openTextDocument(mdUri);
+				await vscode.window.showTextDocument(mdDoc);
+				if (result.bibtex) {
+					const bibDoc = await vscode.workspace.openTextDocument(bibUri);
+					await vscode.window.showTextDocument(bibDoc, vscode.ViewColumn.Beside);
+				}
+
+				vscode.window.showInformationMessage(`Converted to ${basePath}.md`);
+			} catch (err: any) {
+				vscode.window.showErrorMessage(`DOCX conversion failed: ${err.message}`);
+			}
+		})
 	);
 
 	// Create and register word count controller
