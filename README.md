@@ -1,27 +1,63 @@
 # mdmarkup - Markdown Annotations and Formatting for VS Code
 
-mdmarkup extends VS Code with CriticMarkup support for tracking changes, suggestions, and comments in Markdown files.
+A comprehensive [Markdown](https://daringfireball.net/projects/markdown/syntax) extension for Visual Studio Code with [CriticMarkup](https://github.com/CriticMarkup/CriticMarkup-toolkit) annotations and extensive formatting tools.
 
-> Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jbearak.mdmarkup) or install locally via `.vsix` from [releases](https://github.com/jbearak/mdmarkup/releases).
+Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jbearak.mdmarkup) or install locally via `.vsix` from [releases](https://github.com/jbearak/mdmarkup/releases).
 
-This is a major rewrite and expansion of the archived [vscode-criticmarkup](https://github.com/jloow/vscode-criticmarkup) extension (original by Joel Lööw, 2019). See [About This Fork](#about-this-fork) for details on what changed.
+## Quick Start
 
-### Annotations
+### CriticMarkup Annotations
 
-Move through annotations with:
+Use key bindings to insert annotations:
+
+- **Addition** (`Ctrl+Shift+A`): `{++new text++}`
+- **Deletion** (`Ctrl+Shift+D`): `{--old text--}`
+- **Substitution** (`Ctrl+Shift+S`): `{~~old~>new~~}`
+- **Comment** (`Ctrl+Shift+C`): `{>>feedback<<}`
+- **Highlight** (`Ctrl+Shift+H`): `{==important==}`
+
+Navigate with:
 - **Next Change**: `Alt+Shift+J` or toolbar button
 - **Previous Change**: `Alt+Shift+K` or toolbar button
 
 ### Markdown Formatting
 
-Click the **Markdown Formatting** button in the toolbar or right-click menu to access:
-- **Text**: Bold, Italic, Bold Italic, Strikethrough, Underline, Inline Code
+Click **Markdown Formatting** in the toolbar or right-click menu for:
+- **Text**: Bold, Italic, Strikethrough, Code
 - **Lists**: Bulleted, Numbered, Task Lists
 - **Blocks**: Code Block, Quote Block
 - **Headings**: H1–H6
-- **Links**: Insert Link
-- **Tables**: Reflow with automatic column alignment
-- **Word Count**: Display count for document or selection
+- **Links & Tables**: Insert Link, Reflow Table with alignment
+- **Word Count**: Document or selection
+
+## Features
+
+**CriticMarkup Annotations:**
+- Five CriticMarkup patterns with key bindings and menu access
+- Full **multi-line support** including patterns with empty lines
+- **Live preview rendering** with theme-aware styling
+- **Automatic author attribution** with optional timestamps
+- Navigation commands for annotations
+- Syntax highlighting with standard TextMate scopes
+
+**Markdown Formatting:**
+- Text formatting (bold, italic, strikethrough, code)
+- Lists (bulleted, numbered, task lists) with smart nesting
+- Headings (H1–H6) and outline support
+- Code blocks and quote blocks
+- **Smart table reflow** with column alignment
+- Word count for document or selection
+
+**Preview and Display:**
+- Live Markdown preview with CriticMarkup rendering
+- Theme-aware colors (automatic light/dark/high-contrast)
+- Syntax highlighting injection into Markdown
+- Multi-line pattern support
+
+**Configuration:**
+- Customizable author name (defaults to OS username)
+- Optional timestamps in comments
+- All features configurable via settings
 
 ## Installation
 
@@ -31,7 +67,7 @@ Install directly from the [marketplace](https://marketplace.visualstudio.com/ite
 
 ### From VSIX
 
-Download the `.vsix` from [releases](https://github.com/jbearak/mdmarkup/releases) and install:
+Download the `.vsix` from [releases](https://github.com/jbearak/mdmarkup/releases):
 
 ```bash
 code --install-extension mdmarkup-<version>.vsix
@@ -41,26 +77,24 @@ Or in VS Code: Extensions → `...` menu → "Install from VSIX..."
 
 ## Documentation
 
-User guides:
+**User guides:**
 - [Usage Guide](docs/usage.md) - Full feature documentation and examples
 - [Configuration](docs/configuration.md) - All settings and customization options
 - [CriticMarkup Reference](https://github.com/CriticMarkup/CriticMarkup-toolkit) - Markup syntax specification
 
-Development:
+**Development:**
 - [Development Guide](docs/development.md) - Build, test, and contribution guide
-
-See also:
-- [Known Issues and Limitations](#known-issues-and-limitations)
+- [AGENTS.md](AGENTS.md) - Development guidance, key invariants, and learnings
 
 ## Known Issues and Limitations
 
-- **Multi-line preview rendering**: Multi-line CriticMarkup patterns only render correctly in preview when they start at the **beginning of a line**. Patterns that start mid-line (after other text on the same line) will not render in preview. However, **navigation commands work correctly** for patterns at any position.
+- **Multi-line preview rendering**: Multi-line patterns only render correctly in preview when they start at the **beginning of a line**. Patterns starting mid-line won't render, but **navigation commands work for patterns at any position**.
 
-- **TextMate syntax highlighting**: VS Code's TextMate grammar has inherent limitations with multi-line patterns. While syntax highlighting is provided, very long multi-line patterns may not highlight perfectly across all lines.
+- **TextMate syntax highlighting**: VS Code's TextMate grammar has limitations with complex multi-line patterns. While syntax highlighting is provided, very long patterns may not highlight perfectly across all lines.
 
-- **Nested patterns**: CriticMarkup patterns cannot be nested. If you attempt to nest patterns, only the first complete pattern is recognized.
+- **Nested patterns**: CriticMarkup patterns cannot be nested. Only the first complete pattern is recognized.
 
-- **Unclosed patterns**: Patterns without proper closing markup (e.g., `{++text without closing`) are not recognized as valid markup and appear as literal text.
+- **Unclosed patterns**: Patterns without proper closing markup (e.g., `{++text without closing`) appear as literal text.
 
 ## Development
 
