@@ -1,146 +1,58 @@
-# AGENTS.md
+# AGENTS.md - LLM Guidance for mdmarkup
 
-## Overview
+This file is intentionally short. It's a map to the docs and a short list of invariants that are easy to regress.
 
-This is a VS Code extension that adds comprehensive Markdown formatting and markup tools to Visual Studio Code. It uses [standard Markdown syntax](https://daringfireball.net/projects/markdown/syntax) with [Critic Markup](https://github.com/CriticMarkup/CriticMarkup-toolkit) syntax for comments and tracked changes (comments, highlights, substitutions, etc.). It provides syntax highlighting, formatting and markup menus (in the editor toolbar and in the right-click menu), navigation between comments and proposed changes, and preview rendering.
+IMPORTANT: Treat this as a living document. When you fix a subtle bug or a recurring LLM mistake, update **"Learnings"** (and keep the pointers and invariants current) as part of the same change.
 
-## Development commands
+## What to read (in order)
 
-- Setup dependencies:
-```sh
-bun install
-```
-- Compile TypeScript:
-```sh
-bun run compile
-```
-- Watch during development:
-```sh
-bun run watch
-```
-- Run tests:
-```sh
-bun test
-```
-- Package a `.vsix` for local install or distribution:
-```sh
-bunx vsce package
-```
-- Install the built VSIX in VS Code:
-```sh
-code --install-extension mdmarkup-<version>.vsix
-```
+User-facing:
+- `README.md`
+- `docs/` (guides and feature documentation)
 
-Notes:
-- Bun is used for all scripts and dependency management
-- Bun auto-loads `.env` files; no separate dotenv setup is required
-- Tests use Bun's built-in test runner with fast-check for property-based testing
+Code (authoritative for behavior):
+- Navigation: `src/changes.ts`
+- Formatting: `src/formatting.ts`
+- Preview: `src/preview/mdmarkup-plugin.ts`
+- Syntax highlighting: `syntaxes/mdmarkup.json`
 
-## Code architecture
+## Key invariants (do not regress)
 
-### Entry point: `src/extension.ts`
+- **Multi-line pattern support**
+  - Patterns can span multiple lines including empty lines
+  - Multi-line patterns must start at beginning of line for **preview rendering** only
+  - Navigation commands (next/previous change) work for patterns at any position
+  - See `src/changes.ts` getAllMatches() for pattern detection
 
-Responsibilities:
-- Activation: Registers all mdmarkup commands
-- Command registration: Annotation, formatting, and navigation commands
-- Markdown preview integration: Returns markdown-it plugin for preview rendering
-- Configuration: Reads user settings for author names and timestamps
+- **Pattern filtering**
+  - Overlapping/nested patterns are filtered to prevent duplicates
+  - Use strict containment checks to identify overlapping matches
 
-Key command groups:
-- **Navigation**: `mdmarkup.nextChange`, `mdmarkup.prevChange` - Navigate between mdmarkup patterns
-- **Annotations**: `mdmarkup.markAddition`, `mdmarkup.markDeletion`, `mdmarkup.markSubstitution`, `mdmarkup.highlight`, `mdmarkup.insertComment`, plus combined commands
-- **Formatting**: Bold, italic, strikethrough, headings, lists, code blocks, links, table reflow
+- **Configuration**
+  - Author name handling respects `mdmarkup.authorName` setting and falls back to OS username
+  - Timestamps are ISO 8601 format
+  - See `src/author.ts` for implementation
 
-### Core modules
+- **Preview rendering**
+  - markdown-it plugin handles both inline and block-level patterns
+  - Multi-line patterns must start at line beginning for block-level detection
+  - CSS classes are standardized in `media/mdmarkup.css`
 
-**`src/changes.ts`** - Navigation logic
-- `getAllMatches()`: Finds all mdmarkup patterns in document using regex
-- `next()`, `prev()`: Navigate to next/previous pattern
-- Supports multi-line patterns including those with empty lines
-- Filters nested/overlapping patterns
+## Quick commands
 
-**`src/formatting.ts`** - Text transformation logic
-- `wrapSelection()`: Wraps text with prefix/suffix (used for annotations)
-- Markdown formatting functions: bold, italic, lists, headings, etc.
-- `reflowTable()`: Intelligent table reformatting with column alignment
-- All functions return `TextTransformation` interface
+- Setup: `bun install`
+- Compile: `bun run compile`
+- Watch: `bun run watch`
+- Test: `bun test`
+- Package: `bunx vsce package`
 
-**`src/author.ts`** - Author name handling
-- `getAuthorName()`: Retrieves author name from settings or OS username
-- `getTimestamp()`: Generates ISO 8601 timestamp for comments
-- Respects configuration settings for disabling or customizing author attribution
+## Learnings
 
-**`src/preview/mdmarkup-plugin.ts`** - Markdown preview rendering
-- markdown-it plugin that renders mdmarkup syntax in preview
-- Block-level rule for multi-line patterns with empty lines
-- Inline rule for single-line and simple multi-line patterns
-- Generates HTML with CSS classes for styling
-- **Limitation**: Multi-line patterns must start at beginning of line for preview rendering
-
-### Syntax highlighting
-
-**`syntaxes/mdmarkup.json`** - TextMate injection grammar
-- Injects mdmarkup scopes into Markdown documents
-- Uses standard TextMate scopes (markup.inserted, markup.deleted, etc.)
-- Automatic theme adaptation (light/dark/high-contrast)
-- **Limitation**: TextMate has inherent limitations with multi-line pattern highlighting
-
-### Preview styling
-
-**`media/mdmarkup.css`** - Preview stylesheet
-- Theme-aware colors using CSS custom properties
-- Supports light and dark themes via `prefers-color-scheme`
-- Distinct styling for each mdmarkup pattern type
-- Semi-transparent backgrounds for readability
-
-### Configuration
-
-Settings in `package.json`:
-- `mdmarkup.disableAuthorNames`: Disable automatic author names in comments
-- `mdmarkup.authorName`: Custom author name (defaults to OS username)
-- `mdmarkup.includeTimestampInComments`: Include timestamp in comment attribution
-
-### UI integration
-
-**Toolbar buttons** (editor/title menu):
-- Markdown Formatting submenu
-- Markdown Annotations submenu (with prev/nextChange navigation)
-
-**Context menu** (right-click in editor):
-- Markdown Annotations submenu
-- Markdown Formatting submenu with nested Heading submenu
-
-**Keybindings**:
-- `Alt+Shift+K`: Previous Change
-- `Alt+Shift+J`: Next Change
-
-## Multi-line pattern support
-
-The extension fully supports multi-line mdmarkup patterns with the following characteristics:
-
-**What works**:
-- Navigation commands work for all patterns regardless of position
-- Preview rendering works for patterns starting at beginning of line
-- Patterns can contain empty lines
-- All five pattern types support multi-line content
-
-**Known limitations**:
-- Multi-line patterns must start at beginning of line for preview rendering
-- Mid-line multi-line patterns only work for navigation, not preview
-- TextMate syntax highlighting has limitations with very long multi-line patterns
-
-## Testing strategy
-
-- **Unit tests**: Specific examples and edge cases
-- **Property-based tests**: Using fast-check with 100+ iterations per property
-- **Manual tests**: Visual confirmation of syntax highlighting and preview rendering
-- Test files use Bun's test runner
-- All property tests are tagged with feature and property references
-
-## Tooling conventions
-
-- Use Bun for all scripts and dependency management: `bun install`, `bun run <script>`
-- Use `bunx vsce package` to build the VSIX
-- Prefer Bun's defaults (e.g., `.env` auto-loading) where applicable
-- TypeScript compilation target: ES2019
-- Test framework: Bun test with fast-check for property-based testing
+- Multi-line pattern regex: Use `[\s\S]*?` for content (including newlines), not just `.+`
+- TextMate grammar has limitations with complex multi-line patterns; focus on correctness in code, not perfect highlighting
+- When filtering overlapping patterns, ensure the containment check covers both start and end positions
+- table reflow: Preserve existing alignment/padding patterns; only reflow when explicitly requested
+- Author name configuration: Always check settings first, then fall back to username via `os.userInfo()`
+- Property tests: Use fast-check with constraints to avoid timeout on large generated strings; prefer shorter bounded generators
+- Multi-line preview rendering: markdown-it requires patterns to start at block level (line beginning); use the block rule, not inline
+- Table parsing: Handle edge cases like cells with pipes in code or quotes; use careful boundary detection
