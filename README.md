@@ -61,6 +61,7 @@ The extension has evolved from a simple syntax highlighter into a comprehensive 
 - Headings (H1-H6)
 - Links, code blocks, and quote blocks
 - Table reflow for automatic table formatting with column alignment
+- Word count display for entire document or selected text
 
 ## Requirements
 
@@ -212,6 +213,10 @@ The extension uses standard TextMate scopes, so colors automatically adapt to yo
 ## Release Notes
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
+
+### [0.9.1] - 2025
+
+- Added word count display for entire document or selected text
 
 ### [0.9.0] - 2024-2025
 
