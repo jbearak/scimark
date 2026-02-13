@@ -441,6 +441,23 @@ describe('buildMarkdown', () => {
     );
   });
 
+  test('text without href outputs as plain text (unresolvable hyperlink fallback)', () => {
+    const content = [{
+      type: 'text' as const,
+      text: 'link text',
+      commentIds: new Set<string>(),
+      formatting: DEFAULT_FORMATTING,
+      // href is undefined - simulates unresolvable r:id
+    }];
+    
+    const result = buildMarkdown(content, new Map());
+    expect(result).toBe('link text');
+    expect(result).not.toContain('[');
+    expect(result).not.toContain(']');
+    expect(result).not.toContain('(');
+    expect(result).not.toContain(')');
+  });
+
   test('Property 6: Heading paragraphs produce correct # prefix', () => {
     fc.assert(
       fc.property(
