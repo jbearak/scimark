@@ -64,13 +64,14 @@ async function readZipXml(zip: JSZip, path: string): Promise<any[] | null> {
   return new XMLParser(parserOptions).parse(xml);
 }
 
-function findAllDeep(nodes: any[], tagName: string): any[] {
+function findAllDeep(nodes: any[], tagName: string, depth = 0, maxDepth = 50): any[] {
+  if (depth >= maxDepth) { return []; }
   const results: any[] = [];
   for (const node of nodes) {
     if (node[tagName] !== undefined) { results.push(node); }
     for (const key of Object.keys(node)) {
       if (key !== ':@' && Array.isArray(node[key])) {
-        results.push(...findAllDeep(node[key], tagName));
+        results.push(...findAllDeep(node[key], tagName, depth + 1, maxDepth));
       }
     }
   }
