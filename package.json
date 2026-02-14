@@ -101,7 +101,7 @@
       },
       {
         "command": "mdmarkup.formatHighlight",
-        "title": "Format Highlight"
+        "title": "Highlight"
       },
       {
         "command": "mdmarkup.formatInlineCode",
@@ -447,7 +447,7 @@
     "clean": "rm -rf out/",
     "rebuild": "bun run clean && bun run compile",
     "package": "bun run rebuild && bunx vsce package",
-    "install-local": "bun run package && code --install-extension mdmarkup-0.9.2.vsix --force"
+    "install-local": "bun run package && code --install-extension mdmarkup-$(node -p \"require('./package.json').version\").vsix --force"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

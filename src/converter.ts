@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
+import { ommlToLatex } from './omml';
 
 /** Matches a "Sources" heading (with or without leading `#` markers). */
 const SOURCES_HEADING_RE = /^(?:#+\s*)?Sources\s*$/;
@@ -39,6 +40,7 @@ export interface RunFormatting {
   underline: boolean;
   strikethrough: boolean;
   highlight: boolean;
+  highlightColor?: string;
   superscript: boolean;
   subscript: boolean;
 }
@@ -72,7 +74,8 @@ export type ContentItem =
       type: 'para';
       headingLevel?: number;   // 1–6 if heading, undefined otherwise
       listMeta?: ListMeta;     // present if list item
-    };
+    }
+  | { type: 'math'; latex: string; display: boolean };
 
 export type CitationKeyFormat = 'authorYearTitle' | 'authorYear' | 'numeric';
 
@@ -302,7 +305,7 @@ export function isToggleOn(children: any[], tagName: string): boolean {
   
   const val = getAttr(element, 'val');
   if (!val) return true; // present with no w:val attribute → true
-  return val === 'true' || val === '1';
+  return val === 'true' || val === '1' || val === 'on';
 }
 
 /** Parse run properties and return RunFormatting */
@@ -316,19 +319,24 @@ export function parseRunProperties(
   const bElement = rPrChildren.find(child => child['w:b'] !== undefined);
   if (bElement) {
     const val = getAttr(bElement, 'val');
-    formatting.bold = !val || val === 'true' || val === '1';
+    formatting.bold = !val || val === 'true' || val === '1' || val === 'on';
   }
-  
+
   const iElement = rPrChildren.find(child => child['w:i'] !== undefined);
   if (iElement) {
     const val = getAttr(iElement, 'val');
-    formatting.italic = !val || val === 'true' || val === '1';
+    formatting.italic = !val || val === 'true' || val === '1' || val === 'on';
   }
-  
+
+  // strikethrough: w:strike or w:dstrike (double strikethrough) — both map to ~~
   const strikeElement = rPrChildren.find(child => child['w:strike'] !== undefined);
+  const dstrikeElement = rPrChildren.find(child => child['w:dstrike'] !== undefined);
   if (strikeElement) {
     const val = getAttr(strikeElement, 'val');
-    formatting.strikethrough = !val || val === 'true' || val === '1';
+    formatting.strikethrough = !val || val === 'true' || val === '1' || val === 'on';
+  } else if (dstrikeElement) {
+    const val = getAttr(dstrikeElement, 'val');
+    formatting.strikethrough = !val || val === 'true' || val === '1' || val === 'on';
   }
   
   // underline: w:u with w:val ≠ "none"
@@ -340,15 +348,26 @@ export function parseRunProperties(
   }
   
   // highlight: w:highlight with w:val ≠ "none", OR w:shd with w:fill ≠ "" and ≠ "auto"
+  // w:highlight takes priority over w:shd per ECMA-376
   const highlightElement = rPrChildren.find(child => child['w:highlight'] !== undefined);
   if (highlightElement) {
     const val = getAttr(highlightElement, 'val');
     formatting.highlight = val !== 'none';
+    if (formatting.highlight && val) {
+      formatting.highlightColor = val;
+    } else {
+      formatting.highlightColor = undefined;
+    }
   } else {
     const shdElement = rPrChildren.find(child => child['w:shd'] !== undefined);
     if (shdElement) {
       const fill = getAttr(shdElement, 'fill');
       formatting.highlight = fill !== '' && fill !== 'auto';
+      if (formatting.highlight && fill) {
+        formatting.highlightColor = fill;
+      } else {
+        formatting.highlightColor = undefined;
+      }
     }
   }
   
@@ -666,6 +685,31 @@ export async function extractDocumentContent(
             content.push(paraItem);
           }
           walk(paraChildren, paraFormatting);
+        } else if (key === 'm:oMathPara') {
+          // Display equation — extract m:oMath children from within
+          const mathParaChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
+          const oMathNodes = mathParaChildren.filter((c: any) => c['m:oMath'] !== undefined);
+          for (const oMathNode of oMathNodes) {
+            try {
+              const latex = ommlToLatex(oMathNode['m:oMath']);
+              if (latex) {
+                content.push({ type: 'math', latex, display: true });
+              }
+            } catch {
+              content.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true });
+            }
+          }
+        } else if (key === 'm:oMath') {
+          // Inline equation
+          const mathChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
+          try {
+            const latex = ommlToLatex(mathChildren);
+            if (latex) {
+              content.push({ type: 'math', latex, display: false });
+            }
+          } catch {
+            content.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false });
+          }
         } else if (Array.isArray(node[key])) {
           walk(node[key], currentFormatting);
         }
@@ -682,6 +726,7 @@ export async function extractDocumentContent(
 function formattingEquals(a: RunFormatting, b: RunFormatting): boolean {
   return a.bold === b.bold && a.italic === b.italic && a.underline === b.underline &&
          a.strikethrough === b.strikethrough && a.highlight === b.highlight &&
+         a.highlightColor === b.highlightColor &&
          a.superscript === b.superscript && a.subscript === b.subscript;
 }
 
@@ -767,6 +812,22 @@ export function buildMarkdown(
         output.push(indent + marker);
       }
       
+      i++;
+      continue;
+    }
+
+    if (item.type === 'math') {
+      if (item.display) {
+        // Ensure blank line before display math
+        if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+          output.push('\n\n');
+        }
+        output.push('$$' + '\n' + item.latex + '\n' + '$$');
+        // A display math block breaks list flow; reset list continuation state.
+        lastListType = undefined;
+      } else {
+        output.push('$' + item.latex + '$');
+      }
       i++;
       continue;
     }

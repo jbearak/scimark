@@ -699,6 +699,74 @@ describe('highlight detection', () => {
   });
 });
 
+describe('highlightColor extraction', () => {
+  test('stores color name from w:highlight', () => {
+    const children = [{ 'w:highlight': [], ':@': { '@_w:val': 'yellow' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(true);
+    expect(formatting.highlightColor).toBe('yellow');
+  });
+
+  test('stores hex value from w:shd', () => {
+    const children = [{ 'w:shd': [], ':@': { '@_w:fill': 'FFFF00' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(true);
+    expect(formatting.highlightColor).toBe('FFFF00');
+  });
+
+  test('does not store color when highlight is none', () => {
+    const children = [{ 'w:highlight': [], ':@': { '@_w:val': 'none' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(false);
+    expect(formatting.highlightColor).toBeUndefined();
+  });
+
+  test('stores different highlight colors', () => {
+    const children1 = [{ 'w:highlight': [], ':@': { '@_w:val': 'cyan' } }];
+    const formatting1 = parseRunProperties(children1);
+    expect(formatting1.highlightColor).toBe('cyan');
+
+    const children2 = [{ 'w:highlight': [], ':@': { '@_w:val': 'magenta' } }];
+    const formatting2 = parseRunProperties(children2);
+    expect(formatting2.highlightColor).toBe('magenta');
+  });
+
+  test('w:highlight with cyan stores cyan', () => {
+    const children = [{ 'w:highlight': [], ':@': { '@_w:val': 'cyan' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(true);
+    expect(formatting.highlightColor).toBe('cyan');
+  });
+
+  test('w:shd with auto fill does not store highlightColor', () => {
+    const children = [{ 'w:shd': [], ':@': { '@_w:fill': 'auto' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(false);
+    expect(formatting.highlightColor).toBeUndefined();
+  });
+
+  test('formattingEquals distinguishes different highlight colors via buildMarkdown', () => {
+    const content = [
+      {
+        type: 'text' as const,
+        text: 'yellow',
+        commentIds: new Set<string>(),
+        formatting: { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'yellow' }
+      },
+      {
+        type: 'text' as const,
+        text: 'cyan',
+        commentIds: new Set<string>(),
+        formatting: { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'cyan' }
+      }
+    ];
+
+    const result = buildMarkdown(content, new Map());
+    // Should produce two separate highlight spans, not merged
+    expect(result).toBe('==yellow====cyan==');
+  });
+});
+
 describe('parseHeadingLevel', () => {
   test('returns undefined for non-heading pStyle', () => {
     const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'Normal' } }];
@@ -715,5 +783,250 @@ describe('parseHeadingLevel', () => {
     
     const children3 = [{ 'w:pStyle': [], ':@': { '@_w:val': 'Heading3' } }];
     expect(parseHeadingLevel(children3)).toBe(3);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Property tests for converter integration (Task 4.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Helper: build a minimal DOCX Uint8Array from raw document.xml content.
+ * Reuses the same pattern as existing tests in this file.
+ */
+async function buildSyntheticDocx(documentXml: string): Promise<Uint8Array> {
+  const JSZip = (await import('jszip')).default;
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
+  zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+  zip.file('word/document.xml', documentXml);
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
+/** Wrap body XML in the standard w:document envelope with both w: and m: namespaces */
+function wrapDocumentXml(bodyContent: string): string {
+  return '<?xml version="1.0"?>'
+    + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    + ' xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">'
+    + '<w:body>' + bodyContent + '</w:body>'
+    + '</w:document>';
+}
+
+// Generator: short alphanumeric string for math variable names
+const mathVar = fc.constantFrom(
+  ...'abcdefghijklmnopqrstuvwxyz'.split(''),
+);
+
+// Generator: short text strings for paragraph content (no special chars that break XML)
+const safeText = fc.array(
+  fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz0123456789 '.split('')),
+  { minLength: 1, maxLength: 10 },
+).map(arr => arr.join('').trim()).filter(s => s.length > 0);
+
+// ---------------------------------------------------------------------------
+// Feature: docx-equation-conversion, Property 1: Delimiter selection matches element type
+// **Validates: Requirements 1.1, 2.1**
+// ---------------------------------------------------------------------------
+
+describe('Feature: docx-equation-conversion, Property 1: Delimiter selection matches element type', () => {
+  test('inline m:oMath produces $...$ delimiters in output', () => {
+    fc.assert(
+      fc.asyncProperty(mathVar, async (v) => {
+        const xml = wrapDocumentXml(
+          '<w:p><m:oMath><m:r><m:t>' + v + '</m:t></m:r></m:oMath></w:p>'
+        );
+        const buf = await buildSyntheticDocx(xml);
+        const result = await convertDocx(buf);
+        const md = result.markdown;
+        // Must contain $v$ but NOT $$v$$
+        expect(md).toContain('$' + v + '$');
+        // Ensure it's not wrapped in display $$ delimiters
+        // Check that the match is single-$ by verifying no $$ surrounds it
+        const ddIndex = md.indexOf('$$');
+        if (ddIndex !== -1) {
+          // If $$ appears, it should not be wrapping our variable
+          expect(md).not.toContain('$$' + '\n' + v + '\n' + '$$');
+        }
+      }),
+      { numRuns: 30 },
+    );
+  });
+
+  test('display m:oMathPara produces $$ delimiters in output', () => {
+    fc.assert(
+      fc.asyncProperty(mathVar, async (v) => {
+        const xml = wrapDocumentXml(
+          '<m:oMathPara><m:oMath><m:r><m:t>' + v + '</m:t></m:r></m:oMath></m:oMathPara>'
+        );
+        const buf = await buildSyntheticDocx(xml);
+        const result = await convertDocx(buf);
+        const md = result.markdown;
+        // Must contain $$\nv\n$$
+        expect(md).toContain('$$' + '\n' + v + '\n' + '$$');
+      }),
+      { numRuns: 30 },
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Feature: docx-equation-conversion, Property 2: Display equations are separated by blank lines
+// **Validates: Requirements 2.2**
+// ---------------------------------------------------------------------------
+
+describe('Feature: docx-equation-conversion, Property 2: Display equations are separated by blank lines', () => {
+  test('display equation has blank lines separating it from surrounding text', () => {
+    fc.assert(
+      fc.asyncProperty(safeText, mathVar, safeText, async (before, v, after) => {
+        const xml = wrapDocumentXml(
+          '<w:p><w:r><w:t>' + before + '</w:t></w:r></w:p>'
+          + '<m:oMathPara><m:oMath><m:r><m:t>' + v + '</m:t></m:r></m:oMath></m:oMathPara>'
+          + '<w:p><w:r><w:t>' + after + '</w:t></w:r></w:p>'
+        );
+        const buf = await buildSyntheticDocx(xml);
+        const result = await convertDocx(buf);
+        const md = result.markdown;
+
+        const displayBlock = '$$' + '\n' + v + '\n' + '$$';
+        expect(md).toContain(displayBlock);
+
+        // Find the display block position and verify blank lines around it
+        const idx = md.indexOf(displayBlock);
+        expect(idx).toBeGreaterThan(0);
+
+        // Check blank line before: the two chars before the $$ should be \n\n
+        const preceding = md.substring(0, idx);
+        expect(preceding.endsWith('\n\n')).toBe(true);
+
+        // Check blank line after: after the display block, next content should be preceded by \n\n
+        const following = md.substring(idx + displayBlock.length);
+        expect(following.startsWith('\n\n')).toBe(true);
+      }),
+      { numRuns: 30 },
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Feature: docx-equation-conversion, Property 8: Mixed content preservation
+// **Validates: Requirements 1.2, 3A.1**
+// ---------------------------------------------------------------------------
+
+describe('Feature: docx-equation-conversion, Property 8: Mixed content preservation', () => {
+  test('paragraphs with text and inline math preserve both in document order', () => {
+    fc.assert(
+      fc.asyncProperty(safeText, mathVar, safeText, async (textBefore, v, textAfter) => {
+        const xml = wrapDocumentXml(
+          '<w:p>'
+          + '<w:r><w:t>' + textBefore + '</w:t></w:r>'
+          + '<m:oMath><m:r><m:t>' + v + '</m:t></m:r></m:oMath>'
+          + '<w:r><w:t>' + textAfter + '</w:t></w:r>'
+          + '</w:p>'
+        );
+        const buf = await buildSyntheticDocx(xml);
+        const result = await convertDocx(buf);
+        const md = result.markdown;
+
+        // Output must contain the text before, the inline math, and the text after
+        expect(md).toContain(textBefore);
+        expect(md).toContain('$' + v + '$');
+        expect(md).toContain(textAfter);
+
+        // Verify document order: textBefore appears before $v$, which appears before textAfter
+        const idxBefore = md.indexOf(textBefore);
+        const idxMath = md.indexOf('$' + v + '$');
+        const idxAfter = md.lastIndexOf(textAfter);
+        expect(idxBefore).toBeLessThan(idxMath);
+        expect(idxMath).toBeLessThan(idxAfter);
+      }),
+      { numRuns: 30 },
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration: DOCX equation conversion (Task 4.4)
+// ---------------------------------------------------------------------------
+
+describe('Integration: DOCX equation conversion', () => {
+  test('inline equation produces $...$ (Req 1.1, 1.3)', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('$x$');
+  });
+
+  test('display equation produces ' + '$$' + '...' + '$$' + ' with blank lines (Req 2.1, 2.2)', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Before</w:t></w:r></w:p>'
+      + '<m:oMathPara><m:oMath><m:r><m:t>E=mc^2</m:t></m:r></m:oMath></m:oMathPara>'
+      + '<w:p><w:r><w:t>After</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    const md = result.markdown;
+
+    const displayBlock = '$$' + '\n' + '\\mathrm{E=mc^2}' + '\n' + '$$';
+    expect(md).toContain(displayBlock);
+
+    // Verify blank line before display block
+    const idx = md.indexOf(displayBlock);
+    const preceding = md.substring(0, idx);
+    expect(preceding.endsWith('\n\n')).toBe(true);
+
+    // Verify blank line after display block
+    const following = md.substring(idx + displayBlock.length);
+    expect(following.startsWith('\n\n')).toBe(true);
+  });
+
+  test('mixed text + inline equation preserves both (Req 1.2)', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p>'
+      + '<w:r><w:t>The value </w:t></w:r>'
+      + '<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>'
+      + '<w:r><w:t> is positive.</w:t></w:r>'
+      + '</w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('The value $x$ is positive.');
+  });
+
+  test('empty m:oMath is skipped (Req 6.3)', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><m:oMath></m:oMath></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).not.toContain('$');
+  });
+
+  test('display math between same-type list items preserves a blank line before the next list item', () => {
+    const content = [
+      { type: 'para', listMeta: { type: 'bullet', level: 0 } },
+      { type: 'text', text: 'item1', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+      { type: 'math', latex: 'x', display: true },
+      { type: 'para', listMeta: { type: 'bullet', level: 0 } },
+      { type: 'text', text: 'item2', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+    ] as any;
+    const markdown = buildMarkdown(content, new Map());
+    expect(markdown).toBe('- item1\n\n$$\nx\n$$\n\n- item2');
+  });
+
+  test('fraction in inline equation (Req 3.1)', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><m:oMath>'
+      + '<m:f>'
+      + '<m:num><m:r><m:t>a</m:t></m:r></m:num>'
+      + '<m:den><m:r><m:t>b</m:t></m:r></m:den>'
+      + '</m:f>'
+      + '</m:oMath></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('$\\frac{a}{b}$');
   });
 });
