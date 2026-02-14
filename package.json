@@ -1,7 +1,7 @@
 {
-  "name": "mdmarkup",
-  "displayName": "Markdown Annotations and Formatting",
-  "description": "Markdown formatting and CriticMarkup annotations tools",
+  "name": "manuscript-markdown",
+  "displayName": "Manuscript Markdown",
+  "description": "Specification, converter, and VS Code extension for roundtrip manuscript editing between Markdown and MS Word",
   "version": "0.9.3",
   "engines": {
     "vscode": "^1.103.2"
@@ -13,7 +13,7 @@
   ],
   "keywords": [
     "markdown",
-    "mdmarkup",
+    "manuscript-markdown",
     "critic markup",
     "annotations",
     "formatting",
@@ -22,11 +22,11 @@
   "publisher": "jbearak",
   "license": "GPL-3.0",
   "bugs": {
-    "url": "https://github.com/jbearak/mdmarkup/issues"
+    "url": "https://github.com/jbearak/manuscript-markdown/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jbearak/mdmarkup.git"
+    "url": "https://github.com/jbearak/manuscript-markdown.git"
   },
   "activationEvents": [
     "onLanguage:markdown"
@@ -35,187 +35,187 @@
   "contributes": {
     "commands": [
       {
-        "command": "mdmarkup.nextChange",
+        "command": "manuscript-markdown.nextChange",
         "title": "Next Change"
       },
       {
-        "command": "mdmarkup.prevChange",
+        "command": "manuscript-markdown.prevChange",
         "title": "Previous Change"
       },
       {
-        "command": "mdmarkup.markAddition",
+        "command": "manuscript-markdown.markAddition",
         "title": "Mark as Addition"
       },
       {
-        "command": "mdmarkup.markDeletion",
+        "command": "manuscript-markdown.markDeletion",
         "title": "Mark as Deletion"
       },
       {
-        "command": "mdmarkup.markSubstitution",
+        "command": "manuscript-markdown.markSubstitution",
         "title": "Substitution"
       },
       {
-        "command": "mdmarkup.highlight",
+        "command": "manuscript-markdown.highlight",
         "title": "Highlight"
       },
       {
-        "command": "mdmarkup.insertComment",
+        "command": "manuscript-markdown.insertComment",
         "title": "Comment"
       },
       {
-        "command": "mdmarkup.highlightAndComment",
+        "command": "manuscript-markdown.highlightAndComment",
         "title": "Comment and highlight"
       },
       {
-        "command": "mdmarkup.substituteAndComment",
+        "command": "manuscript-markdown.substituteAndComment",
         "title": "Comment and substitution"
       },
       {
-        "command": "mdmarkup.additionAndComment",
+        "command": "manuscript-markdown.additionAndComment",
         "title": "Comment and mark as addition"
       },
       {
-        "command": "mdmarkup.deletionAndComment",
+        "command": "manuscript-markdown.deletionAndComment",
         "title": "Comment and mark as deletion"
       },
       {
-        "command": "mdmarkup.formatBold",
+        "command": "manuscript-markdown.formatBold",
         "title": "Bold"
       },
       {
-        "command": "mdmarkup.formatItalic",
+        "command": "manuscript-markdown.formatItalic",
         "title": "Italic"
       },
       {
-        "command": "mdmarkup.formatBoldItalic",
+        "command": "manuscript-markdown.formatBoldItalic",
         "title": "Bold Italic"
       },
       {
-        "command": "mdmarkup.formatStrikethrough",
+        "command": "manuscript-markdown.formatStrikethrough",
         "title": "Strikethrough"
       },
       {
-        "command": "mdmarkup.formatUnderline",
+        "command": "manuscript-markdown.formatUnderline",
         "title": "Underline"
       },
       {
-        "command": "mdmarkup.formatHighlight",
+        "command": "manuscript-markdown.formatHighlight",
         "title": "Highlight"
       },
       {
-        "command": "mdmarkup.formatInlineCode",
+        "command": "manuscript-markdown.formatInlineCode",
         "title": "Inline Code"
       },
       {
-        "command": "mdmarkup.formatCodeBlock",
+        "command": "manuscript-markdown.formatCodeBlock",
         "title": "Code Block"
       },
       {
-        "command": "mdmarkup.formatLink",
+        "command": "manuscript-markdown.formatLink",
         "title": "Link"
       },
       {
-        "command": "mdmarkup.formatBulletedList",
+        "command": "manuscript-markdown.formatBulletedList",
         "title": "Bulleted List"
       },
       {
-        "command": "mdmarkup.formatNumberedList",
+        "command": "manuscript-markdown.formatNumberedList",
         "title": "Numbered List"
       },
       {
-        "command": "mdmarkup.formatTaskList",
+        "command": "manuscript-markdown.formatTaskList",
         "title": "Task List"
       },
       {
-        "command": "mdmarkup.formatQuoteBlock",
+        "command": "manuscript-markdown.formatQuoteBlock",
         "title": "Quote Block"
       },
       {
-        "command": "mdmarkup.formatHeading1",
+        "command": "manuscript-markdown.formatHeading1",
         "title": "Heading 1"
       },
       {
-        "command": "mdmarkup.formatHeading2",
+        "command": "manuscript-markdown.formatHeading2",
         "title": "Heading 2"
       },
       {
-        "command": "mdmarkup.formatHeading3",
+        "command": "manuscript-markdown.formatHeading3",
         "title": "Heading 3"
       },
       {
-        "command": "mdmarkup.formatHeading4",
+        "command": "manuscript-markdown.formatHeading4",
         "title": "Heading 4"
       },
       {
-        "command": "mdmarkup.formatHeading5",
+        "command": "manuscript-markdown.formatHeading5",
         "title": "Heading 5"
       },
       {
-        "command": "mdmarkup.formatHeading6",
+        "command": "manuscript-markdown.formatHeading6",
         "title": "Heading 6"
       },
       {
-        "command": "mdmarkup.reflowTable",
+        "command": "manuscript-markdown.reflowTable",
         "title": "Reflow Table"
       },
       {
-        "command": "mdmarkup.convertDocx",
+        "command": "manuscript-markdown.convertDocx",
         "title": "Export to Markdown"
       },
       {
-        "command": "mdmarkup.formatHighlight_yellow",
+        "command": "manuscript-markdown.formatHighlight_yellow",
         "title": "Yellow"
       },
       {
-        "command": "mdmarkup.formatHighlight_green",
+        "command": "manuscript-markdown.formatHighlight_green",
         "title": "Green"
       },
       {
-        "command": "mdmarkup.formatHighlight_turquoise",
+        "command": "manuscript-markdown.formatHighlight_turquoise",
         "title": "Turquoise"
       },
       {
-        "command": "mdmarkup.formatHighlight_pink",
+        "command": "manuscript-markdown.formatHighlight_pink",
         "title": "Pink"
       },
       {
-        "command": "mdmarkup.formatHighlight_blue",
+        "command": "manuscript-markdown.formatHighlight_blue",
         "title": "Blue"
       },
       {
-        "command": "mdmarkup.formatHighlight_red",
+        "command": "manuscript-markdown.formatHighlight_red",
         "title": "Red"
       },
       {
-        "command": "mdmarkup.formatHighlight_dark-blue",
+        "command": "manuscript-markdown.formatHighlight_dark-blue",
         "title": "Dark Blue"
       },
       {
-        "command": "mdmarkup.formatHighlight_teal",
+        "command": "manuscript-markdown.formatHighlight_teal",
         "title": "Teal"
       },
       {
-        "command": "mdmarkup.formatHighlight_violet",
+        "command": "manuscript-markdown.formatHighlight_violet",
         "title": "Violet"
       },
       {
-        "command": "mdmarkup.formatHighlight_dark-red",
+        "command": "manuscript-markdown.formatHighlight_dark-red",
         "title": "Dark Red"
       },
       {
-        "command": "mdmarkup.formatHighlight_dark-yellow",
+        "command": "manuscript-markdown.formatHighlight_dark-yellow",
         "title": "Dark Yellow"
       },
       {
-        "command": "mdmarkup.formatHighlight_gray-50",
+        "command": "manuscript-markdown.formatHighlight_gray-50",
         "title": "Gray 50%"
       },
       {
-        "command": "mdmarkup.formatHighlight_gray-25",
+        "command": "manuscript-markdown.formatHighlight_gray-25",
         "title": "Gray 25%"
       },
       {
-        "command": "mdmarkup.formatHighlight_black",
+        "command": "manuscript-markdown.formatHighlight_black",
         "title": "Black"
       }
     ],
@@ -266,84 +266,84 @@
       ],
       "markdown.annotations": [
         {
-          "command": "mdmarkup.highlightAndComment",
+          "command": "manuscript-markdown.highlightAndComment",
           "when": "editorLangId == markdown",
-          "group": "1_mdmarkup@1"
+          "group": "1_manuscript-markdown@1"
         },
         {
-          "command": "mdmarkup.additionAndComment",
+          "command": "manuscript-markdown.additionAndComment",
           "when": "editorLangId == markdown",
-          "group": "1_mdmarkup@2"
+          "group": "1_manuscript-markdown@2"
         },
         {
-          "command": "mdmarkup.deletionAndComment",
+          "command": "manuscript-markdown.deletionAndComment",
           "when": "editorLangId == markdown",
-          "group": "1_mdmarkup@3"
+          "group": "1_manuscript-markdown@3"
         },
         {
-          "command": "mdmarkup.substituteAndComment",
+          "command": "manuscript-markdown.substituteAndComment",
           "when": "editorLangId == markdown",
-          "group": "1_mdmarkup@4"
+          "group": "1_manuscript-markdown@4"
         },
         {
-          "command": "mdmarkup.highlight",
+          "command": "manuscript-markdown.highlight",
           "when": "editorLangId == markdown",
-          "group": "2_mdmarkup@1"
+          "group": "2_manuscript-markdown@1"
         },
         {
-          "command": "mdmarkup.markAddition",
+          "command": "manuscript-markdown.markAddition",
           "when": "editorLangId == markdown",
-          "group": "2_mdmarkup@2"
+          "group": "2_manuscript-markdown@2"
         },
         {
-          "command": "mdmarkup.markDeletion",
+          "command": "manuscript-markdown.markDeletion",
           "when": "editorLangId == markdown",
-          "group": "2_mdmarkup@3"
+          "group": "2_manuscript-markdown@3"
         },
         {
-          "command": "mdmarkup.markSubstitution",
+          "command": "manuscript-markdown.markSubstitution",
           "when": "editorLangId == markdown",
-          "group": "2_mdmarkup@4"
+          "group": "2_manuscript-markdown@4"
         },
         {
-          "command": "mdmarkup.prevChange",
+          "command": "manuscript-markdown.prevChange",
           "when": "editorLangId == markdown",
           "group": "3_navigation@1"
         },
         {
-          "command": "mdmarkup.nextChange",
+          "command": "manuscript-markdown.nextChange",
           "when": "editorLangId == markdown",
           "group": "3_navigation@2"
         }
       ],
       "markdown.formatting": [
         {
-          "command": "mdmarkup.formatBold",
+          "command": "manuscript-markdown.formatBold",
           "when": "editorLangId == markdown",
           "group": "1_format@1"
         },
         {
-          "command": "mdmarkup.formatItalic",
+          "command": "manuscript-markdown.formatItalic",
           "when": "editorLangId == markdown",
           "group": "1_format@2"
         },
         {
-          "command": "mdmarkup.formatBoldItalic",
+          "command": "manuscript-markdown.formatBoldItalic",
           "when": "editorLangId == markdown",
           "group": "1_format@3"
         },
         {
-          "command": "mdmarkup.formatStrikethrough",
+          "command": "manuscript-markdown.formatStrikethrough",
           "when": "editorLangId == markdown",
           "group": "1_format@4"
         },
         {
-          "command": "mdmarkup.formatUnderline",
+          "command": "manuscript-markdown.formatUnderline",
           "when": "editorLangId == markdown",
           "group": "1_format@5"
         },
         {
-          "command": "mdmarkup.formatHighlight",
+          "command": "manuscript-markdown.formatHighlight",
           "when": "editorLangId == markdown",
           "group": "1a_highlight@1"
         },
@@ -353,42 +353,42 @@
           "group": "1a_highlight@2"
         },
         {
-          "command": "mdmarkup.formatInlineCode",
+          "command": "manuscript-markdown.formatInlineCode",
           "when": "editorLangId == markdown",
           "group": "1_format@7"
         },
         {
-          "command": "mdmarkup.formatCodeBlock",
+          "command": "manuscript-markdown.formatCodeBlock",
           "when": "editorLangId == markdown",
           "group": "1_format@8"
         },
         {
-          "command": "mdmarkup.formatLink",
+          "command": "manuscript-markdown.formatLink",
           "when": "editorLangId == markdown",
           "group": "1_format@9"
         },
         {
-          "command": "mdmarkup.formatBulletedList",
+          "command": "manuscript-markdown.formatBulletedList",
           "when": "editorLangId == markdown",
           "group": "2_lists@1"
         },
         {
-          "command": "mdmarkup.formatNumberedList",
+          "command": "manuscript-markdown.formatNumberedList",
           "when": "editorLangId == markdown",
           "group": "2_lists@2"
         },
         {
-          "command": "mdmarkup.formatTaskList",
+          "command": "manuscript-markdown.formatTaskList",
           "when": "editorLangId == markdown",
           "group": "2_lists@3"
         },
         {
-          "command": "mdmarkup.formatQuoteBlock",
+          "command": "manuscript-markdown.formatQuoteBlock",
           "when": "editorLangId == markdown",
           "group": "2_lists@4"
         },
         {
-          "command": "mdmarkup.reflowTable",
+          "command": "manuscript-markdown.reflowTable",
           "when": "editorLangId == markdown",
           "group": "2_tables@5"
         },
@@ -400,55 +400,55 @@
       ],
       "markdown.heading": [
         {
-          "command": "mdmarkup.formatHeading1",
+          "command": "manuscript-markdown.formatHeading1",
           "when": "editorLangId == markdown",
           "group": "1_heading@1"
         },
         {
-          "command": "mdmarkup.formatHeading2",
+          "command": "manuscript-markdown.formatHeading2",
           "when": "editorLangId == markdown",
           "group": "1_heading@2"
         },
         {
-          "command": "mdmarkup.formatHeading3",
+          "command": "manuscript-markdown.formatHeading3",
           "when": "editorLangId == markdown",
           "group": "1_heading@3"
         },
         {
-          "command": "mdmarkup.formatHeading4",
+          "command": "manuscript-markdown.formatHeading4",
           "when": "editorLangId == markdown",
           "group": "1_heading@4"
         },
         {
-          "command": "mdmarkup.formatHeading5",
+          "command": "manuscript-markdown.formatHeading5",
           "when": "editorLangId == markdown",
           "group": "1_heading@5"
         },
         {
-          "command": "mdmarkup.formatHeading6",
+          "command": "manuscript-markdown.formatHeading6",
           "when": "editorLangId == markdown",
           "group": "1_heading@6"
         }
       ],
       "markdown.highlightColor": [
-        { "command": "mdmarkup.formatHighlight_yellow", "when": "editorLangId == markdown", "group": "1_color@1" },
-        { "command": "mdmarkup.formatHighlight_green", "when": "editorLangId == markdown", "group": "1_color@2" },
-        { "command": "mdmarkup.formatHighlight_turquoise", "when": "editorLangId == markdown", "group": "1_color@3" },
-        { "command": "mdmarkup.formatHighlight_pink", "when": "editorLangId == markdown", "group": "1_color@4" },
-        { "command": "mdmarkup.formatHighlight_blue", "when": "editorLangId == markdown", "group": "1_color@5" },
-        { "command": "mdmarkup.formatHighlight_red", "when": "editorLangId == markdown", "group": "1_color@6" },
-        { "command": "mdmarkup.formatHighlight_dark-blue", "when": "editorLangId == markdown", "group": "2_color@1" },
-        { "command": "mdmarkup.formatHighlight_teal", "when": "editorLangId == markdown", "group": "2_color@2" },
-        { "command": "mdmarkup.formatHighlight_violet", "when": "editorLangId == markdown", "group": "2_color@3" },
-        { "command": "mdmarkup.formatHighlight_dark-red", "when": "editorLangId == markdown", "group": "2_color@4" },
-        { "command": "mdmarkup.formatHighlight_dark-yellow", "when": "editorLangId == markdown", "group": "2_color@5" },
-        { "command": "mdmarkup.formatHighlight_gray-50", "when": "editorLangId == markdown", "group": "3_color@1" },
-        { "command": "mdmarkup.formatHighlight_gray-25", "when": "editorLangId == markdown", "group": "3_color@2" },
-        { "command": "mdmarkup.formatHighlight_black", "when": "editorLangId == markdown", "group": "3_color@3" }
+        { "command": "manuscript-markdown.formatHighlight_yellow", "when": "editorLangId == markdown", "group": "1_color@1" },
+        { "command": "manuscript-markdown.formatHighlight_green", "when": "editorLangId == markdown", "group": "1_color@2" },
+        { "command": "manuscript-markdown.formatHighlight_turquoise", "when": "editorLangId == markdown", "group": "1_color@3" },
+        { "command": "manuscript-markdown.formatHighlight_pink", "when": "editorLangId == markdown", "group": "1_color@4" },
+        { "command": "manuscript-markdown.formatHighlight_blue", "when": "editorLangId == markdown", "group": "1_color@5" },
+        { "command": "manuscript-markdown.formatHighlight_red", "when": "editorLangId == markdown", "group": "1_color@6" },
+        { "command": "manuscript-markdown.formatHighlight_dark-blue", "when": "editorLangId == markdown", "group": "2_color@1" },
+        { "command": "manuscript-markdown.formatHighlight_teal", "when": "editorLangId == markdown", "group": "2_color@2" },
+        { "command": "manuscript-markdown.formatHighlight_violet", "when": "editorLangId == markdown", "group": "2_color@3" },
+        { "command": "manuscript-markdown.formatHighlight_dark-red", "when": "editorLangId == markdown", "group": "2_color@4" },
+        { "command": "manuscript-markdown.formatHighlight_dark-yellow", "when": "editorLangId == markdown", "group": "2_color@5" },
+        { "command": "manuscript-markdown.formatHighlight_gray-50", "when": "editorLangId == markdown", "group": "3_color@1" },
+        { "command": "manuscript-markdown.formatHighlight_gray-25", "when": "editorLangId == markdown", "group": "3_color@2" },
+        { "command": "manuscript-markdown.formatHighlight_black", "when": "editorLangId == markdown", "group": "3_color@3" }
       ],
       "explorer/context": [
         {
-          "command": "mdmarkup.convertDocx",
+          "command": "manuscript-markdown.convertDocx",
           "when": "resourceExtname == .docx",
           "group": "9_export"
         }
@@ -456,12 +456,12 @@
     },
     "keybindings": [
       {
-        "command": "mdmarkup.nextChange",
+        "command": "manuscript-markdown.nextChange",
         "key": "alt+shift+j",
         "when": "editorTextFocus && editorLangId == markdown"
       },
       {
-        "command": "mdmarkup.prevChange",
+        "command": "manuscript-markdown.prevChange",
         "key": "alt+shift+k",
         "when": "editorTextFocus && editorLangId == markdown"
       }
@@ -474,42 +474,42 @@
     ],
     "grammars": [
       {
-        "path": "./syntaxes/mdmarkup.json",
-        "scopeName": "mdmarkup.injection",
+        "path": "./syntaxes/manuscript-markdown.json",
+        "scopeName": "manuscript-markdown.injection",
         "injectTo": [
           "text.html.markdown"
         ]
       }
     ],
     "markdown.previewStyles": [
-      "./media/mdmarkup.css"
+      "./media/manuscript-markdown.css"
     ],
     "markdown.markdownItPlugins": true,
     "configuration": {
-      "title": "Markdown Annotations",
+      "title": "Manuscript Markdown",
       "properties": {
-        "mdmarkup.includeAuthorNameInComments": {
+        "manuscriptMarkdown.includeAuthorNameInComments": {
           "type": "boolean",
           "default": true,
           "description": "Include author name in comment attribution"
         },
-        "mdmarkup.authorName": {
+        "manuscriptMarkdown.authorName": {
           "type": "string",
           "default": "",
           "description": "Author name to use in comments (leave empty to use OS username)"
         },
-        "mdmarkup.includeTimestampInComments": {
+        "manuscriptMarkdown.includeTimestampInComments": {
           "type": "boolean",
           "default": true,
           "description": "Include timestamp in comment author attribution (format: username (yyyy-mm-dd hh:mm))"
         },
-        "mdmarkup.defaultHighlightColor": {
+        "manuscriptMarkdown.defaultHighlightColor": {
           "type": "string",
           "enum": ["yellow", "green", "turquoise", "pink", "blue", "red", "dark-blue", "teal", "violet", "dark-red", "dark-yellow", "gray-50", "gray-25", "black"],
           "default": "yellow",
           "description": "Default background color for ==highlight== formatting when no color is specified"
         },
-        "mdmarkup.citationKeyFormat": {
+        "manuscriptMarkdown.citationKeyFormat": {
           "type": "string",
           "enum": [
             "authorYearTitle",
@@ -533,7 +533,7 @@
     "clean": "rm -rf out/",
     "rebuild": "bun run clean && bun run compile",
     "package": "bun run rebuild && bunx vsce package",
-    "install-local": "bun run package && code --install-extension mdmarkup-$(node -p \"require('./package.json').version\").vsix --force"
+    "install-local": "bun run package && code --install-extension manuscript-markdown-$(node -p \"require('./package.json').version\").vsix --force"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

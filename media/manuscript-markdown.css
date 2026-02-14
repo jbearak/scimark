@@ -1,0 +1,101 @@
+/* Manuscript Markdown Preview Styles - Theme Aware */
+
+/* Default (Light Theme) Colors */
+:root {
+  --manuscript-markdown-addition-color: #008800;
+  --manuscript-markdown-addition-bg: rgba(0, 136, 0, 0.1);
+  --manuscript-markdown-deletion-color: #cc0000;
+  --manuscript-markdown-deletion-bg: rgba(204, 0, 0, 0.1);
+  --manuscript-markdown-substitution-color: #dd6600;
+  --manuscript-markdown-substitution-bg: rgba(221, 102, 0, 0.1);
+  --manuscript-markdown-format-highlight-bg: #ffeb3b;
+}
+
+/* Dark Theme Colors */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --manuscript-markdown-addition-color: #00dd00;
+    --manuscript-markdown-addition-bg: rgba(0, 221, 0, 0.15);
+    --manuscript-markdown-deletion-color: #ff4444;
+    --manuscript-markdown-deletion-bg: rgba(255, 68, 68, 0.15);
+    --manuscript-markdown-substitution-color: #ff9944;
+    --manuscript-markdown-substitution-bg: rgba(255, 153, 68, 0.15);
+    --manuscript-markdown-format-highlight-bg: #ffc107;
+  }
+}
+
+/* Addition - green with semi-transparent background */
+.manuscript-markdown-addition {
+  color: var(--manuscript-markdown-addition-color);
+  background-color: var(--manuscript-markdown-addition-bg);
+}
+
+/* Deletion - red with semi-transparent background and strikethrough */
+.manuscript-markdown-deletion {
+  color: var(--manuscript-markdown-deletion-color);
+  background-color: var(--manuscript-markdown-deletion-bg);
+  text-decoration: line-through;
+}
+
+/* Substitution - orange with semi-transparent background */
+.manuscript-markdown-substitution {
+  color: var(--manuscript-markdown-substitution-color);
+  background-color: var(--manuscript-markdown-substitution-bg);
+}
+
+/* Comment - muted theme foreground with grey background and italic */
+.manuscript-markdown-comment {
+  color: var(--vscode-descriptionForeground);
+  background-color: rgba(200, 200, 200, 0.35);
+  font-style: italic;
+}
+
+/* Highlight - grey background for CriticMarkup {==text==} */
+.manuscript-markdown-highlight {
+  color: inherit;
+  background-color: rgba(200, 200, 200, 0.35);
+}
+
+/* Format Highlight - yellow/amber for ==highlight== patterns */
+.manuscript-markdown-format-highlight {
+  background-color: var(--manuscript-markdown-format-highlight-bg);
+}
+
+/* Colored Highlight Classes - Light Theme */
+.manuscript-markdown-highlight-yellow { background-color: rgba(255, 255, 0, 0.40); }
+.manuscript-markdown-highlight-green { background-color: rgba(0, 255, 0, 0.30); }
+.manuscript-markdown-highlight-turquoise { background-color: rgba(0, 255, 255, 0.35); }
+.manuscript-markdown-highlight-pink { background-color: rgba(255, 0, 255, 0.25); }
+.manuscript-markdown-highlight-blue { background-color: rgba(0, 0, 255, 0.20); }
+.manuscript-markdown-highlight-red { background-color: rgba(255, 0, 0, 0.25); }
+.manuscript-markdown-highlight-dark-blue { background-color: rgba(0, 0, 128, 0.25); }
+.manuscript-markdown-highlight-teal { background-color: rgba(0, 128, 128, 0.25); }
+.manuscript-markdown-highlight-violet { background-color: rgba(128, 0, 128, 0.25); }
+.manuscript-markdown-highlight-dark-red { background-color: rgba(128, 0, 0, 0.25); }
+.manuscript-markdown-highlight-dark-yellow { background-color: rgba(128, 128, 0, 0.30); }
+.manuscript-markdown-highlight-gray-50 { background-color: rgba(128, 128, 128, 0.30); }
+.manuscript-markdown-highlight-gray-25 { background-color: rgba(192, 192, 192, 0.40); }
+.manuscript-markdown-highlight-black { background-color: rgba(0, 0, 0, 0.15); }
+
+/* Dark Theme Overrides (prefer VS Code theme classes) */
+body.vscode-dark .manuscript-markdown-comment {
+  background-color: rgba(200, 200, 200, 0.20);
+}
+body.vscode-dark .manuscript-markdown-highlight {
+  background-color: rgba(200, 200, 200, 0.20);
+}
+body.vscode-dark .manuscript-markdown-highlight-yellow { background-color: rgba(255, 255, 0, 0.25); }
+body.vscode-dark .manuscript-markdown-highlight-green { background-color: rgba(0, 255, 0, 0.20); }
+body.vscode-dark .manuscript-markdown-highlight-turquoise { background-color: rgba(0, 255, 255, 0.20); }
+body.vscode-dark .manuscript-markdown-highlight-pink { background-color: rgba(255, 0, 255, 0.20); }
+body.vscode-dark .manuscript-markdown-highlight-blue { background-color: rgba(0, 0, 255, 0.30); }
+body.vscode-dark .manuscript-markdown-highlight-red { background-color: rgba(255, 0, 0, 0.25); }
+body.vscode-dark .manuscript-markdown-highlight-dark-blue { background-color: rgba(0, 0, 128, 0.40); }
+body.vscode-dark .manuscript-markdown-highlight-teal { background-color: rgba(0, 128, 128, 0.35); }
+body.vscode-dark .manuscript-markdown-highlight-violet { background-color: rgba(128, 0, 128, 0.35); }
+body.vscode-dark .manuscript-markdown-highlight-dark-red { background-color: rgba(128, 0, 0, 0.40); }
+body.vscode-dark .manuscript-markdown-highlight-dark-yellow { background-color: rgba(128, 128, 0, 0.35); }
+body.vscode-dark .manuscript-markdown-highlight-gray-50 { background-color: rgba(128, 128, 128, 0.35); }
+body.vscode-dark .manuscript-markdown-highlight-gray-25 { background-color: rgba(192, 192, 192, 0.25); }
+body.vscode-dark .manuscript-markdown-highlight-black { background-color: rgba(0, 0, 0, 0.40); }
+

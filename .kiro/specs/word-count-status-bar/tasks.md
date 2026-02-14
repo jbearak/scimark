@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation plan breaks down the word count status bar feature into discrete coding tasks. The feature will be implemented in a new module (`src/wordcount.ts`) following the existing mdmarkup extension architecture. Each task builds incrementally, with testing integrated throughout to validate correctness early.
+This implementation plan breaks down the word count status bar feature into discrete coding tasks. The feature will be implemented in a new module (`src/wordcount.ts`) following the existing Manuscript Markdown extension architecture. Each task builds incrementally, with testing integrated throughout to validate correctness early.
 
 ## Tasks
 
@@ -116,4 +116,4 @@ This implementation plan breaks down the word count status bar feature into disc
 - Each task references specific requirements for traceability
 - Property tests use fast-check with minimum 100 iterations
 - The checkpoint ensures incremental validation before completion
-- Follow existing mdmarkup patterns for code organization and testing
+- Follow existing Manuscript Markdown patterns for code organization and testing

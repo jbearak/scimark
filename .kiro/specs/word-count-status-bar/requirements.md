@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document specifies the requirements for adding a word count status bar item to the mdmarkup VS Code extension. The feature will display word count information in the VS Code status bar, showing either the word count of the selected text or the entire document when no selection is active. This feature will allow users to uninstall Microsoft's word count sample extension by providing equivalent functionality integrated directly into mdmarkup.
+This document specifies the requirements for adding a word count status bar item to the Manuscript Markdown VS Code extension. The feature will display word count information in the VS Code status bar, showing either the word count of the selected text or the entire document when no selection is active. This feature will allow users to uninstall Microsoft's word count sample extension by providing equivalent functionality integrated directly into Manuscript Markdown.
 
 ## Glossary
 

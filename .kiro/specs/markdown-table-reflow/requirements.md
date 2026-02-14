@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This feature adds a "Reflow Table" command to the Markdown Formatting context menu in the VS Code mdmarkup extension. The command will reformat Markdown tables to ensure proper alignment and consistent spacing, making tables more readable and maintainable.
+This feature adds a "Reflow Table" command to the Markdown Formatting context menu in the VS Code Manuscript Markdown extension. The command will reformat Markdown tables to ensure proper alignment and consistent spacing, making tables more readable and maintainable.
 
 ## Glossary
 

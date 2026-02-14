@@ -1,51 +1,63 @@
-# mdmarkup - Markdown Annotations and Formatting
+# Manuscript Markdown
 
-A [Markdown](https://daringfireball.net/projects/markdown/syntax) extension for Visual Studio Code with [CriticMarkup](https://github.com/CriticMarkup/CriticMarkup-toolkit) support.
+A specification, converter, and VS Code extension for roundtrip manuscript editing between Markdown and MS Word, with Zotero citation support.
 
-Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jbearak.mdmarkup) or install locally via `.vsix` from [releases](https://github.com/jbearak/mdmarkup/releases).
+## Background
+
+- Wanted plain-text editing for manuscripts
+- Found [CriticMarkup](https://github.com/CriticMarkup/CriticMarkup-toolkit) and a [VS Code extension](https://github.com/jloow/vscode-criticmarkup) for it, which were used as starting points
+- Needed a more comprehensive spec, and a converter, to collaborate with people who use Word and Zotero
+
+## What It Is
+
+1. A **specification** extending Markdown + CriticMarkup + Pandoc
+2. A **converter** (DOCX to Markdown)
+3. A **VS Code extension**
+
+## Quick Start
+
+### Installation
+
+Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jbearak.manuscript-markdown) or install locally:
+
+```bash
+./setup.sh
+```
+
+### Usage
+
+- **Annotations**: Click **Markdown Annotations** in the toolbar or right-click menu for comment, highlight, addition, deletion, and substitution marks
+- **Formatting**: Click **Markdown Formatting** for bold, italic, lists, headings, links, code, and table reflow
+- **DOCX Conversion**: Right-click a `.docx` file and select **Export to Markdown**
+- **Navigation**: Use `Alt+Shift+J` / `Alt+Shift+K` to jump between changes
 
 ## Features
 
-### Annotations
+- CriticMarkup annotations with comment attribution and timestamps
+- Markdown formatting toolbar (bold, italic, lists, headings, code, links, tables)
+- DOCX to Markdown conversion preserving formatting, comments, and citations
+- Zotero citation roundtrip with BibTeX export
+- Colored highlights with 14 color options
+- Syntax highlighting and Markdown preview rendering
+- Word count in status bar
 
-Click **Markdown Annotations** in the toolbar or right-click menu for:
-- **Combined**: Comment and highlight, Comment and mark as addition, Comment and mark as deletion, Comment and substitution
-- **Marks**: Highlight, Mark as Addition, Mark as Deletion, Substitution
-- **Navigation**: Previous Change, Next Change
+## Known Limitations
 
-### Formatting
+- No table conversion from DOCX
+- No conversion back to MS Word (DOCX export)
+- No marking comments as resolved (only delete)
+- Multi-line patterns only render in preview when starting at beginning of line
 
-Click **Markdown Formatting** in the toolbar or right-click menu for:
-- **Text**: Bold, Italic, Strikethrough, Code
-- **Lists**: Bulleted, Numbered, Task Lists
-- **Blocks**: Code Block, Quote Block
-- **Headings**: H1–H6
-- **Links & Tables**: Insert Link, Reflow Table with alignment
+## Documentation
 
-### Word Count
-
-A word count indicator appears in the status bar, displaying the total word count of the current document or selected text.
-
-### Configuration
-- Customizable author name (defaults to OS username)
-- Optional timestamps in comments
-
-## Known Issues and Limitations
-
-- **Multi-line preview rendering**: Multi-line patterns only render correctly in preview when they start at the **beginning of a line**. Patterns starting mid-line won't render, but **navigation commands work for patterns at any position**.
-
-- **TextMate syntax highlighting**: VS Code's TextMate grammar has limitations with complex multi-line patterns. While syntax highlighting is provided, very long patterns may not highlight perfectly across all lines.
-
-- **Nested patterns**: CriticMarkup patterns cannot be nested. Only the first complete pattern is recognized.
-
-- **Unclosed patterns**: Patterns without proper closing markup (e.g., `{++text without closing`) appear as literal text.
-
-## Development
-
-See [Development](docs/development.md).
+- [Specification Overview](docs/specification.md)
+- [CriticMarkup Syntax](docs/criticmarkup.md)
+- [Custom Extensions](docs/custom-extensions.md)
+- [DOCX Converter](docs/converter.md)
+- [Zotero Citation Roundtrip](docs/zotero-roundtrip-spec.md)
+- [Development Guide](docs/development.md)
 
 ## License
 
-Originally forked from [vscode-criticmarkup](https://github.com/jloow/vscode-criticmarkup) by Joel Lööw.
-
-This project is open-source software licensed under [GPLv3](LICENSE.txt).
+This project is free and open-source software, licensed under [GPLv3](LICENSE.txt).
+Contributions welcome!

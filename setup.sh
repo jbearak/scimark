@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# mdmarkup Setup Script
+# Manuscript Markdown Setup Script
 # Builds the VSIX package and installs it to supported editors
 #
 # USAGE:
@@ -22,7 +22,7 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
-echo "=== mdmarkup Setup ==="
+echo "=== Manuscript Markdown Setup ==="
 echo ""
 
 # Colors for output
@@ -51,7 +51,7 @@ echo ""
 
 # Find the newest VSIX file
 VERSION=$(node -p "require('./package.json').version")
-VSIX_FILE="mdmarkup-${VERSION}.vsix"
+VSIX_FILE="manuscript-markdown-${VERSION}.vsix"
 
 if [ ! -f "$VSIX_FILE" ]; then
     echo -e "${RED}Error: No VSIX file found: $VSIX_FILE${NC}"

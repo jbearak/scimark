@@ -2,7 +2,7 @@
 
 ## Overview
 
-This feature extends the existing `converter.ts` DOCX-to-Markdown converter and the mdmarkup editor/preview infrastructure to handle rich formatting. The converter changes are purely additive: the `ContentItem` union gains formatting metadata fields, `extractDocumentContent()` reads OOXML run/paragraph properties, and `buildMarkdown()` emits the appropriate Markdown delimiters. Separately, the editor gains a `==highlight==` formatting command, TextMate grammar pattern, and markdown-it preview rule — all distinct from the existing CriticMarkup `{==highlight==}` support.
+This feature extends the existing `converter.ts` DOCX-to-Markdown converter and the Manuscript Markdown editor/preview infrastructure to handle rich formatting. The converter changes are purely additive: the `ContentItem` union gains formatting metadata fields, `extractDocumentContent()` reads OOXML run/paragraph properties, and `buildMarkdown()` emits the appropriate Markdown delimiters. Separately, the editor gains a `==highlight==` formatting command, TextMate grammar pattern, and markdown-it preview rule — all distinct from the existing CriticMarkup `{==highlight==}` support.
 
 ## Architecture
 
@@ -15,8 +15,8 @@ graph TD
     D[word/_rels/document.xml.rels] -->|parseRelationships| B
     B -->|buildMarkdown| E[Markdown string]
 
-    F[syntaxes/mdmarkup.json] --> G[Editor syntax highlighting]
-    H[src/preview/mdmarkup-plugin.ts] --> I[Markdown preview]
+    F[syntaxes/manuscript-markdown.json] --> G[Editor syntax highlighting]
+    H[src/preview/manuscript-markdown-plugin.ts] --> I[Markdown preview]
     J[src/extension.ts + package.json] --> K[Formatting command + menus]
 ```
 
@@ -151,10 +151,10 @@ let segText = wrapWithFormatting(seg.text, fmtForComment);
 
 Three additions for `==text==` formatting highlight (not CriticMarkup):
 
-1. **Command**: `mdmarkup.formatHighlight` — calls `wrapSelection(text, '==', '==')`, registered in `extension.ts`.
+1. **Command**: `manuscript-markdown.formatHighlight` — calls `wrapSelection(text, '==', '==')`, registered in `extension.ts`.
 2. **Menu**: Added to `markdown.formatting` submenu in `package.json` at `1_format@6` (after underline, before inline code which shifts to `@7`).
-3. **TextMate grammar**: New `format_highlight` pattern in `syntaxes/mdmarkup.json` matching `==…==` but NOT `{==…==}`. Uses a negative lookbehind for `{` and negative lookahead for `}`. The capture group uses `[^}=]+` to exclude `=` characters, ensuring multiple inline highlights on one line tokenize as separate spans.
-4. **Preview**: New inline rule in `mdmarkup-plugin.ts` that detects `==…==` (when not preceded by `{`) and renders as `<mark class="mdmarkup-format-highlight">`. New CSS class with a yellow/amber background distinct from the purple CriticMarkup highlight.
+3. **TextMate grammar**: New `format_highlight` pattern in `syntaxes/manuscript-markdown.json` matching `==…==` but NOT `{==…==}`. Uses a negative lookbehind for `{` and negative lookahead for `}`. The capture group uses `[^}=]+` to exclude `=` characters, ensuring multiple inline highlights on one line tokenize as separate spans.
+4. **Preview**: New inline rule in `manuscript-markdown-plugin.ts` that detects `==…==` (when not preceded by `{`) and renders as `<mark class="manuscript-markdown-format-highlight">`. New CSS class with a yellow/amber background distinct from the purple CriticMarkup highlight.
 
 > **AGENTS.md learning:** TextMate inline highlight regex should exclude `=` inside `==...==` captures (e.g., `[^}=]+`) so multiple inline highlights on one line tokenize as separate spans and stay consistent with preview rendering.
 
@@ -325,7 +325,7 @@ This prevents fragmented output like `**bold**` `**more bold**` → `**bold more
 
 ### Property 10: Preview ==highlight== rendering
 
-*For any* non-empty text string that does not contain `==`, rendering `==text==` through the markdown-it plugin shall produce HTML output containing a `<mark>` element with the `mdmarkup-format-highlight` CSS class and the original text as content.
+*For any* non-empty text string that does not contain `==`, rendering `==text==` through the markdown-it plugin shall produce HTML output containing a `<mark>` element with the `manuscript-markdown-format-highlight` CSS class and the original text as content.
 
 **Validates: Requirements 16.1**
 

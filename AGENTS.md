@@ -1,4 +1,4 @@
-# AGENTS.md - LLM Guidance for mdmarkup
+# AGENTS.md - LLM Guidance for Manuscript Markdown
 
 This file is intentionally short. It's a map to the docs and a short list of invariants that are easy to regress.
 
@@ -13,8 +13,8 @@ User-facing:
 Code (authoritative for behavior):
 - Navigation: `src/changes.ts`
 - Formatting: `src/formatting.ts`
-- Preview: `src/preview/mdmarkup-plugin.ts`
-- Syntax highlighting: `syntaxes/mdmarkup.json`
+- Preview: `src/preview/manuscript-markdown-plugin.ts`
+- Syntax highlighting: `syntaxes/manuscript-markdown.json`
 
 ## Key invariants (do not regress)
 
@@ -29,14 +29,14 @@ Code (authoritative for behavior):
   - Use strict containment checks to identify overlapping matches
 
 - **Configuration**
-  - Author name handling respects `mdmarkup.authorName` setting and falls back to OS username
+  - Author name handling respects `manuscriptMarkdown.authorName` setting and falls back to OS username
   - Timestamps are ISO 8601 format
   - See `src/author.ts` for implementation
 
 - **Preview rendering**
   - markdown-it plugin handles both inline and block-level patterns
   - Multi-line patterns must start at line beginning for block-level detection
-  - CSS classes are standardized in `media/mdmarkup.css`
+  - CSS classes are standardized in `media/manuscript-markdown.css`
 
 ## Quick commands
 
@@ -69,7 +69,7 @@ Code (authoritative for behavior):
 - Preview plugin config access: Use module-level get/set functions in a shared module (e.g., `highlight-colors.ts`) to pass VS Code settings to the markdown-it plugin without importing `vscode` in the plugin file
 - Editor decorations: Use `DecorationRenderOptions` `light` and `dark` sub-properties for theme-aware backgrounds; VS Code auto-selects the correct variant
 - Preview suffix parsing: In `==text=={color}`, only treat `{...}` as a color suffix when the closing `}` is within parse bounds and the identifier matches `[a-z0-9-]+`; otherwise keep it as literal text to avoid swallowing content
-- Highlight fallback hierarchy: For `==text=={invalid}`, use configured `mdmarkup.defaultHighlightColor` first; only fall back to yellow/amber when the configured default is invalid/unavailable, and keep preview/editor extraction behavior aligned
+- Highlight fallback hierarchy: For `==text=={invalid}`, use configured `manuscriptMarkdown.defaultHighlightColor` first; only fall back to yellow/amber when the configured default is invalid/unavailable, and keep preview/editor extraction behavior aligned
 - Deletion editor styling: Do not set an explicit foreground color decoration for `{--...--}` content; this can briefly show TextMate/theme `markup.deleted` color, then get overridden by extension decorations (visible flicker). Apply only strikethrough in the decoration and let theme token colors drive foreground.
 - Comment editor styling: Do not set an explicit foreground color decoration for `{>>...<<}` content; this can briefly show theme token color, then get overridden by extension decorations (visible flicker). Keep only background + italic so theme token foreground remains stable.
 - Comment token scope mapping: In TextMate grammar, scope `{>>...<<}` as comment (`comment.block*`) rather than function/entity scopes so themes can color Critic comments consistently with regular Markdown/HTML comments.

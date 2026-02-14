@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design describes a bash shell script that automates semantic version bumping for the mdmarkup VS Code extension, following the pattern established in the raven repository. The script will read the current version from `package.json`, calculate the new version based on the bump type (major, minor, patch, or explicit version), update the file using `npm version`, and create a git commit with a tag.
+This design describes a bash shell script that automates semantic version bumping for the Manuscript Markdown VS Code extension, following the pattern established in the raven repository. The script will read the current version from `package.json`, calculate the new version based on the bump type (major, minor, patch, or explicit version), update the file using `npm version`, and create a git commit with a tag.
 
 The script follows Unix conventions and uses standard tools available on macOS (sed, git, npm). It validates preconditions before making changes, provides clear error messages for failure cases, and uses `set -e` for fail-fast behavior.
 
@@ -132,7 +132,7 @@ The script interacts with the version field in package.json:
 
 ```json
 {
-  "name": "mdmarkup",
+  "name": "manuscript-markdown",
   "version": "0.9.0",
   ...
 }

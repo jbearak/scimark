@@ -2,7 +2,7 @@
 
 ## Overview
 
-This feature adds Markdown-to-DOCX export to the mdmarkup extension, the inverse of the existing DOCX-to-Markdown converter. It parses a Markdown document (using the same formatting subset the importer produces) and generates a valid `.docx` zip archive containing OOXML markup. The generated files must open without errors in Microsoft Word, LibreOffice, and Google Docs.
+This feature adds Markdown-to-DOCX export to the Manuscript Markdown extension, the inverse of the existing DOCX-to-Markdown converter. It parses a Markdown document (using the same formatting subset the importer produces) and generates a valid `.docx` zip archive containing OOXML markup. The generated files must open without errors in Microsoft Word, LibreOffice, and Google Docs.
 
 ## Architecture
 

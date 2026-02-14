@@ -4,9 +4,9 @@ import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import { VALID_COLOR_IDS, getDefaultHighlightColor } from '../highlight-colors';
 
 /**
- * Defines a mdmarkup pattern configuration
+ * Defines a Manuscript Markdown pattern configuration
  */
-interface mdmarkupPattern {
+interface manuscriptMarkdownPattern {
   name: string;           // Pattern identifier (e.g., 'addition', 'deletion')
   regex: RegExp;          // Regular expression to match the pattern
   cssClass: string;       // CSS class to apply to rendered HTML
@@ -14,38 +14,38 @@ interface mdmarkupPattern {
 }
 
 /**
- * Pattern configurations for all five mdmarkup types
+ * Pattern configurations for all five Manuscript Markdown types
  * Note: Using .*? instead of .+? to allow empty patterns
  */
-const patterns: mdmarkupPattern[] = [
+const patterns: manuscriptMarkdownPattern[] = [
   { 
     name: 'addition', 
     regex: /\{\+\+(.*?)\+\+\}/gs, 
-    cssClass: 'mdmarkup-addition', 
+    cssClass: 'manuscript-markdown-addition', 
     htmlTag: 'ins' 
   },
   { 
     name: 'deletion', 
     regex: /\{--(.*?)--\}/gs, 
-    cssClass: 'mdmarkup-deletion', 
+    cssClass: 'manuscript-markdown-deletion', 
     htmlTag: 'del' 
   },
   { 
     name: 'substitution', 
     regex: /\{~~(.*?)~>(.*?)~~\}/gs, 
-    cssClass: 'mdmarkup-substitution', 
+    cssClass: 'manuscript-markdown-substitution', 
     htmlTag: 'span' 
   },
   { 
     name: 'comment', 
     regex: /\{>>(.*?)<<\}/gs, 
-    cssClass: 'mdmarkup-comment', 
+    cssClass: 'manuscript-markdown-comment', 
     htmlTag: 'span' 
   },
   { 
     name: 'highlight', 
     regex: /\{==(.*?)==\}/gs, 
-    cssClass: 'mdmarkup-highlight', 
+    cssClass: 'manuscript-markdown-highlight', 
     htmlTag: 'mark' 
   }
 ];
@@ -82,7 +82,7 @@ function addInlineContent(state: StateInline, content: string): void {
 }
 
 /**
- * Block-level rule that identifies mdmarkup patterns before paragraph parsing
+ * Block-level rule that identifies Manuscript Markdown patterns before paragraph parsing
  * This prevents markdown-it from splitting patterns at empty lines
  * 
  * LIMITATION: Only detects patterns that start at the beginning of a line.
@@ -93,19 +93,19 @@ function addInlineContent(state: StateInline, content: string): void {
  * @param startLine - Starting line number
  * @param endLine - Ending line number
  * @param silent - Whether to only check without creating tokens
- * @returns true if a mdmarkup block was found and processed
+ * @returns true if a Manuscript Markdown block was found and processed
  */
-function mdmarkupBlock(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
+function manuscriptMarkdownBlock(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
   const pos = state.bMarks[startLine] + state.tShift[startLine];
   const max = state.eMarks[startLine];
   
-  // Quick check: does this line start with a potential mdmarkup pattern?
+  // Quick check: does this line start with a potential Manuscript Markdown pattern?
   if (pos + 3 > max) return false;
   
   const src = state.src;
   const lineStart = src.slice(pos, Math.min(pos + 3, max));
   
-  // Check if this line starts with a mdmarkup opening marker
+  // Check if this line starts with a Manuscript Markdown opening marker
   const patterns = ['{++', '{--', '{~~', '{>>', '{=='];
   if (!patterns.includes(lineStart)) {
     return false;
@@ -153,7 +153,7 @@ function mdmarkupBlock(state: StateBlock, startLine: number, endLine: number, si
   
   if (silent) return true;
   
-  // Create a paragraph token that contains the entire mdmarkup pattern
+  // Create a paragraph token that contains the entire Manuscript Markdown pattern
   const token = state.push('paragraph_open', 'p', 1);
   token.map = [startLine, nextLine];
   
@@ -207,10 +207,10 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
       // Found closing ==
       if (!silent) {
         const content = src.slice(start + 2, pos);
-        const tokenOpen = state.push('mdmarkup_format_highlight_open', 'mark', 1);
+        const tokenOpen = state.push('manuscript_markdown_format_highlight_open', 'mark', 1);
         
         // Check for optional {color} suffix after closing ==
-        let cssClass = 'mdmarkup-format-highlight';
+        let cssClass = 'manuscript-markdown-format-highlight';
         let endPos = pos + 2;
         let hasColorSuffix = false;
         if (pos + 2 < max && src.charCodeAt(pos + 2) === 0x7B /* { */) {
@@ -220,22 +220,22 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
             if (/^[a-z0-9-]+$/.test(colorId)) {
               hasColorSuffix = true;
               if (VALID_COLOR_IDS.includes(colorId)) {
-                cssClass = 'mdmarkup-format-highlight mdmarkup-highlight-' + colorId;
+                cssClass = 'manuscript-markdown-format-highlight manuscript-markdown-highlight-' + colorId;
               } else {
                 const defaultColor = resolveDefaultColor();
                 if (defaultColor !== 'yellow') {
-                  cssClass = 'mdmarkup-format-highlight mdmarkup-highlight-' + defaultColor;
+                  cssClass = 'manuscript-markdown-format-highlight manuscript-markdown-highlight-' + defaultColor;
                 }
               }
               endPos = closeBrace + 1;
             }
           }
         }
-        if (!hasColorSuffix && cssClass === 'mdmarkup-format-highlight') {
+        if (!hasColorSuffix && cssClass === 'manuscript-markdown-format-highlight') {
           // Apply configurable default color only for ==text== without color suffix
           const defaultColor = resolveDefaultColor();
           if (defaultColor !== 'yellow') {
-            cssClass = 'mdmarkup-format-highlight mdmarkup-highlight-' + defaultColor;
+            cssClass = 'manuscript-markdown-format-highlight manuscript-markdown-highlight-' + defaultColor;
           }
         }
         tokenOpen.attrSet('class', cssClass);
@@ -243,7 +243,7 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
         // Add parsed inline content to allow nested Markdown processing
         addInlineContent(state, content);
         
-        state.push('mdmarkup_format_highlight_close', 'mark', -1);
+        state.push('manuscript_markdown_format_highlight_close', 'mark', -1);
         state.pos = endPos;
       } else {
         // In silent mode, still need to advance past {color} suffix
@@ -268,17 +268,17 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
 }
 
 /**
- * Inline rule function that scans for mdmarkup patterns and creates tokens
+ * Inline rule function that scans for Manuscript Markdown patterns and creates tokens
  * @param state - The inline parsing state
  * @param silent - Whether to only check without creating tokens
  * @returns true if a pattern was found and processed
  */
-function parsemdmarkup(state: StateInline, silent: boolean): boolean {
+function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
   const start = state.pos;
   const max = state.posMax;
   const src = state.src;
 
-  // Check if we're at a potential mdmarkup start
+  // Check if we're at a potential Manuscript Markdown start
   if (src.charCodeAt(start) !== 0x7B /* { */) {
     return false;
   }
@@ -290,13 +290,13 @@ function parsemdmarkup(state: StateInline, silent: boolean): boolean {
     if (endPos !== -1) {
       if (!silent) {
         const content = src.slice(start + 3, endPos);
-        const tokenOpen = state.push('mdmarkup_addition_open', 'ins', 1);
-        tokenOpen.attrSet('class', 'mdmarkup-addition');
+        const tokenOpen = state.push('manuscript_markdown_addition_open', 'ins', 1);
+        tokenOpen.attrSet('class', 'manuscript-markdown-addition');
         
         // Add parsed inline content to allow nested Markdown processing
         addInlineContent(state, content);
         
-        state.push('mdmarkup_addition_close', 'ins', -1);
+        state.push('manuscript_markdown_addition_close', 'ins', -1);
       }
       state.pos = endPos + endMarker.length;
       return true;
@@ -310,13 +310,13 @@ function parsemdmarkup(state: StateInline, silent: boolean): boolean {
     if (endPos !== -1) {
       if (!silent) {
         const content = src.slice(start + 3, endPos);
-        const tokenOpen = state.push('mdmarkup_deletion_open', 'del', 1);
-        tokenOpen.attrSet('class', 'mdmarkup-deletion');
+        const tokenOpen = state.push('manuscript_markdown_deletion_open', 'del', 1);
+        tokenOpen.attrSet('class', 'manuscript-markdown-deletion');
         
         // Add parsed inline content to allow nested Markdown processing
         addInlineContent(state, content);
         
-        state.push('mdmarkup_deletion_close', 'del', -1);
+        state.push('manuscript_markdown_deletion_close', 'del', -1);
       }
       state.pos = endPos + endMarker.length;
       return true;
@@ -335,28 +335,28 @@ function parsemdmarkup(state: StateInline, silent: boolean): boolean {
           const oldText = fullContent.slice(0, separatorPos);
           const newText = fullContent.slice(separatorPos + 2);
           
-          const tokenOpen = state.push('mdmarkup_substitution_open', 'span', 1);
-          tokenOpen.attrSet('class', 'mdmarkup-substitution');
+          const tokenOpen = state.push('manuscript_markdown_substitution_open', 'span', 1);
+          tokenOpen.attrSet('class', 'manuscript-markdown-substitution');
           
           // Old text with deletion styling
-          const tokenOldOpen = state.push('mdmarkup_substitution_old_open', 'del', 1);
-          tokenOldOpen.attrSet('class', 'mdmarkup-deletion');
+          const tokenOldOpen = state.push('manuscript_markdown_substitution_old_open', 'del', 1);
+          tokenOldOpen.attrSet('class', 'manuscript-markdown-deletion');
           
           // Add parsed inline content to allow nested Markdown processing
           addInlineContent(state, oldText);
           
-          state.push('mdmarkup_substitution_old_close', 'del', -1);
+          state.push('manuscript_markdown_substitution_old_close', 'del', -1);
           
           // New text with addition styling
-          const tokenNewOpen = state.push('mdmarkup_substitution_new_open', 'ins', 1);
-          tokenNewOpen.attrSet('class', 'mdmarkup-addition');
+          const tokenNewOpen = state.push('manuscript_markdown_substitution_new_open', 'ins', 1);
+          tokenNewOpen.attrSet('class', 'manuscript-markdown-addition');
           
           // Add parsed inline content to allow nested Markdown processing
           addInlineContent(state, newText);
           
-          state.push('mdmarkup_substitution_new_close', 'ins', -1);
+          state.push('manuscript_markdown_substitution_new_close', 'ins', -1);
           
-          state.push('mdmarkup_substitution_close', 'span', -1);
+          state.push('manuscript_markdown_substitution_close', 'span', -1);
         }
         state.pos = endPos + endMarker.length;
         return true;
@@ -371,13 +371,13 @@ function parsemdmarkup(state: StateInline, silent: boolean): boolean {
     if (endPos !== -1) {
       if (!silent) {
         const content = src.slice(start + 3, endPos);
-        const tokenOpen = state.push('mdmarkup_comment_open', 'span', 1);
-        tokenOpen.attrSet('class', 'mdmarkup-comment');
+        const tokenOpen = state.push('manuscript_markdown_comment_open', 'span', 1);
+        tokenOpen.attrSet('class', 'manuscript-markdown-comment');
         
         // Add parsed inline content to allow nested Markdown processing
         addInlineContent(state, content);
         
-        state.push('mdmarkup_comment_close', 'span', -1);
+        state.push('manuscript_markdown_comment_close', 'span', -1);
       }
       state.pos = endPos + endMarker.length;
       return true;
@@ -391,13 +391,13 @@ function parsemdmarkup(state: StateInline, silent: boolean): boolean {
     if (endPos !== -1) {
       if (!silent) {
         const content = src.slice(start + 3, endPos);
-        const tokenOpen = state.push('mdmarkup_highlight_open', 'mark', 1);
-        tokenOpen.attrSet('class', 'mdmarkup-highlight');
+        const tokenOpen = state.push('manuscript_markdown_highlight_open', 'mark', 1);
+        tokenOpen.attrSet('class', 'manuscript-markdown-highlight');
         
         // Add parsed inline content to allow nested Markdown processing
         addInlineContent(state, content);
         
-        state.push('mdmarkup_highlight_close', 'mark', -1);
+        state.push('manuscript_markdown_highlight_close', 'mark', -1);
       }
       state.pos = endPos + endMarker.length;
       return true;
@@ -408,65 +408,65 @@ function parsemdmarkup(state: StateInline, silent: boolean): boolean {
 }
 
 /**
- * Main plugin function that registers mdmarkup parsing with markdown-it
+ * Main plugin function that registers Manuscript Markdown parsing with markdown-it
  * @param md - The MarkdownIt instance to extend
  */
-export function mdmarkupPlugin(md: MarkdownIt): void {
+export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
   // Register the block-level rule to handle multi-line patterns with empty lines
   // This must run very early, before heading and paragraph parsing
-  md.block.ruler.before('heading', 'mdmarkup_block', mdmarkupBlock);
+  md.block.ruler.before('heading', 'manuscript_markdown_block', manuscriptMarkdownBlock);
   
-  // Register the inline rule for mdmarkup parsing
-  // Run before emphasis and other inline rules to handle mdmarkup first
-  md.inline.ruler.before('emphasis', 'mdmarkup', parsemdmarkup);
+  // Register the inline rule for Manuscript Markdown parsing
+  // Run before emphasis and other inline rules to handle Manuscript Markdown first
+  md.inline.ruler.before('emphasis', 'manuscript_markdown', parseManuscriptMarkdown);
   
   // Register the inline rule for ==highlight== patterns
-  // Run after mdmarkup to avoid conflicts with {==...==}
-  md.inline.ruler.after('mdmarkup', 'mdmarkup_format_highlight', parseFormatHighlight);
+  // Run after Manuscript Markdown to avoid conflicts with {==...==}
+  md.inline.ruler.after('manuscript_markdown', 'manuscript_markdown_format_highlight', parseFormatHighlight);
   
-  // Register renderers for each mdmarkup token type
+  // Register renderers for each Manuscript Markdown token type
   for (const pattern of patterns) {
-    md.renderer.rules[`mdmarkup_${pattern.name}_open`] = (tokens, idx) => {
+    md.renderer.rules[`manuscript_markdown_${pattern.name}_open`] = (tokens, idx) => {
       const token = tokens[idx];
       const className = token.attrGet('class') || pattern.cssClass;
       return `<${pattern.htmlTag} class="${className}">`;
     };
     
-    md.renderer.rules[`mdmarkup_${pattern.name}_close`] = (tokens, idx) => {
+    md.renderer.rules[`manuscript_markdown_${pattern.name}_close`] = (tokens, idx) => {
       const token = tokens[idx];
       return `</${token.tag}>`;
     };
   }
   
   // Special renderers for substitution sub-parts
-  md.renderer.rules['mdmarkup_substitution_old_open'] = (tokens, idx) => {
+  md.renderer.rules['manuscript_markdown_substitution_old_open'] = (tokens, idx) => {
     const token = tokens[idx];
     const className = token.attrGet('class') || '';
     return `<del class="${className}">`;
   };
   
-  md.renderer.rules['mdmarkup_substitution_old_close'] = () => {
+  md.renderer.rules['manuscript_markdown_substitution_old_close'] = () => {
     return '</del>';
   };
   
-  md.renderer.rules['mdmarkup_substitution_new_open'] = (tokens, idx) => {
+  md.renderer.rules['manuscript_markdown_substitution_new_open'] = (tokens, idx) => {
     const token = tokens[idx];
     const className = token.attrGet('class') || '';
     return `<ins class="${className}">`;
   };
   
-  md.renderer.rules['mdmarkup_substitution_new_close'] = () => {
+  md.renderer.rules['manuscript_markdown_substitution_new_close'] = () => {
     return '</ins>';
   };
   
   // Renderer for ==highlight== patterns
-  md.renderer.rules['mdmarkup_format_highlight_open'] = (tokens, idx) => {
+  md.renderer.rules['manuscript_markdown_format_highlight_open'] = (tokens, idx) => {
     const token = tokens[idx];
-    const className = token.attrGet('class') || 'mdmarkup-format-highlight';
+    const className = token.attrGet('class') || 'manuscript-markdown-format-highlight';
     return `<mark class="${className}">`;
   };
   
-  md.renderer.rules['mdmarkup_format_highlight_close'] = () => {
+  md.renderer.rules['manuscript_markdown_format_highlight_close'] = () => {
     return '</mark>';
   };
 }

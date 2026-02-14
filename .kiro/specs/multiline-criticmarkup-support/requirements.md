@@ -2,15 +2,15 @@
 
 ## Introduction
 
-This feature enables mdmarkup syntax to span multiple lines in Markdown documents. Currently, the TextMate grammar and parsing logic may not properly handle mdmarkup patterns that contain newline characters, limiting users to single-line edits. This enhancement will allow users to mark up longer passages of text that naturally span multiple lines, making mdmarkup more practical for real-world editing workflows.
+This feature enables Manuscript Markdown syntax to span multiple lines in Markdown documents. Currently, the TextMate grammar and parsing logic may not properly handle Manuscript Markdown patterns that contain newline characters, limiting users to single-line edits. This enhancement will allow users to mark up longer passages of text that naturally span multiple lines, making Manuscript Markdown more practical for real-world editing workflows.
 
 ## Glossary
 
-- **mdmarkup**: A lightweight markup syntax for tracking changes in plain text documents, consisting of five patterns: additions, deletions, substitutions, comments, and highlights
+- **Manuscript Markdown**: A lightweight markup syntax for tracking changes in plain text documents, consisting of five patterns: additions, deletions, substitutions, comments, and highlights
 - **TextMate Grammar**: A declarative syntax definition used by VS Code to provide syntax highlighting through pattern matching
 - **Inline Rule**: A markdown-it parsing rule that processes inline content (as opposed to block-level content)
-- **Pattern**: A specific mdmarkup syntax type (addition `{++...++}`, deletion `{--...--}`, substitution `{~~...~>...~~}`, comment `{>>...<<}`, or highlight `{==...==}`)
-- **Extension**: The VS Code mdmarkup extension that provides syntax highlighting, snippets, and navigation commands
+- **Pattern**: A specific Manuscript Markdown syntax type (addition `{++...++}`, deletion `{--...--}`, substitution `{~~...~>...~~}`, comment `{>>...<<}`, or highlight `{==...==}`)
+- **Extension**: The VS Code Manuscript Markdown extension that provides syntax highlighting, snippets, and navigation commands
 
 ## Requirements
 
@@ -71,11 +71,11 @@ This feature enables mdmarkup syntax to span multiple lines in Markdown document
 
 ### Requirement 6
 
-**User Story:** As a writer, I want mdmarkup patterns to work correctly even when they contain empty lines, so that I can mark up natural paragraph breaks within my changes.
+**User Story:** As a writer, I want Manuscript Markdown patterns to work correctly even when they contain empty lines, so that I can mark up natural paragraph breaks within my changes.
 
 #### Acceptance Criteria
 
-1. WHEN a mdmarkup pattern contains one or more empty lines THEN the Extension SHALL recognize the entire pattern including the empty lines
+1. WHEN a Manuscript Markdown pattern contains one or more empty lines THEN the Extension SHALL recognize the entire pattern including the empty lines
 2. WHEN rendering a pattern with empty lines in preview THEN the Extension SHALL preserve the empty lines in the output HTML
 3. WHEN navigating to a pattern with empty lines THEN the Extension SHALL select the entire pattern including all empty lines
 4. WHEN syntax highlighting a pattern with empty lines THEN the Extension SHALL apply highlighting to all lines including the lines before and after empty lines
@@ -86,6 +86,6 @@ This feature enables mdmarkup syntax to span multiple lines in Markdown document
 
 #### Acceptance Criteria
 
-1. WHEN parsing a document with multi-line mdmarkup patterns THEN the Extension SHALL complete syntax highlighting within 100 milliseconds for documents up to 10,000 lines
+1. WHEN parsing a document with multi-line Manuscript Markdown patterns THEN the Extension SHALL complete syntax highlighting within 100 milliseconds for documents up to 10,000 lines
 2. WHEN navigating between changes in a document with multi-line patterns THEN the Extension SHALL respond to navigation commands within 50 milliseconds
 3. WHEN rendering preview for documents with multi-line patterns THEN the Extension SHALL generate HTML output within 200 milliseconds for documents up to 10,000 lines

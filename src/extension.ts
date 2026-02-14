@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as changes from './changes';
 import * as formatting from './formatting';
 import * as author from './author';
-import { mdmarkupPlugin } from './preview/mdmarkup-plugin';
+import { manuscriptMarkdownPlugin } from './preview/manuscript-markdown-plugin';
 import { WordCountController } from './wordcount';
 import { convertDocx, CitationKeyFormat } from './converter';
 import {
@@ -27,41 +27,41 @@ import {
 export function activate(context: vscode.ExtensionContext) {
 	// Register existing navigation commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('mdmarkup.nextChange', () => changes.next()),
-		vscode.commands.registerCommand('mdmarkup.prevChange', () => changes.prev())
+		vscode.commands.registerCommand('manuscript-markdown.nextChange', () => changes.next()),
+		vscode.commands.registerCommand('manuscript-markdown.prevChange', () => changes.prev())
 	);
 
 	// Register CriticMarkup annotation commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('mdmarkup.markAddition', () => 
+		vscode.commands.registerCommand('manuscript-markdown.markAddition', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '{++', '++}'))
 		),
-		vscode.commands.registerCommand('mdmarkup.markDeletion', () => 
+		vscode.commands.registerCommand('manuscript-markdown.markDeletion', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '{--', '--}'))
 		),
-		vscode.commands.registerCommand('mdmarkup.markSubstitution', () => 
+		vscode.commands.registerCommand('manuscript-markdown.markSubstitution', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '{~~', '~>~~}', text.length + 5))
 		),
-		vscode.commands.registerCommand('mdmarkup.highlight', () => 
+		vscode.commands.registerCommand('manuscript-markdown.highlight', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '{==', '==}'))
 		),
-		vscode.commands.registerCommand('mdmarkup.insertComment', () => {
+		vscode.commands.registerCommand('manuscript-markdown.insertComment', () => {
 			const authorName = author.getFormattedAuthorName();
 			applyFormatting((text) => formatting.wrapSelection(text, '{>>', '<<}', 3, authorName));
 		}),
-		vscode.commands.registerCommand('mdmarkup.highlightAndComment', () => {
+		vscode.commands.registerCommand('manuscript-markdown.highlightAndComment', () => {
 			const authorName = author.getFormattedAuthorName();
 			applyFormatting((text) => formatting.highlightAndComment(text, authorName));
 		}),
-		vscode.commands.registerCommand('mdmarkup.substituteAndComment', () => {
+		vscode.commands.registerCommand('manuscript-markdown.substituteAndComment', () => {
 			const authorName = author.getFormattedAuthorName();
 			applyFormatting((text) => formatting.substituteAndComment(text, authorName));
 		}),
-		vscode.commands.registerCommand('mdmarkup.additionAndComment', () => {
+		vscode.commands.registerCommand('manuscript-markdown.additionAndComment', () => {
 			const authorName = author.getFormattedAuthorName();
 			applyFormatting((text) => formatting.additionAndComment(text, authorName));
 		}),
-		vscode.commands.registerCommand('mdmarkup.deletionAndComment', () => {
+		vscode.commands.registerCommand('manuscript-markdown.deletionAndComment', () => {
 			const authorName = author.getFormattedAuthorName();
 			applyFormatting((text) => formatting.deletionAndComment(text, authorName));
 		})
@@ -69,79 +69,79 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register Markdown formatting commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('mdmarkup.formatBold', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatBold', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '**', '**'))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatItalic', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatItalic', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '_', '_'))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatBoldItalic', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatBoldItalic', () => 
 			applyFormatting((text) => formatting.formatBoldItalic(text))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatStrikethrough', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatStrikethrough', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '~~', '~~'))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatUnderline', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatUnderline', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '<u>', '</u>'))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatHighlight', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatHighlight', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '==', '=='))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatInlineCode', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatInlineCode', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '`', '`'))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatCodeBlock', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatCodeBlock', () => 
 			applyFormatting((text) => formatting.wrapCodeBlock(text))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatLink', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatLink', () => 
 			applyFormatting((text) => formatting.formatLink(text))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatBulletedList', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatBulletedList', () => 
 			applyLineBasedFormatting((text) => formatting.wrapLines(text, '- '))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatNumberedList', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatNumberedList', () => 
 			applyLineBasedFormatting((text) => formatting.wrapLinesNumbered(text))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatTaskList', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatTaskList', () => 
 			applyLineBasedFormatting((text) => formatting.formatTaskList(text))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatQuoteBlock', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatQuoteBlock', () => 
 			applyLineBasedFormatting((text) => formatting.wrapLines(text, '> ', true))
 		)
 	);
 
 	// Register table formatting commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('mdmarkup.reflowTable', () => 
+		vscode.commands.registerCommand('manuscript-markdown.reflowTable', () => 
 			applyTableFormatting((text) => formatting.reflowTable(text))
 		)
 	);
 
 	// Register heading commands (use line-based formatting)
 	context.subscriptions.push(
-		vscode.commands.registerCommand('mdmarkup.formatHeading1', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatHeading1', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 1))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatHeading2', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatHeading2', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 2))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatHeading3', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatHeading3', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 3))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatHeading4', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatHeading4', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 4))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatHeading5', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatHeading5', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 5))
 		),
-		vscode.commands.registerCommand('mdmarkup.formatHeading6', () => 
+		vscode.commands.registerCommand('manuscript-markdown.formatHeading6', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 6))
 		)
 	);
 
 	// Register DOCX converter command
 	context.subscriptions.push(
-		vscode.commands.registerCommand('mdmarkup.convertDocx', async (uri?: vscode.Uri) => {
+		vscode.commands.registerCommand('manuscript-markdown.convertDocx', async (uri?: vscode.Uri) => {
 			try {
 				if (!uri) {
 					const files = await vscode.window.showOpenDialog({
@@ -152,7 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
 					uri = files[0];
 				}
 				const data = await vscode.workspace.fs.readFile(uri);
-				const format = vscode.workspace.getConfiguration('mdmarkup').get<CitationKeyFormat>('citationKeyFormat', 'authorYearTitle');
+				const format = vscode.workspace.getConfiguration('manuscriptMarkdown').get<CitationKeyFormat>('citationKeyFormat', 'authorYearTitle');
 				const result = await convertDocx(new Uint8Array(data), format);
 
 				const basePath = uri.fsPath.replace(/\.docx$/i, '');
@@ -218,13 +218,13 @@ export function activate(context: vscode.ExtensionContext) {
 	// --- Highlight decorations ---
 	// Read and sync default highlight color setting
 	function syncDefaultHighlightColor() {
-		const cfg = vscode.workspace.getConfiguration('mdmarkup');
+		const cfg = vscode.workspace.getConfiguration('manuscriptMarkdown');
 		setDefaultHighlightColor(cfg.get<string>('defaultHighlightColor', 'yellow'));
 	}
 	syncDefaultHighlightColor();
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration('mdmarkup.defaultHighlightColor')) {
+			if (e.affectsConfiguration('manuscriptMarkdown.defaultHighlightColor')) {
 				syncDefaultHighlightColor();
 				if (vscode.window.activeTextEditor) {
 					updateHighlightDecorations(vscode.window.activeTextEditor);
@@ -372,7 +372,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register colored highlight commands
 	for (const colorId of VALID_COLOR_IDS) {
 		context.subscriptions.push(
-			vscode.commands.registerCommand('mdmarkup.formatHighlight_' + colorId, () =>
+			vscode.commands.registerCommand('manuscript-markdown.formatHighlight_' + colorId, () =>
 				applyFormatting((text) => formatting.wrapColoredHighlight(text, colorId))
 			)
 		);
@@ -381,7 +381,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Return markdown-it plugin for preview integration
 	return {
 		extendMarkdownIt(md: any) {
-			return md.use(mdmarkupPlugin);
+			return md.use(manuscriptMarkdownPlugin);
 		}
 	};
 }

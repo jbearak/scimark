@@ -2,7 +2,7 @@
 
 ## Overview
 
-Extend the mdmarkup converter to handle rich DOCX formatting (bold, italic, underline, strikethrough, highlight, superscript, subscript, hyperlinks, headings, lists) and add `==highlight==` editor support (command, syntax highlighting, preview rendering). Implementation is incremental: types first, then extraction helpers, then buildMarkdown updates, then editor features, with tests woven in throughout.
+Extend the Manuscript Markdown converter to handle rich DOCX formatting (bold, italic, underline, strikethrough, highlight, superscript, subscript, hyperlinks, headings, lists) and add `==highlight==` editor support (command, syntax highlighting, preview rendering). Implementation is incremental: types first, then extraction helpers, then buildMarkdown updates, then editor features, with tests woven in throughout.
 
 ## Tasks
 
@@ -35,15 +35,15 @@ Extend the mdmarkup converter to handle rich DOCX formatting (bold, italic, unde
   - [x] 6.2 Write unit tests for edge cases
 
 - [x] 7. Add `==highlight==` editor command and menu entry
-  - [x] 7.1 Register `mdmarkup.formatHighlight` command in `src/extension.ts` and add to `package.json`
+  - [x] 7.1 Register `manuscript-markdown.formatHighlight` command in `src/extension.ts` and add to `package.json`
   - [x] 7.2 Write property test for highlight formatting command
 
 - [x] 8. Add `==highlight==` syntax highlighting in TextMate grammar
-  - [x] 8.1 Add `format_highlight` pattern to `syntaxes/mdmarkup.json`
+  - [x] 8.1 Add `format_highlight` pattern to `syntaxes/manuscript-markdown.json`
 
 - [x] 9. Add `==highlight==` preview rendering
-  - [x] 9.1 Add inline rule for `==…==` in `src/preview/mdmarkup-plugin.ts`
-  - [x] 9.2 Add CSS styles for `.mdmarkup-format-highlight` in `media/mdmarkup.css`
+  - [x] 9.1 Add inline rule for `==…==` in `src/preview/manuscript-markdown-plugin.ts`
+  - [x] 9.2 Add CSS styles for `.manuscript-markdown-format-highlight` in `media/manuscript-markdown.css`
   - [x] 9.3 Write property test for preview ==highlight== rendering
 
 - [x] 10. Final checkpoint - Ensure all tests pass

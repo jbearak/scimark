@@ -11,13 +11,13 @@ describe('Toolbar Configuration Property-Based Tests', () => {
     return JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
   };
 
-  // Helper to get mdmarkup-related toolbar entries
-  const getmdmarkupToolbarEntries = (packageJson: any) => {
+  // Helper to get Manuscript Markdown-related toolbar entries
+  const getManuscriptMarkdownToolbarEntries = (packageJson: any) => {
     const editorTitleMenu = packageJson.contributes?.menus?.['editor/title'] || [];
     
     return editorTitleMenu.filter((entry: any) => {
-      // Check if it's a mdmarkup command
-      if (entry.command && entry.command.startsWith('mdmarkup.')) {
+      // Check if it's a Manuscript Markdown command
+      if (entry.command && entry.command.startsWith('manuscript-markdown.')) {
         return true;
       }
       // Check if it's a markdown submenu (annotations or formatting)
@@ -40,12 +40,12 @@ describe('Toolbar Configuration Property-Based Tests', () => {
    * markdown files outside diff editor mode.
    */
   describe('Property 1: Toolbar button visibility configuration', () => {
-    it('should validate when clause for all mdmarkup toolbar entries', () => {
+    it('should validate when clause for all Manuscript Markdown toolbar entries', () => {
       fc.assert(
         fc.property(
           fc.constant(loadPackageJson()),
           (packageJson) => {
-            const toolbarEntries = getmdmarkupToolbarEntries(packageJson);
+            const toolbarEntries = getManuscriptMarkdownToolbarEntries(packageJson);
             
             // Verify we found the expected entries
             expect(toolbarEntries.length).toBeGreaterThan(0);
@@ -65,7 +65,7 @@ describe('Toolbar Configuration Property-Based Tests', () => {
 
     it('should verify all expected toolbar entries exist with correct when clauses', () => {
       const packageJson = loadPackageJson();
-      const toolbarEntries = getmdmarkupToolbarEntries(packageJson);
+      const toolbarEntries = getManuscriptMarkdownToolbarEntries(packageJson);
       
       // Should have exactly 2 entries: 2 submenus (prevChange and nextChange are in the annotations submenu)
       expect(toolbarEntries.length).toBe(2);
@@ -88,16 +88,16 @@ describe('Toolbar Configuration Property-Based Tests', () => {
    * Feature: editor-toolbar-buttons, Property 2: Button grouping and ordering
    * Validates: Requirements 3.1, 3.2
    * 
-   * For the two mdmarkup toolbar buttons (formatting submenu, annotations submenu),
+   * For the two Manuscript Markdown toolbar buttons (formatting submenu, annotations submenu),
    * they should be in the navigation group and ordered as: formatting (@1), annotations (@2)
    */
   describe('Property 2: Button grouping and ordering', () => {
-    it('should validate navigation group and ordering for all mdmarkup toolbar entries', () => {
+    it('should validate navigation group and ordering for all Manuscript Markdown toolbar entries', () => {
       fc.assert(
         fc.property(
           fc.constant(loadPackageJson()),
           (packageJson) => {
-            const toolbarEntries = getmdmarkupToolbarEntries(packageJson);
+            const toolbarEntries = getManuscriptMarkdownToolbarEntries(packageJson);
             
             // Verify all entries are in navigation group
             for (const entry of toolbarEntries) {
@@ -140,7 +140,7 @@ describe('Toolbar Configuration Property-Based Tests', () => {
         fc.property(
           fc.constant(loadPackageJson()),
           (packageJson) => {
-            const toolbarEntries = getmdmarkupToolbarEntries(packageJson);
+            const toolbarEntries = getManuscriptMarkdownToolbarEntries(packageJson);
             
             // Extract group names (without @suffix)
             const groups = toolbarEntries.map((e: any) => {

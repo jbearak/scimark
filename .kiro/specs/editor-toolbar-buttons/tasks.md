@@ -14,8 +14,8 @@
     - _Requirements: 1.1, 1.3, 1.4, 3.1, 3.2_
   
   - [x] 1.3 Update existing navigation button ordering
-    - Modify `mdmarkup.prevChange` entry to use `group: "navigation@3"`
-    - Modify `mdmarkup.nextChange` entry to use `group: "navigation@4"`
+    - Modify `manuscript-markdown.prevChange` entry to use `group: "navigation@3"`
+    - Modify `manuscript-markdown.nextChange` entry to use `group: "navigation@4"`
     - Ensures correct button order: Formatting, Annotations, Previous, Next
     - _Requirements: 3.1, 3.2, 3.3_
 
@@ -23,7 +23,7 @@
   - [x] 2.1 Write property test for toolbar button visibility configuration
     - **Property 1: Toolbar button visibility configuration**
     - **Validates: Requirements 1.1, 1.3, 1.4, 2.1, 2.3, 2.4**
-    - Parse package.json and verify all mdmarkup toolbar entries have correct `when` clause
+    - Parse package.json and verify all Manuscript Markdown toolbar entries have correct `when` clause
     - Test should validate: `editorLangId == markdown && !isInDiffEditor`
     - Run minimum 100 iterations
   
