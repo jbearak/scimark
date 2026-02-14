@@ -1197,17 +1197,17 @@ describe('Table Alignment Preservation Unit Tests', () => {
       throw new Error(`Expected default alignment (---) for column 3, got: ${separatorCells[3]}`);
     }
   });
+});
 
-  // Property 9: Highlight formatting command wraps with == delimiters
-  describe('Property 9: Highlight formatting command wraps with == delimiters', () => {
-    it('should wrap non-empty text with == delimiters', () => {
-      fc.assert(
-        fc.property(fc.string({ minLength: 1, maxLength: 100 }), (text) => {
-          const result = wrapSelection(text, '==', '==');
-          return result.newText === '==' + text + '==';
-        }),
-        { numRuns: 100 }
-      );
-    });
+// Property 9: Highlight formatting command wraps with == delimiters
+describe('Property 9: Highlight formatting command wraps with == delimiters', () => {
+  it('should wrap non-empty text with == delimiters', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1, maxLength: 100 }), (text) => {
+        const result = wrapSelection(text, '==', '==');
+        return result.newText === '==' + text + '==';
+      }),
+      { numRuns: 100 }
+    );
   });
 });

@@ -198,9 +198,12 @@ export function parseListMeta(pPrChildren: any[], numberingDefs: Map<string, Map
   const type = levels.get(ilvl);
   if (!type) return undefined;
   
+  const level = parseInt(ilvl, 10);
+  if (isNaN(level) || level < 0) return undefined;
+
   return {
     type,
-    level: parseInt(ilvl, 10)
+    level
   };
 }
 
@@ -570,7 +573,7 @@ export async function extractDocumentContent(
         } else if (key === 'w:commentRangeEnd') {
           activeComments.delete(getAttr(node, 'id'));
         } else if (key === 'w:hyperlink') {
-          const rId = getAttr(node, 'id');
+          const rId = node?.[':@']?.['@_r:id'] ?? getAttr(node, 'id');
           const prevHref = currentHref;
           currentHref = relationshipMap.get(rId);
           if (Array.isArray(node[key])) { walk(node[key], currentFormatting); }

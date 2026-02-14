@@ -101,7 +101,7 @@
       },
       {
         "command": "mdmarkup.formatHighlight",
-        "title": "Highlight"
+        "title": "Format Highlight"
       },
       {
         "command": "mdmarkup.formatInlineCode",

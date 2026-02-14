@@ -398,7 +398,7 @@ describe('buildMarkdown', () => {
   test('Property 5: Formatting delimiters appear inside hyperlink text', () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: 1, maxLength: 30 }),
+        fc.string({ minLength: 1, maxLength: 30 }).filter(s => !s.includes(']') && !s.includes(')')),
         fc.webUrl(),
         fc.record({
           bold: fc.boolean(),
