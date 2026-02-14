@@ -311,7 +311,7 @@ function translateFraction(children: any[]): string {
 function translateSuperscript(children: any[]): string {
   const base = findChild(children, 'm:e');
   const sup = findChild(children, 'm:sup');
-  if (base.length === 0 && sup.length === 0) {
+  if (base.length === 0 || sup.length === 0) {
     return fallbackPlaceholder('m:sSup', children);
   }
   const baseLatex = ommlToLatex(base);
@@ -327,7 +327,7 @@ function translateSuperscript(children: any[]): string {
 function translateSubscript(children: any[]): string {
   const base = findChild(children, 'm:e');
   const sub = findChild(children, 'm:sub');
-  if (base.length === 0 && sub.length === 0) {
+  if (base.length === 0 || sub.length === 0) {
     return fallbackPlaceholder('m:sSub', children);
   }
   const baseLatex = ommlToLatex(base);
@@ -344,7 +344,7 @@ function translateSubSup(children: any[]): string {
   const base = findChild(children, 'm:e');
   const sub = findChild(children, 'm:sub');
   const sup = findChild(children, 'm:sup');
-  if (base.length === 0 && sub.length === 0 && sup.length === 0) {
+  if (base.length === 0 || sub.length === 0 || sup.length === 0) {
     return fallbackPlaceholder('m:sSubSup', children);
   }
   const baseLatex = ommlToLatex(base);

@@ -315,7 +315,6 @@ function genFunction(tie: Tie): fc.Arbitrary<Record<string, any>> {
 
 
 /** Bounded OMML tree generator using fc.letrec */
-/** Bounded OMML tree generator using fc.letrec */
 function ommlTree(): fc.Arbitrary<Record<string, any>[]> {
   return fc.letrec((tie: Tie) => ({
     tree: fc.oneof(
@@ -783,6 +782,14 @@ describe('Unit tests: OMML construct translation', () => {
       };
       expect(ommlToLatex([node])).toBe('{x}^{2}');
     });
+    it('emits fallback when m:sSup is missing exponent child', () => {
+      const node = {
+        'm:sSup': [
+          { 'm:e': [makeRun('x')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toContain('[UNSUPPORTED: sSup]');
+    });
   });
 
   // --- Subscript (m:sSub → {base}_{sub}) --- Req 3.3
@@ -795,6 +802,14 @@ describe('Unit tests: OMML construct translation', () => {
         ],
       };
       expect(ommlToLatex([node])).toBe('{x}_{i}');
+    });
+    it('emits fallback when m:sSub is missing subscript child', () => {
+      const node = {
+        'm:sSub': [
+          { 'm:e': [makeRun('x')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toContain('[UNSUPPORTED: sSub]');
     });
   });
 
@@ -809,6 +824,15 @@ describe('Unit tests: OMML construct translation', () => {
         ],
       };
       expect(ommlToLatex([node])).toBe('{x}_{i}^{2}');
+    });
+    it('emits fallback when m:sSubSup is missing required children', () => {
+      const node = {
+        'm:sSubSup': [
+          { 'm:e': [makeRun('x')] },
+          { 'm:sup': [makeRun('2')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toContain('[UNSUPPORTED: sSubSup]');
     });
   });
 

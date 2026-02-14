@@ -823,6 +823,8 @@ export function buildMarkdown(
           output.push('\n\n');
         }
         output.push('$$' + '\n' + item.latex + '\n' + '$$');
+        // A display math block breaks list flow; reset list continuation state.
+        lastListType = undefined;
       } else {
         output.push('$' + item.latex + '$');
       }

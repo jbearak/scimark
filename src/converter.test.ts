@@ -1004,6 +1004,18 @@ describe('Integration: DOCX equation conversion', () => {
     expect(result.markdown).not.toContain('$');
   });
 
+  test('display math between same-type list items preserves a blank line before the next list item', () => {
+    const content = [
+      { type: 'para', listMeta: { type: 'bullet', level: 0 } },
+      { type: 'text', text: 'item1', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+      { type: 'math', latex: 'x', display: true },
+      { type: 'para', listMeta: { type: 'bullet', level: 0 } },
+      { type: 'text', text: 'item2', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+    ] as any;
+    const markdown = buildMarkdown(content, new Map());
+    expect(markdown).toBe('- item1\n\n$$\nx\n$$\n\n- item2');
+  });
+
   test('fraction in inline equation (Req 3.1)', async () => {
     const xml = wrapDocumentXml(
       '<w:p><m:oMath>'
