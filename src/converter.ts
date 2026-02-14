@@ -484,7 +484,7 @@ export async function extractZoteroCitations(data: Uint8Array | JSZip): Promise<
         }
 
         // Extract locator (coerce to string for numeric locators)
-        if (item.locator) {
+        if (item.locator != null) {
           const loc = String(item.locator).trim();
           if (loc) {
             result.locator = loc;

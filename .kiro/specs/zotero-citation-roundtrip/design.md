@@ -168,7 +168,7 @@ Error handling is unchanged from the existing converter design:
 
 - **Malformed JSON in field codes**: `extractZoteroCitations()` catches parse errors and pushes a placeholder `{ plainCitation: '', items: [] }` to keep positional indices aligned.
 - **Missing URI fields**: Gracefully omitted — `zoteroKey` and `zoteroUri` remain `undefined`, and `generateBibTeX()` skips those fields.
-- **Empty/whitespace locator**: Treated as absent — the `if (item.locator && ... item.locator.trim())` guard filters these out.
+- **Empty/whitespace locator**: Treated as absent — the `if (item.locator != null)` null-check plus `trim()` guard filters these out.
 
 ## Testing Strategy
 

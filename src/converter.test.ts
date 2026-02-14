@@ -1178,6 +1178,21 @@ describe('Zotero citation roundtrip', () => {
     expect(keys[0]).toContain(', p. 15');
   });
 
+  test('citationPandocKeys handles locator "0"', () => {
+    const citation: ZoteroCitation = {
+      plainCitation: '(Test)',
+      items: [{
+        authors: [{ family: 'Test', given: 'A' }],
+        title: 'Test Title', year: '2020', journal: 'J', volume: '1',
+        pages: '1-2', doi: '10.1/test', type: 'article-journal',
+        fullItemData: {}, locator: '0',
+      }],
+    };
+    const keyMap = buildCitationKeyMap([citation]);
+    const keys = citationPandocKeys(citation, keyMap);
+    expect(keys[0]).toContain(', p. 0');
+  });
+
   test('citationPandocKeys omits locator when absent', () => {
     const citation: ZoteroCitation = {
       plainCitation: '(Test)',
