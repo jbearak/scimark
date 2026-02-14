@@ -52,7 +52,7 @@ This feature extends the mdmarkup VS Code extension's highlight functionality to
 1. WHEN the Preview encounters a Colored_Highlight `==text=={color}`, THE Preview SHALL render the text with the background color corresponding to the specified Word_Highlight_Color.
 2. WHEN the Preview encounters a Default_Highlight `==text==`, THE Preview SHALL render the text with the existing yellow/amber background color unchanged.
 3. WHEN the Preview encounters a CriticMarkup highlight `{==text==}`, THE Preview SHALL render the text with the Comment_Gray background color, matching the MS Word style for annotated/commented-on text.
-4. WHEN the Preview encounters a Colored_Highlight with an unrecognized color identifier, THE Preview SHALL render the text with the existing yellow/amber default highlight background as a fallback.
+4. WHEN the Preview encounters a Colored_Highlight with an unrecognized color identifier, THE Preview SHALL render the text using the configured `mdmarkup.defaultHighlightColor`; IF that configured color cannot be resolved, THEN THE Preview SHALL fall back to the existing yellow/amber default highlight background.
 5. THE Preview CSS SHALL provide theme-aware color values for each highlight color, using `@media (prefers-color-scheme: dark)` to adjust background opacity or tint so that highlights remain legible on both Light_Theme and Dark_Theme backgrounds.
 6. FOR bright highlight colors (Yellow, Green, Turquoise, Pink) on Dark_Theme, THE Preview CSS SHALL reduce opacity or darken the background to avoid washing out text. FOR dark highlight colors (Dark Blue, Teal, Violet, Dark Red, Dark Yellow, Black) on Light_Theme, THE Preview CSS SHALL increase opacity or lighten the background to ensure the highlight is visible.
 
@@ -65,7 +65,7 @@ This feature extends the mdmarkup VS Code extension's highlight functionality to
 1. WHEN a Markdown file is opened or edited, THE Extension SHALL scan the document for Colored_Highlight patterns and apply Editor_Decorations with the corresponding background colors.
 2. WHEN a Markdown file is opened or edited, THE Extension SHALL scan the document for CriticMarkup highlight patterns (`{==text==}`) and apply an Editor_Decoration with the Comment_Gray background color.
 3. WHEN the document text changes, THE Extension SHALL update all Editor_Decorations to reflect the current highlight patterns.
-4. IF a Colored_Highlight contains an unrecognized color identifier, THEN THE Extension SHALL apply the default yellow/amber highlight background as a fallback decoration.
+4. IF a Colored_Highlight contains an unrecognized color identifier, THEN THE Extension SHALL apply the configured `mdmarkup.defaultHighlightColor`; IF that configured color cannot be resolved, THEN THE Extension SHALL apply the default yellow/amber highlight background as a fallback decoration.
 5. EACH Editor_Decoration SHALL use the VS Code `DecorationRenderOptions` `light` and `dark` properties to provide theme-appropriate background colors, so that highlights are legible on both Light_Theme and Dark_Theme editor backgrounds.
 6. FOR bright highlight colors on Dark_Theme, THE Extension SHALL use a lower-opacity or tinted background to avoid washing out text. FOR dark highlight colors on Light_Theme, THE Extension SHALL use a higher-opacity or lightened background to ensure visibility.
 

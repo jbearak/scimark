@@ -268,7 +268,7 @@ Add a new pattern for colored highlights that matches before the plain `format_h
 
 Extend the `combinedPattern` regex to include `==text=={color}`:
 
-```
+```text
 ==([^}=]+)==\{[a-z0-9-]+\}
 ```
 
@@ -361,9 +361,9 @@ CriticMarkup Comment_Gray: `#D9D9D9` → light: `rgba(217, 217, 217, 0.50)`, dar
 
 **Validates: Requirements 3.3**
 
-### Property 5: Preview falls back to yellow/amber for unrecognized colors
+### Property 5: Preview falls back to configured default for unrecognized colors (yellow/amber second-level fallback)
 
-*For any* text string and *for any* string that is NOT a valid color identifier, when the preview plugin parses `==text=={invalid}`, the resulting HTML SHALL contain a `<mark>` element with CSS class `mdmarkup-format-highlight` (default yellow/amber fallback).
+*For any* text string and *for any* string that is NOT a valid color identifier, when the preview plugin parses `==text=={invalid}`, the resulting HTML SHALL contain a `<mark>` element with styling derived from the configured default highlight color; if the configured default cannot be resolved, it SHALL fall back to `mdmarkup-format-highlight` (yellow/amber).
 
 **Validates: Requirements 3.4**
 
@@ -395,7 +395,7 @@ CriticMarkup Comment_Gray: `#D9D9D9` → light: `rgba(217, 217, 217, 0.50)`, dar
 
 | Scenario | Behavior |
 |----------|----------|
-| Unrecognized color identifier in `==text=={unknown}` | Treat as default format highlight with yellow/amber background in preview; no special editor decoration beyond existing syntax highlighting |
+| Unrecognized color identifier in `==text=={unknown}` | Treat as configured default highlight color in preview/editor; if configured default cannot be resolved, use yellow/amber fallback |
 | Empty text in `==  =={color}` | Wrap/render normally — empty highlights are valid (consistent with existing `==  ==` behavior) |
 | Color suffix without closing brace `==text=={yellow` | Do not parse as colored highlight; treat `==text==` as default highlight and leave `{yellow` as literal text |
 | Nested highlights `==outer ==inner=={red} outer==` | The inner pattern matches first (greedy left-to-right); outer `==` delimiters become literal text |
@@ -411,7 +411,7 @@ Each correctness property above maps to one property-based test using `fast-chec
 - **Property 2**: Generate random strings and valid color IDs → feed `==text=={color}` through the markdown-it plugin → verify output HTML class
 - **Property 3**: Generate random strings → feed `==text==` through the plugin → verify output HTML class is `mdmarkup-format-highlight` (yellow/amber)
 - **Property 4**: Generate random strings → feed `{==text==}` through the plugin → verify output HTML class is `mdmarkup-highlight` (Comment_Gray)
-- **Property 5**: Generate random strings and random *invalid* color IDs → feed through plugin → verify fallback class is `mdmarkup-format-highlight`
+- **Property 5**: Generate random strings and random *invalid* color IDs → feed through plugin → verify fallback follows configured default color (and `mdmarkup-format-highlight` only when default is unresolved)
 - **Property 6**: Generate documents with random highlight patterns → run extraction → verify colored highlights grouped by color and CriticMarkup highlights grouped under `'critic'`
 - **Property 7**: Generate random strings and valid color IDs → test regex match
 - **Property 8**: Generate documents with overlapping patterns → run filtering → verify no contained duplicates

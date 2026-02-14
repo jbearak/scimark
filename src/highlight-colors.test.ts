@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import { wrapColoredHighlight } from './formatting';
-import { VALID_COLOR_IDS, extractHighlightRanges } from './highlight-colors';
+import {
+  VALID_COLOR_IDS,
+  extractHighlightRanges,
+  setDefaultHighlightColor,
+  getDefaultHighlightColor
+} from './highlight-colors';
 
 const colorIdGen = fc.constantFrom(...VALID_COLOR_IDS);
 const safeTextGen = fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('=') && !s.includes('{') && !s.includes('}'));
@@ -20,6 +25,7 @@ describe('Property 1: Colored highlight wrapping preserves content', () => {
       { numRuns: 100 }
     );
   });
+
 });
 
 // Feature: highlight-colors, Property 6: Highlight range extraction finds colored highlights and CriticMarkup highlights
@@ -62,11 +68,23 @@ describe('Property 6: Highlight range extraction', () => {
     );
   });
 
-  it('should fall back to default for unrecognized color', () => {
+  it('should fall back to configured default for unrecognized color', () => {
+    fc.assert(
+      fc.property(safeTextGen, colorIdGen, (text, defaultColor) => {
+        const doc = '==' + text + '=={bogus}';
+        const ranges = extractHighlightRanges(doc, defaultColor);
+        const defaultRanges = ranges.get(defaultColor) || [];
+        expect(defaultRanges.length).toBe(1);
+      }),
+      { numRuns: 100 }
+    );
+  });
+
+  it('should fall back to yellow when configured default is invalid', () => {
     fc.assert(
       fc.property(safeTextGen, (text) => {
         const doc = '==' + text + '=={bogus}';
-        const ranges = extractHighlightRanges(doc, 'yellow');
+        const ranges = extractHighlightRanges(doc, 'not-a-color');
         const yellowRanges = ranges.get('yellow') || [];
         expect(yellowRanges.length).toBe(1);
       }),
@@ -77,15 +95,10 @@ describe('Property 6: Highlight range extraction', () => {
 
 // Feature: highlight-colors, Property 9: Default highlight color respects configuration
 describe('Property 9: Default highlight color respects configuration', () => {
-  const { VALID_COLOR_IDS, setDefaultHighlightColor, getDefaultHighlightColor, extractHighlightRanges } = require('./highlight-colors');
-  const colorIdGen = fc.constantFrom(...VALID_COLOR_IDS as string[]);
-  const safeTextGen = fc.string({ minLength: 1, maxLength: 50 }).filter(
-    (s: string) => !s.includes('=') && !s.includes('{') && !s.includes('}')
-  );
 
   it('should apply configured default color to ==text== in extractHighlightRanges', () => {
     fc.assert(
-      fc.property(safeTextGen, colorIdGen, (text: string, configColor: string) => {
+      fc.property(safeTextGen, colorIdGen, (text, configColor) => {
         const doc = '==' + text + '==';
         const ranges = extractHighlightRanges(doc, configColor);
         const colorRanges = ranges.get(configColor) || [];
@@ -96,20 +109,27 @@ describe('Property 9: Default highlight color respects configuration', () => {
   });
 
   it('should update getDefaultHighlightColor after setDefaultHighlightColor', () => {
-    fc.assert(
-      fc.property(colorIdGen, (color: string) => {
-        setDefaultHighlightColor(color);
-        expect(getDefaultHighlightColor()).toBe(color);
-      }),
-      { numRuns: 14 }
-    );
-    // Reset
-    setDefaultHighlightColor('yellow');
+    const originalDefault = getDefaultHighlightColor();
+    try {
+      fc.assert(
+        fc.property(colorIdGen, (color) => {
+          setDefaultHighlightColor(color);
+          expect(getDefaultHighlightColor()).toBe(color);
+        }),
+        { numRuns: 14 }
+      );
+    } finally {
+      setDefaultHighlightColor(originalDefault);
+    }
   });
 
   it('should fall back to yellow for invalid config values', () => {
-    setDefaultHighlightColor('not-a-color');
-    expect(getDefaultHighlightColor()).toBe('yellow');
-    setDefaultHighlightColor('yellow');
+    const originalDefault = getDefaultHighlightColor();
+    try {
+      setDefaultHighlightColor('not-a-color');
+      expect(getDefaultHighlightColor()).toBe('yellow');
+    } finally {
+      setDefaultHighlightColor(originalDefault);
+    }
   });
 });

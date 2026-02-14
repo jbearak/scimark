@@ -264,6 +264,24 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 	}
+	let highlightDecorationUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+	function scheduleHighlightDecorationsUpdate(editor: vscode.TextEditor) {
+		if (highlightDecorationUpdateTimer) {
+			clearTimeout(highlightDecorationUpdateTimer);
+		}
+		highlightDecorationUpdateTimer = setTimeout(() => {
+			highlightDecorationUpdateTimer = undefined;
+			updateHighlightDecorations(editor);
+		}, 150);
+	}
+	context.subscriptions.push({
+		dispose: () => {
+			if (highlightDecorationUpdateTimer) {
+				clearTimeout(highlightDecorationUpdateTimer);
+				highlightDecorationUpdateTimer = undefined;
+			}
+		}
+	});
 
 	// Trigger on editor change
 	if (vscode.window.activeTextEditor) {
@@ -276,7 +294,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.workspace.onDidChangeTextDocument(e => {
 			const editor = vscode.window.activeTextEditor;
 			if (editor && e.document === editor.document) {
-				updateHighlightDecorations(editor);
+				scheduleHighlightDecorationsUpdate(editor);
 			}
 		})
 	);

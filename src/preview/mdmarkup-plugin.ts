@@ -179,6 +179,10 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
   const start = state.pos;
   const max = state.posMax;
   const src = state.src;
+  const resolveDefaultColor = (): string => {
+    const color = getDefaultHighlightColor();
+    return VALID_COLOR_IDS.includes(color) ? color : 'yellow';
+  };
 
   // Check if we're at ==
   if (src.charCodeAt(start) !== 0x3D /* = */ || src.charCodeAt(start + 1) !== 0x3D /* = */) {
@@ -217,6 +221,11 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
               hasColorSuffix = true;
               if (VALID_COLOR_IDS.includes(colorId)) {
                 cssClass = 'mdmarkup-format-highlight mdmarkup-highlight-' + colorId;
+              } else {
+                const defaultColor = resolveDefaultColor();
+                if (defaultColor !== 'yellow') {
+                  cssClass = 'mdmarkup-format-highlight mdmarkup-highlight-' + defaultColor;
+                }
               }
               endPos = closeBrace + 1;
             }
@@ -224,7 +233,7 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
         }
         if (!hasColorSuffix && cssClass === 'mdmarkup-format-highlight') {
           // Apply configurable default color only for ==text== without color suffix
-          const defaultColor = getDefaultHighlightColor();
+          const defaultColor = resolveDefaultColor();
           if (defaultColor !== 'yellow') {
             cssClass = 'mdmarkup-format-highlight mdmarkup-highlight-' + defaultColor;
           }

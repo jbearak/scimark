@@ -59,6 +59,7 @@ export function getDefaultHighlightColor(): string {
  */
 export function extractHighlightRanges(text: string, defaultColor: string): Map<string, Array<{ start: number; end: number }>> {
   const result = new Map<string, Array<{ start: number; end: number }>>();
+  const resolvedDefaultColor = VALID_COLOR_IDS.includes(defaultColor) ? defaultColor : 'yellow';
   const push = (key: string, start: number, end: number) => {
     if (!result.has(key)) { result.set(key, []); }
     result.get(key)!.push({ start, end });
@@ -84,10 +85,10 @@ export function extractHighlightRanges(text: string, defaultColor: string): Map<
     if (colorId && VALID_COLOR_IDS.includes(colorId)) {
       push(colorId, m.index, mEnd);
     } else if (colorId) {
-      // Unrecognized color → always fall back to yellow (Req 4.4)
-      push('yellow', m.index, mEnd);
+      // Unrecognized color → configured default if valid, else yellow
+      push(resolvedDefaultColor, m.index, mEnd);
     } else {
-      push(defaultColor, m.index, mEnd);
+      push(resolvedDefaultColor, m.index, mEnd);
     }
   }
 

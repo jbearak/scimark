@@ -27,7 +27,7 @@ Implement colored highlight support for the mdmarkup VS Code extension. The work
   - [x] 3.1 Update `src/preview/mdmarkup-plugin.ts` to parse `==text=={color}` syntax
     - Extend `parseFormatHighlight` to detect optional `{color}` suffix after closing `==`
     - Apply CSS class `mdmarkup-format-highlight mdmarkup-highlight-{color}` for valid colors
-    - Fall back to `mdmarkup-format-highlight` for unrecognized colors
+    - For unrecognized colors, fall back to configured default color; if unresolved, fall back to `mdmarkup-format-highlight` (yellow/amber)
     - Import `VALID_COLOR_IDS` from `highlight-colors.ts`
     - _Requirements: 2.1, 3.1, 3.2, 3.4_
 
@@ -50,7 +50,7 @@ Implement colored highlight support for the mdmarkup VS Code extension. The work
     - **Validates: Requirements 3.2**
     - **Property 4: Preview renders CriticMarkup highlights with Comment_Gray**
     - **Validates: Requirements 3.3**
-    - **Property 5: Preview falls back to yellow/amber for unrecognized colors**
+    - **Property 5: Preview falls back to configured default color for unrecognized colors (with yellow/amber as second-level fallback)**
     - **Validates: Requirements 3.4**
 
 - [x] 4. Checkpoint - Ensure all tests pass
