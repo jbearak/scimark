@@ -67,8 +67,36 @@ export const HIGHLIGHT_COLORS: Record<string, string> = {
   'black':       '#000000',
 };
 
+/**
+ * Theme-aware background colors for editor decorations.
+ * Light theme: use the raw color at moderate opacity so it's visible on white/light backgrounds.
+ * Dark theme: use a tinted/adjusted variant so it's visible on dark backgrounds without washing out text.
+ *
+ * Format: { light: 'rgba(...)', dark: 'rgba(...)' }
+ */
+export const HIGHLIGHT_DECORATION_COLORS: Record<string, { light: string; dark: string }> = {
+  'yellow':      { light: 'rgba(255, 255, 0, 0.40)',   dark: 'rgba(255, 255, 0, 0.25)' },
+  'green':       { light: 'rgba(0, 255, 0, 0.30)',     dark: 'rgba(0, 255, 0, 0.20)' },
+  'turquoise':   { light: 'rgba(0, 255, 255, 0.35)',   dark: 'rgba(0, 255, 255, 0.20)' },
+  'pink':        { light: 'rgba(255, 0, 255, 0.25)',   dark: 'rgba(255, 0, 255, 0.20)' },
+  'blue':        { light: 'rgba(0, 0, 255, 0.20)',     dark: 'rgba(0, 0, 255, 0.30)' },
+  'red':         { light: 'rgba(255, 0, 0, 0.25)',     dark: 'rgba(255, 0, 0, 0.25)' },
+  'dark-blue':   { light: 'rgba(0, 0, 128, 0.25)',     dark: 'rgba(0, 0, 128, 0.40)' },
+  'teal':        { light: 'rgba(0, 128, 128, 0.25)',   dark: 'rgba(0, 128, 128, 0.35)' },
+  'violet':      { light: 'rgba(128, 0, 128, 0.25)',   dark: 'rgba(128, 0, 128, 0.35)' },
+  'dark-red':    { light: 'rgba(128, 0, 0, 0.25)',     dark: 'rgba(128, 0, 0, 0.40)' },
+  'dark-yellow': { light: 'rgba(128, 128, 0, 0.30)',   dark: 'rgba(128, 128, 0, 0.35)' },
+  'gray-50':     { light: 'rgba(128, 128, 128, 0.30)', dark: 'rgba(128, 128, 128, 0.35)' },
+  'gray-25':     { light: 'rgba(192, 192, 192, 0.40)', dark: 'rgba(192, 192, 192, 0.25)' },
+  'black':       { light: 'rgba(0, 0, 0, 0.15)',       dark: 'rgba(0, 0, 0, 0.40)' },
+};
+
 /** Default background for CriticMarkup highlights {==text==} (MS Word comment gray) */
 export const CRITIC_HIGHLIGHT_BG = '#D9D9D9';
+export const CRITIC_HIGHLIGHT_DECORATION = {
+  light: 'rgba(217, 217, 217, 0.50)',
+  dark: 'rgba(217, 217, 217, 0.30)',
+};
 
 /** All valid color identifiers */
 export const VALID_COLOR_IDS = Object.keys(HIGHLIGHT_COLORS);
@@ -83,6 +111,8 @@ export function getDefaultHighlightColor(): string {
   return 'yellow';
 }
 ```
+
+The key design principle: bright colors (yellow, green, turquoise, pink) use higher opacity on light backgrounds where they need to stand out, and lower opacity on dark backgrounds where they'd otherwise wash out text. Dark colors (dark-blue, teal, violet, dark-red, black) use the inverse — lower opacity on light backgrounds (where the dark tint is already visible) and higher opacity on dark backgrounds (where they'd otherwise disappear).
 
 ### 2. Formatting (`src/formatting.ts`)
 
@@ -115,22 +145,26 @@ for (const colorId of VALID_COLOR_IDS) {
 
 ### 4. Editor Decorations (`src/extension.ts`)
 
-Create decoration types for each color and the default:
+Create decoration types for each color using the VS Code `DecorationRenderOptions` `light` and `dark` properties for theme-appropriate backgrounds:
 
 ```typescript
 const decorationTypes = new Map<string, vscode.TextEditorDecorationType>();
 
-for (const [colorId, hex] of Object.entries(HIGHLIGHT_COLORS)) {
+for (const [colorId, colors] of Object.entries(HIGHLIGHT_DECORATION_COLORS)) {
   decorationTypes.set(colorId, vscode.window.createTextEditorDecorationType({
-    backgroundColor: hex + '40', // 25% opacity
+    light: { backgroundColor: colors.light },
+    dark: { backgroundColor: colors.dark },
   }));
 }
 
 // Decoration for CriticMarkup highlights {==text==} — Comment_Gray
 decorationTypes.set('critic', vscode.window.createTextEditorDecorationType({
-  backgroundColor: CRITIC_HIGHLIGHT_BG + '80', // 50% opacity Comment_Gray
+  light: { backgroundColor: CRITIC_HIGHLIGHT_DECORATION.light },
+  dark: { backgroundColor: CRITIC_HIGHLIGHT_DECORATION.dark },
 }));
 ```
+
+The `light` and `dark` sub-properties of `DecorationRenderOptions` accept `ThemableDecorationRenderOptions`, which includes `backgroundColor`. VS Code automatically applies the correct variant based on the active theme kind. This avoids the problem of a single rgba value being invisible on one theme type.
 
 A `updateHighlightDecorations(editor)` function scans the document text with a regex, groups matches by color, and calls `editor.setDecorations(type, ranges)` for each. For default highlights (`==text==` without a color suffix), the function reads the `mdmarkup.defaultHighlightColor` setting and uses that color's decoration type.
 
@@ -159,21 +193,59 @@ tokenOpen.attrSet('class', 'mdmarkup-format-highlight');
 
 ### 6. CSS (`media/mdmarkup.css`)
 
-Add a class for each color:
+Add a class for each color with theme-aware variants using `@media (prefers-color-scheme)`. The VS Code Markdown preview respects this media query to switch between light and dark styles.
+
+Light theme uses the raw highlight color at moderate opacity. Dark theme adjusts opacity — lower for bright colors (to avoid washing out light text), higher for dark colors (to remain visible against dark backgrounds):
 
 ```css
-.mdmarkup-highlight-yellow { background-color: #FFFF00; }
-.mdmarkup-highlight-green { background-color: #00FF00; }
-/* ... one per color ... */
+/* Light theme (default) */
+.mdmarkup-highlight-yellow { background-color: rgba(255, 255, 0, 0.40); }
+.mdmarkup-highlight-green { background-color: rgba(0, 255, 0, 0.30); }
+.mdmarkup-highlight-turquoise { background-color: rgba(0, 255, 255, 0.35); }
+.mdmarkup-highlight-pink { background-color: rgba(255, 0, 255, 0.25); }
+.mdmarkup-highlight-blue { background-color: rgba(0, 0, 255, 0.20); }
+.mdmarkup-highlight-red { background-color: rgba(255, 0, 0, 0.25); }
+.mdmarkup-highlight-dark-blue { background-color: rgba(0, 0, 128, 0.25); }
+.mdmarkup-highlight-teal { background-color: rgba(0, 128, 128, 0.25); }
+.mdmarkup-highlight-violet { background-color: rgba(128, 0, 128, 0.25); }
+.mdmarkup-highlight-dark-red { background-color: rgba(128, 0, 0, 0.25); }
+.mdmarkup-highlight-dark-yellow { background-color: rgba(128, 128, 0, 0.30); }
+.mdmarkup-highlight-gray-50 { background-color: rgba(128, 128, 128, 0.30); }
+.mdmarkup-highlight-gray-25 { background-color: rgba(192, 192, 192, 0.40); }
+.mdmarkup-highlight-black { background-color: rgba(0, 0, 0, 0.15); }
+
+/* Dark theme overrides */
+@media (prefers-color-scheme: dark) {
+  .mdmarkup-highlight-yellow { background-color: rgba(255, 255, 0, 0.25); }
+  .mdmarkup-highlight-green { background-color: rgba(0, 255, 0, 0.20); }
+  .mdmarkup-highlight-turquoise { background-color: rgba(0, 255, 255, 0.20); }
+  .mdmarkup-highlight-pink { background-color: rgba(255, 0, 255, 0.20); }
+  .mdmarkup-highlight-blue { background-color: rgba(0, 0, 255, 0.30); }
+  .mdmarkup-highlight-red { background-color: rgba(255, 0, 0, 0.25); }
+  .mdmarkup-highlight-dark-blue { background-color: rgba(0, 0, 128, 0.40); }
+  .mdmarkup-highlight-teal { background-color: rgba(0, 128, 128, 0.35); }
+  .mdmarkup-highlight-violet { background-color: rgba(128, 0, 128, 0.35); }
+  .mdmarkup-highlight-dark-red { background-color: rgba(128, 0, 0, 0.40); }
+  .mdmarkup-highlight-dark-yellow { background-color: rgba(128, 128, 0, 0.35); }
+  .mdmarkup-highlight-gray-50 { background-color: rgba(128, 128, 128, 0.35); }
+  .mdmarkup-highlight-gray-25 { background-color: rgba(192, 192, 192, 0.25); }
+  .mdmarkup-highlight-black { background-color: rgba(0, 0, 0, 0.40); }
+}
 ```
 
-Update `.mdmarkup-highlight` (CriticMarkup) to use Comment_Gray instead of the current purple:
+Update `.mdmarkup-highlight` (CriticMarkup) to use Comment_Gray with theme-aware opacity:
 
 ```css
-.mdmarkup-highlight { background-color: #D9D9D9; color: inherit; }
+/* Light theme */
+.mdmarkup-highlight { background-color: rgba(217, 217, 217, 0.50); color: inherit; }
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+  .mdmarkup-highlight { background-color: rgba(217, 217, 217, 0.30); color: inherit; }
+}
 ```
 
-Keep `.mdmarkup-format-highlight` as the existing yellow/amber for plain `==text==` highlights.
+Keep `.mdmarkup-format-highlight` as the existing yellow/amber for plain `==text==` highlights (already theme-aware via CSS variables).
 
 ### 7. TextMate Grammar (`syntaxes/mdmarkup.json`)
 
@@ -230,22 +302,24 @@ The preview plugin and editor decoration logic both read this setting to determi
 
 ### Color Map
 
-| Color Name   | Identifier    | Hex Value |
-|-------------|---------------|-----------|
-| Yellow      | `yellow`      | #FFFF00   |
-| Green       | `green`       | #00FF00   |
-| Turquoise   | `turquoise`   | #00FFFF   |
-| Pink        | `pink`        | #FF00FF   |
-| Blue        | `blue`        | #0000FF   |
-| Red         | `red`         | #FF0000   |
-| Dark Blue   | `dark-blue`   | #000080   |
-| Teal        | `teal`        | #008080   |
-| Violet      | `violet`      | #800080   |
-| Dark Red    | `dark-red`    | #800000   |
-| Dark Yellow | `dark-yellow` | #808000   |
-| Gray-50%    | `gray-50`     | #808080   |
-| Gray-25%    | `gray-25`     | #C0C0C0   |
-| Black       | `black`       | #000000   |
+| Color Name   | Identifier    | Hex Value | Light BG (rgba)              | Dark BG (rgba)               |
+|-------------|---------------|-----------|------------------------------|------------------------------|
+| Yellow      | `yellow`      | #FFFF00   | rgba(255, 255, 0, 0.40)     | rgba(255, 255, 0, 0.25)     |
+| Green       | `green`       | #00FF00   | rgba(0, 255, 0, 0.30)       | rgba(0, 255, 0, 0.20)       |
+| Turquoise   | `turquoise`   | #00FFFF   | rgba(0, 255, 255, 0.35)     | rgba(0, 255, 255, 0.20)     |
+| Pink        | `pink`        | #FF00FF   | rgba(255, 0, 255, 0.25)     | rgba(255, 0, 255, 0.20)     |
+| Blue        | `blue`        | #0000FF   | rgba(0, 0, 255, 0.20)       | rgba(0, 0, 255, 0.30)       |
+| Red         | `red`         | #FF0000   | rgba(255, 0, 0, 0.25)       | rgba(255, 0, 0, 0.25)       |
+| Dark Blue   | `dark-blue`   | #000080   | rgba(0, 0, 128, 0.25)       | rgba(0, 0, 128, 0.40)       |
+| Teal        | `teal`        | #008080   | rgba(0, 128, 128, 0.25)     | rgba(0, 128, 128, 0.35)     |
+| Violet      | `violet`      | #800080   | rgba(128, 0, 128, 0.25)     | rgba(128, 0, 128, 0.35)     |
+| Dark Red    | `dark-red`    | #800000   | rgba(128, 0, 0, 0.25)       | rgba(128, 0, 0, 0.40)       |
+| Dark Yellow | `dark-yellow` | #808000   | rgba(128, 128, 0, 0.30)     | rgba(128, 128, 0, 0.35)     |
+| Gray-50%    | `gray-50`     | #808080   | rgba(128, 128, 128, 0.30)   | rgba(128, 128, 128, 0.35)   |
+| Gray-25%    | `gray-25`     | #C0C0C0   | rgba(192, 192, 192, 0.40)   | rgba(192, 192, 192, 0.25)   |
+| Black       | `black`       | #000000   | rgba(0, 0, 0, 0.15)         | rgba(0, 0, 0, 0.40)         |
+
+CriticMarkup Comment_Gray: `#D9D9D9` → light: `rgba(217, 217, 217, 0.50)`, dark: `rgba(217, 217, 217, 0.30)`
 
 ### Syntax Patterns
 

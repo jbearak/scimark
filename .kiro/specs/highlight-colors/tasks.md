@@ -7,11 +7,12 @@ Implement colored highlight support for the mdmarkup VS Code extension. The work
 ## Tasks
 
 - [ ] 1. Create shared color map module
-  - [ ] 1.1 Create `src/highlight-colors.ts` with `HIGHLIGHT_COLORS` map, `CRITIC_HIGHLIGHT_BG`, and `VALID_COLOR_IDS`
+  - [ ] 1.1 Create `src/highlight-colors.ts` with `HIGHLIGHT_COLORS` map, `CRITIC_HIGHLIGHT_BG`, `HIGHLIGHT_DECORATION_COLORS`, and `VALID_COLOR_IDS`
     - Define the 14 MS Word highlight color name-to-hex mappings
-    - Export `CRITIC_HIGHLIGHT_BG` constant (#D9D9D9)
+    - Export `HIGHLIGHT_DECORATION_COLORS` with `{ light, dark }` rgba strings for each color (theme-aware opacity)
+    - Export `CRITIC_HIGHLIGHT_BG` constant (#D9D9D9) and `CRITIC_HIGHLIGHT_DECORATION` with light/dark variants
     - Export `VALID_COLOR_IDS` array
-    - _Requirements: 5.1, 5.2, 2.2_
+    - _Requirements: 5.1, 5.2, 5.4, 2.2_
 
   - [ ]* 1.2 Write property test for colored highlight wrapping (Property 1)
     - **Property 1: Colored highlight wrapping preserves content and produces correct syntax**
@@ -35,10 +36,12 @@ Implement colored highlight support for the mdmarkup VS Code extension. The work
     - _Requirements: 3.3, 5.3_
 
   - [ ] 3.3 Add color CSS classes to `media/mdmarkup.css`
-    - Add `.mdmarkup-highlight-{color}` class for each of the 14 colors
-    - Update `.mdmarkup-highlight` (CriticMarkup) to use Comment_Gray background
-    - Keep `.mdmarkup-format-highlight` as existing yellow/amber default
-    - _Requirements: 3.1, 3.2, 3.3, 5.1_
+    - Add `.mdmarkup-highlight-{color}` class for each of the 14 colors with light-theme rgba values
+    - Add `@media (prefers-color-scheme: dark)` overrides with dark-theme rgba values for each color
+    - Update `.mdmarkup-highlight` (CriticMarkup) to use Comment_Gray background with light/dark theme variants
+    - Keep `.mdmarkup-format-highlight` as existing yellow/amber default (already theme-aware via CSS variables)
+    - Bright colors get higher opacity on light, lower on dark; dark colors get the inverse
+    - _Requirements: 3.1, 3.2, 3.3, 3.5, 3.6, 5.1_
 
   - [ ]* 3.4 Write property tests for preview rendering (Properties 2-5)
     - **Property 2: Preview renders colored highlights with correct color class**
@@ -55,11 +58,14 @@ Implement colored highlight support for the mdmarkup VS Code extension. The work
 
 - [ ] 5. Implement editor decorations
   - [ ] 5.1 Add highlight decoration logic to `src/extension.ts`
-    - Create `TextEditorDecorationType` instances for each color and for CriticMarkup (Comment_Gray)
+    - Create `TextEditorDecorationType` instances using `DecorationRenderOptions` with `light` and `dark` sub-properties for theme-aware backgrounds
+    - Import `HIGHLIGHT_DECORATION_COLORS` and `CRITIC_HIGHLIGHT_DECORATION` from `highlight-colors.ts`
+    - For each color: `{ light: { backgroundColor: colors.light }, dark: { backgroundColor: colors.dark } }`
+    - For CriticMarkup: `{ light: { backgroundColor: CRITIC_HIGHLIGHT_DECORATION.light }, dark: { backgroundColor: CRITIC_HIGHLIGHT_DECORATION.dark } }`
     - Implement `updateHighlightDecorations(editor)` function that scans document text, groups matches by color, and applies decorations
     - Register `onDidChangeActiveTextEditor` and `onDidChangeTextDocument` listeners to trigger updates
     - For default highlights (`==text==`), read `mdmarkup.defaultHighlightColor` setting to determine color
-    - _Requirements: 4.1, 4.2, 4.3, 4.4, 8.3_
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 8.3_
 
   - [ ]* 5.2 Write property test for highlight range extraction (Property 6)
     - **Property 6: Highlight range extraction finds colored highlights and CriticMarkup highlights**

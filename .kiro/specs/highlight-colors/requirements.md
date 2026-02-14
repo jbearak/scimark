@@ -16,6 +16,8 @@ This feature extends the mdmarkup VS Code extension's highlight functionality to
 - **Preview**: The VS Code Markdown preview pane rendered by the markdown-it plugin.
 - **Editor_Decoration**: A VS Code `TextEditorDecorationType` used to apply visual styling (background color) to text ranges in the code editor.
 - **Comment_Gray**: The gray background color that MS Word uses for commented/annotated text (RGB approximately #D9D9D9 / light-theme equivalent). This applies to CriticMarkup highlights (`{==text==}`), which represent annotated/commented-on text.
+- **Light_Theme**: A VS Code color theme with a light background (detected via `prefers-color-scheme: light` in CSS, or the `light` property of `DecorationRenderOptions` in the extension API).
+- **Dark_Theme**: A VS Code color theme with a dark background (detected via `prefers-color-scheme: dark` in CSS, or the `dark` property of `DecorationRenderOptions` in the extension API).
 
 ## Requirements
 
@@ -51,6 +53,8 @@ This feature extends the mdmarkup VS Code extension's highlight functionality to
 2. WHEN the Preview encounters a Default_Highlight `==text==`, THE Preview SHALL render the text with the existing yellow/amber background color unchanged.
 3. WHEN the Preview encounters a CriticMarkup highlight `{==text==}`, THE Preview SHALL render the text with the Comment_Gray background color, matching the MS Word style for annotated/commented-on text.
 4. WHEN the Preview encounters a Colored_Highlight with an unrecognized color identifier, THE Preview SHALL render the text with the existing yellow/amber default highlight background as a fallback.
+5. THE Preview CSS SHALL provide theme-aware color values for each highlight color, using `@media (prefers-color-scheme: dark)` to adjust background opacity or tint so that highlights remain legible on both Light_Theme and Dark_Theme backgrounds.
+6. FOR bright highlight colors (Yellow, Green, Turquoise, Pink) on Dark_Theme, THE Preview CSS SHALL reduce opacity or darken the background to avoid washing out text. FOR dark highlight colors (Dark Blue, Teal, Violet, Dark Red, Dark Yellow, Black) on Light_Theme, THE Preview CSS SHALL increase opacity or lighten the background to ensure the highlight is visible.
 
 ### Requirement 4: Editor Decoration of Highlights
 
@@ -62,6 +66,8 @@ This feature extends the mdmarkup VS Code extension's highlight functionality to
 2. WHEN a Markdown file is opened or edited, THE Extension SHALL scan the document for CriticMarkup highlight patterns (`{==text==}`) and apply an Editor_Decoration with the Comment_Gray background color.
 3. WHEN the document text changes, THE Extension SHALL update all Editor_Decorations to reflect the current highlight patterns.
 4. IF a Colored_Highlight contains an unrecognized color identifier, THEN THE Extension SHALL apply the default yellow/amber highlight background as a fallback decoration.
+5. EACH Editor_Decoration SHALL use the VS Code `DecorationRenderOptions` `light` and `dark` properties to provide theme-appropriate background colors, so that highlights are legible on both Light_Theme and Dark_Theme editor backgrounds.
+6. FOR bright highlight colors on Dark_Theme, THE Extension SHALL use a lower-opacity or tinted background to avoid washing out text. FOR dark highlight colors on Light_Theme, THE Extension SHALL use a higher-opacity or lightened background to ensure visibility.
 
 ### Requirement 5: Color Mapping
 
@@ -72,6 +78,7 @@ This feature extends the mdmarkup VS Code extension's highlight functionality to
 1. THE Extension SHALL map each Word_Highlight_Color identifier to a specific RGB hex value consistent with the MS Word highlight palette.
 2. THE Extension SHALL use the same color mapping for Preview rendering and Editor_Decoration styling.
 3. THE Extension SHALL use Comment_Gray as the background for CriticMarkup highlights (`{==text==}`) in both Preview and Editor_Decoration styling.
+4. THE color map module SHALL export both a light-theme and dark-theme background color variant for each highlight color, so that consumers (CSS, decorations) can apply the appropriate variant per theme.
 
 ### Requirement 6: Syntax Highlighting in Editor
 
