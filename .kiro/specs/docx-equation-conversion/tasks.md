@@ -119,7 +119,6 @@ Implement OMML-to-LaTeX translation as a new `src/omml.ts` module, integrate it 
 
 ## Notes
 
-- Tasks marked with `*` are optional and can be skipped for faster MVP
 - Each task references specific requirements for traceability
 - Property tests validate universal correctness properties from the design document
 - Unit tests validate specific examples and edge cases

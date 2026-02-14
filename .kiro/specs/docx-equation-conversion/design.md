@@ -253,7 +253,7 @@ function getOmmlAttr(node: any, attr: string): string {
 | `m:sSubSup` | `m:sSubSupPr`?, `m:e`, `m:sub`, `m:sup` | `{base}_{sub}^{sup}` | — |
 | `m:rad` | `m:radPr`? (`m:degHide`), `m:deg`, `m:e` | `\sqrt[deg]{e}` or `\sqrt{e}` | `m:degHide` val="1" → hide degree |
 | `m:nary` | `m:naryPr` (`m:chr`, `m:limLoc`, `m:subHide`, `m:supHide`), `m:sub`, `m:sup`, `m:e` | `\sum_{sub}^{sup}{e}` | `m:chr` default = `∫`; `m:limLoc` `undOvr` → `\limits` |
-| `m:d` | `m:dPr` (`m:begChr`, `m:endChr`, `m:sepChr`), `m:e`+ | `(e1, e2, ...)` | `m:begChr` default = `(`; `m:endChr` default = `)` ; `m:sepChr` default = `|` |
+| `m:d` | `m:dPr` (`m:begChr`, `m:endChr`, `m:sepChr`), `m:e`+ | `(e1, e2, ...)` | `m:begChr` default = `(`; `m:endChr` default = `)` ; `m:sepChr` default = `\|` |
 | `m:acc` | `m:accPr` (`m:chr`), `m:e` | `\hat{e}` etc. | `m:chr` default = `\u0302` (combining circumflex) |
 | `m:m` | `m:mPr`?, `m:mr`+ (each with `m:e`+) | `\begin{matrix}...\end{matrix}` | — |
 | `m:func` | `m:funcPr`?, `m:fName`, `m:e` | `\sin{e}` or `\operatorname{name}{e}` | — |
@@ -279,7 +279,7 @@ This integrates cleanly with the existing `buildMarkdown()` switch on `item.type
 
 ### Translation Algorithm (Pseudocode)
 
-```
+```text
 function ommlToLatex(children):
   result = ""
   for each child node in children:
@@ -527,7 +527,7 @@ Key constraints (from AGENTS.md learnings):
 
 ### Test Organization
 
-```
+```text
 src/omml.ts          — OMML-to-LaTeX translation module
 src/omml.test.ts     — Unit tests + property-based tests for omml.ts
 src/converter.test.ts — Extended with integration tests for math content items

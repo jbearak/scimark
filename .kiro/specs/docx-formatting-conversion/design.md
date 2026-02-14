@@ -258,7 +258,7 @@ Only relationships with `Type` ending in `/hyperlink` and `TargetMode="External"
 ### Run Merging Strategy
 
 Before applying formatting delimiters, `buildMarkdown()` merges consecutive text items that share:
-- Identical `RunFormatting` (all 7 fields match)
+- Identical `RunFormatting` (all 8 fields match)
 - Identical `href` (both undefined, or same URL)
 - Identical `commentIds` (same set)
 
