@@ -699,6 +699,60 @@ describe('highlight detection', () => {
   });
 });
 
+describe('highlightColor extraction', () => {
+  test('stores color name from w:highlight', () => {
+    const children = [{ 'w:highlight': [], ':@': { '@_w:val': 'yellow' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(true);
+    expect(formatting.highlightColor).toBe('yellow');
+  });
+
+  test('stores hex value from w:shd', () => {
+    const children = [{ 'w:shd': [], ':@': { '@_w:fill': 'FFFF00' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(true);
+    expect(formatting.highlightColor).toBe('FFFF00');
+  });
+
+  test('does not store color when highlight is none', () => {
+    const children = [{ 'w:highlight': [], ':@': { '@_w:val': 'none' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(false);
+    expect(formatting.highlightColor).toBeUndefined();
+  });
+
+  test('stores different highlight colors', () => {
+    const children1 = [{ 'w:highlight': [], ':@': { '@_w:val': 'cyan' } }];
+    const formatting1 = parseRunProperties(children1);
+    expect(formatting1.highlightColor).toBe('cyan');
+
+    const children2 = [{ 'w:highlight': [], ':@': { '@_w:val': 'magenta' } }];
+    const formatting2 = parseRunProperties(children2);
+    expect(formatting2.highlightColor).toBe('magenta');
+  });
+
+  test('different highlight colors prevent run merging', () => {
+    const content = [
+      {
+        type: 'text' as const,
+        text: 'yellow',
+        commentIds: new Set<string>(),
+        formatting: { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'yellow' }
+      },
+      {
+        type: 'text' as const,
+        text: 'cyan',
+        commentIds: new Set<string>(),
+        formatting: { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'cyan' }
+      }
+    ];
+
+    const result = buildMarkdown(content, new Map());
+    // Should produce two separate highlight spans, not merged
+    expect(result).toBe('==yellow====cyan==');
+  });
+});
+
 describe('parseHeadingLevel', () => {
   test('returns undefined for non-heading pStyle', () => {
     const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'Normal' } }];

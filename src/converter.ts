@@ -39,6 +39,7 @@ export interface RunFormatting {
   underline: boolean;
   strikethrough: boolean;
   highlight: boolean;
+  highlightColor?: string;
   superscript: boolean;
   subscript: boolean;
 }
@@ -349,11 +350,17 @@ export function parseRunProperties(
   if (highlightElement) {
     const val = getAttr(highlightElement, 'val');
     formatting.highlight = val !== 'none';
+    if (formatting.highlight && val) {
+      formatting.highlightColor = val;
+    }
   } else {
     const shdElement = rPrChildren.find(child => child['w:shd'] !== undefined);
     if (shdElement) {
       const fill = getAttr(shdElement, 'fill');
       formatting.highlight = fill !== '' && fill !== 'auto';
+      if (formatting.highlight && fill) {
+        formatting.highlightColor = fill;
+      }
     }
   }
   
@@ -687,6 +694,7 @@ export async function extractDocumentContent(
 function formattingEquals(a: RunFormatting, b: RunFormatting): boolean {
   return a.bold === b.bold && a.italic === b.italic && a.underline === b.underline &&
          a.strikethrough === b.strikethrough && a.highlight === b.highlight &&
+         a.highlightColor === b.highlightColor &&
          a.superscript === b.superscript && a.subscript === b.subscript;
 }
 
