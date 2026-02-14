@@ -84,8 +84,8 @@ export function extractHighlightRanges(text: string, defaultColor: string): Map<
     if (colorId && VALID_COLOR_IDS.includes(colorId)) {
       push(colorId, m.index, mEnd);
     } else if (colorId) {
-      // Unrecognized color → fall back to default
-      push(defaultColor, m.index, mEnd);
+      // Unrecognized color → always fall back to yellow (Req 4.4)
+      push('yellow', m.index, mEnd);
     } else {
       push(defaultColor, m.index, mEnd);
     }

@@ -208,21 +208,20 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
         // Check for optional {color} suffix after closing ==
         let cssClass = 'mdmarkup-format-highlight';
         let endPos = pos + 2;
+        let hasColorSuffix = false;
         if (pos + 2 < max && src.charCodeAt(pos + 2) === 0x7B /* { */) {
           const closeBrace = src.indexOf('}', pos + 3);
           if (closeBrace !== -1) {
+            hasColorSuffix = true;
             const colorId = src.slice(pos + 3, closeBrace);
             if (VALID_COLOR_IDS.includes(colorId)) {
               cssClass = 'mdmarkup-format-highlight mdmarkup-highlight-' + colorId;
-              endPos = closeBrace + 1;
-            } else {
-              // Unrecognized color → fall back to default
-              endPos = closeBrace + 1;
             }
+            endPos = closeBrace + 1;
           }
         }
-        if (cssClass === 'mdmarkup-format-highlight') {
-          // Apply configurable default color
+        if (!hasColorSuffix && cssClass === 'mdmarkup-format-highlight') {
+          // Apply configurable default color only for ==text== without color suffix
           const defaultColor = getDefaultHighlightColor();
           if (defaultColor !== 'yellow') {
             cssClass = 'mdmarkup-format-highlight mdmarkup-highlight-' + defaultColor;
