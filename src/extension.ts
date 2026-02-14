@@ -40,7 +40,7 @@ export function activate(context: vscode.ExtensionContext) {
 			applyFormatting((text) => formatting.wrapSelection(text, '{--', '--}'))
 		),
 		vscode.commands.registerCommand('mdmarkup.markSubstitution', () => 
-			applyFormatting((text) => formatting.wrapSelection(text, '{~~', '~>~~}', text.length + 4))
+			applyFormatting((text) => formatting.wrapSelection(text, '{~~', '~>~~}', text.length + 5))
 		),
 		vscode.commands.registerCommand('mdmarkup.highlight', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '{==', '==}'))
