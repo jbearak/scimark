@@ -215,7 +215,7 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
         let hasColorSuffix = false;
         if (pos + 2 < max && src.charCodeAt(pos + 2) === 0x7B /* { */) {
           const closeBrace = src.indexOf('}', pos + 3);
-          if (closeBrace !== -1 && closeBrace <= max) {
+          if (closeBrace !== -1 && closeBrace < max) {
             const colorId = src.slice(pos + 3, closeBrace);
             if (/^[a-z0-9-]+$/.test(colorId)) {
               hasColorSuffix = true;
