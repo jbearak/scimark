@@ -11,12 +11,21 @@ import {
   generateBibTeX,
   convertDocx,
   generateCitationKey,
+  wrapWithFormatting,
+  DEFAULT_FORMATTING,
+  RunFormatting,
+  isToggleOn,
+  parseHeadingLevel,
+  parseRunProperties,
+  formatLocalIsoMinute,
 } from './converter';
 
 const fixturesDir = join(__dirname, '..', 'test', 'fixtures');
 const sampleData = new Uint8Array(readFileSync(join(fixturesDir, 'sample.docx')));
+const formattingSampleData = new Uint8Array(readFileSync(join(fixturesDir, 'formatting_sample.docx')));
 const expectedMd = readFileSync(join(fixturesDir, 'expected-output.md'), 'utf-8').trimEnd();
 const expectedBib = readFileSync(join(fixturesDir, 'expected-output.bib'), 'utf-8').trimEnd();
+
 
 describe('extractComments', () => {
   test('extracts all comments with correct metadata', async () => {
@@ -149,6 +158,7 @@ describe('generateCitationKey', () => {
       { numRuns: 200 }
     );
   });
+
 });
 
 describe('extractDocumentContent', () => {
@@ -183,17 +193,88 @@ describe('extractDocumentContent', () => {
       expect(citItems[0].pandocKeys).toContain('smith2020effects');
     }
   });
+
+  test('inherits paragraph-level run formatting defaults and allows run-level override', async () => {
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    zip.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
+    zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+    zip.file('word/document.xml', `<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr>
+        <w:rPr><w:b/></w:rPr>
+      </w:pPr>
+      <w:r><w:t>Bold </w:t></w:r>
+      <w:r>
+        <w:rPr><w:b w:val="false"/></w:rPr>
+        <w:t>Plain</w:t>
+      </w:r>
+    </w:p>
+  </w:body>
+</w:document>`);
+    const buf = await zip.generateAsync({ type: 'uint8array' });
+    const result = await convertDocx(buf);
+    expect(result.markdown).toBe('**Bold **Plain');
+  });
 });
 
 describe('convertDocx (end-to-end)', () => {
   test('produces expected markdown', async () => {
     const result = await convertDocx(sampleData);
-    expect(result.markdown.trimEnd()).toBe(expectedMd);
+    const expectedMdLocal = expectedMd
+      .replace('{{TS1}}', formatLocalIsoMinute('2025-01-15T10:30:00Z'))
+      .replace('{{TS2}}', formatLocalIsoMinute('2025-01-16T14:00:00Z'))
+      .replace('{{TS3}}', formatLocalIsoMinute('2025-01-17T09:15:00Z'));
+    expect(result.markdown.trimEnd()).toBe(expectedMdLocal);
   });
 
   test('produces expected bibtex', async () => {
     const result = await convertDocx(sampleData);
     expect(result.bibtex.trimEnd()).toBe(expectedBib);
+  });
+
+  test('converts formatting_sample.docx with expected formatting markers', async () => {
+    const result = await convertDocx(formattingSampleData);
+    const markdown = result.markdown;
+
+    // Bold: **text**
+    expect(markdown).toMatch(/\*\*[^*]+\*\*/);
+    
+    // Italic: *text*
+    expect(markdown).toMatch(/\*[^*]+\*/);
+    
+    // Underline: <u>text</u>
+    expect(markdown).toMatch(/<u>[^<]+<\/u>/);
+    
+    // Strikethrough: ~~text~~
+    expect(markdown).toMatch(/~~[^~]+~~/);
+    
+    // Highlight: ==text==
+    expect(markdown).toMatch(/==[^=]+==/);
+    
+    // Superscript: <sup>text</sup>
+    expect(markdown).toMatch(/<sup>[^<]+<\/sup>/);
+    
+    // Subscript: <sub>text</sub>
+    expect(markdown).toMatch(/<sub>[^<]+<\/sub>/);
+    
+    // Headings: # Heading 1, ## Heading 2, etc.
+    expect(markdown).toMatch(/^# /m);
+    expect(markdown).toMatch(/^## /m);
+    
+    // Lists: bulleted (- ) and numbered (1. )
+    expect(markdown).toMatch(/^- /m);
+    expect(markdown).toMatch(/^1\. /m);
+    
+    // Check that the document contains expected content
+    expect(markdown).toContain('bulleted list');
+    expect(markdown).toContain('numbered list');
+    const bulletedLine = markdown.split('\n').find(line => line === '- One');
+    const numberedLine = markdown.split('\n').find(line => line === '1. One');
+    expect(bulletedLine).toBe('- One');
+    expect(numberedLine).toBe('1. One');
   });
 
   test('handles empty docx gracefully', async () => {
@@ -206,5 +287,433 @@ describe('convertDocx (end-to-end)', () => {
     const result = await convertDocx(buf);
     expect(result.markdown).toContain('Hello');
     expect(result.bibtex).toBe('');
+  });
+});
+
+describe('wrapWithFormatting', () => {
+  // Property 1: Formatting wrapping produces correct delimiters
+  test('property: single formatting flag produces correct delimiters', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 50 }),
+        fc.constantFrom('bold', 'italic', 'strikethrough', 'underline', 'highlight', 'superscript', 'subscript'),
+        (text, formatType) => {
+          const fmt: RunFormatting = { ...DEFAULT_FORMATTING };
+          (fmt as any)[formatType] = true;
+          
+          const result = wrapWithFormatting(text, fmt);
+          
+          const delimiters = {
+            bold: ['**', '**'],
+            italic: ['*', '*'],
+            strikethrough: ['~~', '~~'],
+            underline: ['<u>', '</u>'],
+            highlight: ['==', '=='],
+            superscript: ['<sup>', '</sup>'],
+            subscript: ['<sub>', '</sub>'],
+          };
+          
+          const [open, close] = delimiters[formatType as keyof typeof delimiters];
+          expect(result.startsWith(open)).toBe(true);
+          expect(result.endsWith(close)).toBe(true);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  // Property 3: Combined formatting nesting order is consistent
+  test('property: combined formatting nesting order is consistent', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 50 }),
+        fc.record({
+          bold: fc.boolean(),
+          italic: fc.boolean(),
+          strikethrough: fc.boolean(),
+          underline: fc.boolean(),
+          highlight: fc.boolean(),
+          superscript: fc.boolean(),
+          subscript: fc.boolean(),
+        }).filter(fmt => Object.values(fmt).filter(Boolean).length >= 2),
+        (text, fmt) => {
+          const result = wrapWithFormatting(text, fmt);
+          
+          // Check nesting order: bold (outermost) → italic → strikethrough → underline → highlight → super/subscript (innermost)
+          const patterns = [];
+          if (fmt.bold) patterns.push('\\*\\*');
+          if (fmt.italic) patterns.push('\\*');
+          if (fmt.strikethrough) patterns.push('~~');
+          if (fmt.underline) patterns.push('<u>');
+          if (fmt.highlight) patterns.push('==');
+          // Superscript takes precedence over subscript
+          if (fmt.superscript) {
+            patterns.push('<sup>');
+          } else if (fmt.subscript) {
+            patterns.push('<sub>');
+          }
+          
+          // Build expected opening pattern
+          const openPattern = patterns.join('');
+          const regex = new RegExp(`^${openPattern}`);
+          expect(result).toMatch(regex);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+});
+
+describe('buildMarkdown', () => {
+  test('Property 2: Consecutive runs with identical formatting merge into a single span', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.string({ minLength: 1, maxLength: 20 }).filter(s => s.trim().length > 0 && !s.includes('=') && !s.includes('*') && !s.includes('~')), { minLength: 2, maxLength: 5 }),
+        fc.record({
+          bold: fc.boolean(),
+          italic: fc.boolean(),
+          strikethrough: fc.boolean(),
+          underline: fc.boolean(),
+          highlight: fc.boolean(),
+          superscript: fc.boolean(),
+          subscript: fc.boolean(),
+        }),
+        fc.option(fc.webUrl(), { nil: undefined }),
+        (texts, formatting, href) => {
+          const content = texts.map(text => ({
+            type: 'text' as const,
+            text,
+            commentIds: new Set<string>(),
+            formatting,
+            href,
+          }));
+          
+          const result = buildMarkdown(content, new Map());
+          const expectedText = texts.join('');
+          
+          // The result should contain the merged text
+          expect(result).toContain(expectedText);
+          
+          // For simple cases, verify no duplicate formatting
+          if (Object.values(formatting).filter(Boolean).length === 1) {
+            const activeFormat = Object.entries(formatting).find(([_, active]) => active)?.[0];
+            if (activeFormat === 'bold') {
+              expect(result.match(/\*\*[^*]*\*\*/g)?.length).toBe(1);
+            } else if (activeFormat === 'highlight') {
+              expect(result.match(/==[^=]*==/g)?.length).toBe(1);
+            }
+          }
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('Property 4: Hyperlink text items produce Markdown link syntax', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 50 }),
+        fc.webUrl(),
+        (text, url) => {
+          const content = [{
+            type: 'text' as const,
+            text,
+            commentIds: new Set<string>(),
+            formatting: DEFAULT_FORMATTING,
+            href: url,
+          }];
+          
+          const result = buildMarkdown(content, new Map());
+          expect(result).toMatch(/\[.*\]\(.*\)/);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('Property 5: Formatting delimiters appear inside hyperlink text', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 30 }).filter(s => !s.includes(']') && !s.includes(')')),
+        fc.webUrl(),
+        fc.record({
+          bold: fc.boolean(),
+          italic: fc.boolean(),
+          strikethrough: fc.boolean(),
+          underline: fc.boolean(),
+          highlight: fc.boolean(),
+          superscript: fc.boolean(),
+          subscript: fc.boolean(),
+        }).filter(fmt => Object.values(fmt).some(Boolean)),
+        (text, url, formatting) => {
+          const content = [{
+            type: 'text' as const,
+            text,
+            commentIds: new Set<string>(),
+            formatting,
+            href: url,
+          }];
+          
+          const result = buildMarkdown(content, new Map());
+          const linkMatch = result.match(/\[(.*?)\]\((.*?)\)/);
+          expect(linkMatch).toBeTruthy();
+          
+          const linkText = linkMatch![1];
+          const activeFormats = Object.entries(formatting).filter(([_, active]) => active);
+          for (const [format] of activeFormats) {
+            let delimiter = '';
+            switch (format) {
+              case 'bold': delimiter = '**'; break;
+              case 'italic': delimiter = '*'; break;
+              case 'strikethrough': delimiter = '~~'; break;
+              case 'underline': delimiter = '<u>'; break;
+              case 'highlight': delimiter = '=='; break;
+              case 'superscript': delimiter = '<sup>'; break;
+              case 'subscript': delimiter = '<sub>'; break;
+            }
+            if (delimiter && (format !== 'subscript' || !formatting.superscript)) {
+              expect(linkText).toContain(delimiter);
+            }
+          }
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('text without href outputs as plain text (unresolvable hyperlink fallback)', () => {
+    const content = [{
+      type: 'text' as const,
+      text: 'link text',
+      commentIds: new Set<string>(),
+      formatting: DEFAULT_FORMATTING,
+      // href is undefined - simulates unresolvable r:id
+    }];
+    
+    const result = buildMarkdown(content, new Map());
+    expect(result).toBe('link text');
+    expect(result).not.toContain('[');
+    expect(result).not.toContain(']');
+    expect(result).not.toContain('(');
+    expect(result).not.toContain(')');
+  });
+
+  test('href with parentheses is emitted using safe markdown link destination', () => {
+    const content = [{
+      type: 'text' as const,
+      text: 'link',
+      commentIds: new Set<string>(),
+      formatting: DEFAULT_FORMATTING,
+      href: 'https://example.com/a_(b)'
+    }];
+
+    const result = buildMarkdown(content, new Map());
+    expect(result).toBe('[link](<https://example.com/a_(b)>)');
+  });
+
+  test('commented text across differently formatted runs emits one annotation block', () => {
+    const comments = new Map([
+      ['c1', { author: 'Reviewer', text: 'note', date: '2025-01-01T00:00:00Z' }]
+    ]);
+    const content = [
+      {
+        type: 'text' as const,
+        text: 'normal ',
+        commentIds: new Set(['c1']),
+        formatting: DEFAULT_FORMATTING
+      },
+      {
+        type: 'text' as const,
+        text: 'bold',
+        commentIds: new Set(['c1']),
+        formatting: { ...DEFAULT_FORMATTING, bold: true }
+      }
+    ];
+
+    const result = buildMarkdown(content, comments);
+    expect(result).toBe(`{==normal **bold**==}{>>Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}): note<<}`);
+  });
+
+  test('highlighted commented text does not produce doubled == delimiters', () => {
+    const comments = new Map([
+      ['c1', { author: 'Reviewer', text: 'note', date: '2025-01-01T00:00:00Z' }]
+    ]);
+    const content = [
+      {
+        type: 'text' as const,
+        text: 'highlighted',
+        commentIds: new Set(['c1']),
+        formatting: { ...DEFAULT_FORMATTING, highlight: true }
+      }
+    ];
+
+    const result = buildMarkdown(content, comments);
+    expect(result).toBe(`{==highlighted==}{>>Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}): note<<}`);
+    expect(result).not.toContain('{====');
+  });
+
+  test('Property 6: Heading paragraphs produce correct # prefix', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 6 }),
+        fc.string({ minLength: 1, maxLength: 50 }),
+        (level, text) => {
+          const content = [
+            { type: 'para' as const, headingLevel: level },
+            { type: 'text' as const, text, commentIds: new Set<string>(), formatting: DEFAULT_FORMATTING }
+          ];
+          
+          const result = buildMarkdown(content, new Map());
+          const expectedPrefix = '#'.repeat(level) + ' ';
+          expect(result).toContain(expectedPrefix);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('Property 7: List items produce correct prefix and indentation', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('bullet', 'ordered'),
+        fc.integer({ min: 0, max: 3 }),
+        fc.string({ minLength: 1, maxLength: 30 }),
+        (listType, level, text) => {
+          const content = [
+            { type: 'para' as const, listMeta: { type: listType, level } },
+            { type: 'text' as const, text, commentIds: new Set<string>(), formatting: DEFAULT_FORMATTING }
+          ];
+          
+          const result = buildMarkdown(content, new Map());
+          const expectedIndent = listType === 'bullet' 
+            ? ' '.repeat(2 * level) + '- '
+            : ' '.repeat(3 * level) + '1. ';
+          expect(result).toContain(expectedIndent);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('Property 8: Consecutive list items have no blank lines between them', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            type: fc.constantFrom('bullet' as const, 'ordered' as const),
+            level: fc.integer({ min: 0, max: 2 }),
+            text: fc.string({ minLength: 1, maxLength: 20 })
+          }),
+          { minLength: 2, maxLength: 4 }
+        ),
+        (items) => {
+          const content = items.flatMap(item => [
+            { type: 'para' as const, listMeta: { type: item.type, level: item.level } },
+            { type: 'text' as const, text: item.text, commentIds: new Set<string>(), formatting: DEFAULT_FORMATTING }
+          ]);
+          
+          const result = buildMarkdown(content, new Map());
+          const hasTypeTransition = items.some((item, idx) => idx > 0 && item.type !== items[idx - 1].type);
+          if (hasTypeTransition) {
+            expect(result).toContain('\n\n');
+          }
+          expect(result).not.toContain('\n\n\n'); // No double blank lines
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  test('heading-first content does not start with leading blank lines', () => {
+    const content = [
+      { type: 'para' as const, headingLevel: 2 },
+      { type: 'text' as const, text: 'Heading', commentIds: new Set<string>(), formatting: DEFAULT_FORMATTING }
+    ];
+
+    const result = buildMarkdown(content, new Map());
+    expect(result).toBe('## Heading');
+    expect(result.startsWith('\n')).toBe(false);
+  });
+
+  test('list-first content does not start with leading blank lines', () => {
+    const content = [
+      { type: 'para' as const, listMeta: { type: 'bullet' as const, level: 0 } },
+      { type: 'text' as const, text: 'Item', commentIds: new Set<string>(), formatting: DEFAULT_FORMATTING }
+    ];
+
+    const result = buildMarkdown(content, new Map());
+    expect(result).toBe('- Item');
+    expect(result.startsWith('\n')).toBe(false);
+  });
+});
+
+describe('isToggleOn', () => {
+  test('returns false when element is absent', () => {
+    expect(isToggleOn([], 'w:b')).toBe(false);
+  });
+
+  test('returns true when element present with no val attribute', () => {
+    const children = [{ 'w:b': [] }];
+    expect(isToggleOn(children, 'w:b')).toBe(true);
+  });
+
+  test('returns false when val="false"', () => {
+    const children = [{ 'w:b': [], ':@': { '@_w:val': 'false' } }];
+    expect(isToggleOn(children, 'w:b')).toBe(false);
+  });
+
+  test('returns false when val="0"', () => {
+    const children = [{ 'w:b': [], ':@': { '@_w:val': '0' } }];
+    expect(isToggleOn(children, 'w:b')).toBe(false);
+  });
+
+  test('returns true when val="true"', () => {
+    const children = [{ 'w:b': [], ':@': { '@_w:val': 'true' } }];
+    expect(isToggleOn(children, 'w:b')).toBe(true);
+  });
+
+  test('returns true when val="1"', () => {
+    const children = [{ 'w:b': [], ':@': { '@_w:val': '1' } }];
+    expect(isToggleOn(children, 'w:b')).toBe(true);
+  });
+});
+
+describe('highlight detection', () => {
+  test('detects highlight via w:shd with non-auto fill', () => {
+    const children = [{ 'w:shd': [], ':@': { '@_w:fill': 'FFFF00' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(true);
+  });
+
+  test('ignores w:shd with auto fill', () => {
+    const children = [{ 'w:shd': [], ':@': { '@_w:fill': 'auto' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(false);
+  });
+
+  test('ignores w:shd with empty fill', () => {
+    const children = [{ 'w:shd': [], ':@': { '@_w:fill': '' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.highlight).toBe(false);
+  });
+});
+
+describe('parseHeadingLevel', () => {
+  test('returns undefined for non-heading pStyle', () => {
+    const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'Normal' } }];
+    expect(parseHeadingLevel(children)).toBeUndefined();
+  });
+
+  test('returns undefined when pStyle element is absent', () => {
+    expect(parseHeadingLevel([])).toBeUndefined();
+  });
+
+  test('returns correct level for heading styles', () => {
+    const children1 = [{ 'w:pStyle': [], ':@': { '@_w:val': 'Heading1' } }];
+    expect(parseHeadingLevel(children1)).toBe(1);
+    
+    const children3 = [{ 'w:pStyle': [], ':@': { '@_w:val': 'Heading3' } }];
+    expect(parseHeadingLevel(children3)).toBe(3);
   });
 });

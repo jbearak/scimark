@@ -12,6 +12,7 @@
   --mdmarkup-comment-bg: rgba(0, 102, 204, 0.1);
   --mdmarkup-highlight-color: #9933aa;
   --mdmarkup-highlight-bg: rgba(153, 51, 170, 0.15);
+  --mdmarkup-format-highlight-bg: #ffeb3b;
 }
 
 /* Dark Theme Colors */
@@ -27,6 +28,7 @@
     --mdmarkup-comment-bg: rgba(85, 153, 255, 0.15);
     --mdmarkup-highlight-color: #cc66dd;
     --mdmarkup-highlight-bg: rgba(204, 102, 221, 0.2);
+    --mdmarkup-format-highlight-bg: #ffc107;
   }
 }
 
@@ -60,4 +62,9 @@
 .mdmarkup-highlight {
   color: var(--mdmarkup-highlight-color);
   background-color: var(--mdmarkup-highlight-bg);
+}
+
+/* Format Highlight - yellow/amber for ==highlight== patterns */
+.mdmarkup-format-highlight {
+  background-color: var(--mdmarkup-format-highlight-bg);
 }
