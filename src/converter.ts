@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
+import { ommlToLatex } from './omml';
 
 /** Matches a "Sources" heading (with or without leading `#` markers). */
 const SOURCES_HEADING_RE = /^(?:#+\s*)?Sources\s*$/;
@@ -73,7 +74,8 @@ export type ContentItem =
       type: 'para';
       headingLevel?: number;   // 1–6 if heading, undefined otherwise
       listMeta?: ListMeta;     // present if list item
-    };
+    }
+  | { type: 'math'; latex: string; display: boolean };
 
 export type CitationKeyFormat = 'authorYearTitle' | 'authorYear' | 'numeric';
 
@@ -683,6 +685,31 @@ export async function extractDocumentContent(
             content.push(paraItem);
           }
           walk(paraChildren, paraFormatting);
+        } else if (key === 'm:oMathPara') {
+          // Display equation — extract m:oMath children from within
+          const mathParaChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
+          const oMathNodes = mathParaChildren.filter((c: any) => c['m:oMath'] !== undefined);
+          for (const oMathNode of oMathNodes) {
+            try {
+              const latex = ommlToLatex(oMathNode['m:oMath']);
+              if (latex) {
+                content.push({ type: 'math', latex, display: true });
+              }
+            } catch {
+              content.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true });
+            }
+          }
+        } else if (key === 'm:oMath') {
+          // Inline equation
+          const mathChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
+          try {
+            const latex = ommlToLatex(mathChildren);
+            if (latex) {
+              content.push({ type: 'math', latex, display: false });
+            }
+          } catch {
+            content.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false });
+          }
         } else if (Array.isArray(node[key])) {
           walk(node[key], currentFormatting);
         }
@@ -785,6 +812,20 @@ export function buildMarkdown(
         output.push(indent + marker);
       }
       
+      i++;
+      continue;
+    }
+
+    if (item.type === 'math') {
+      if (item.display) {
+        // Ensure blank line before display math
+        if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+          output.push('\n\n');
+        }
+        output.push('$$' + '\n' + item.latex + '\n' + '$$');
+      } else {
+        output.push('$' + item.latex + '$');
+      }
       i++;
       continue;
     }
