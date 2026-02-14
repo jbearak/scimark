@@ -429,6 +429,9 @@ export async function extractComments(data: Uint8Array | JSZip): Promise<Map<str
   return comments;
 }
 
+/** Matches the 8-character Zotero item key at the end of a URI. */
+export const ZOTERO_KEY_RE = /\/items\/([A-Z0-9]{8})$/;
+
 // Zotero metadata extraction
 
 export async function extractZoteroCitations(data: Uint8Array | JSZip): Promise<ZoteroCitation[]> {
@@ -499,8 +502,6 @@ export async function extractZoteroCitations(data: Uint8Array | JSZip): Promise<
 
 // Zotero URI key extraction
 
-const ZOTERO_KEY_RE = /\/items\/([A-Z0-9]{8})$/;
-
 /** Extract the 8-character Zotero item key from a Zotero URI, or undefined if it doesn't match. */
 export function extractZoteroKey(uri: string): string | undefined {
   const m = uri.match(ZOTERO_KEY_RE);
@@ -556,7 +557,7 @@ export function buildCitationKeyMap(
   return keyMap;
 }
 
-function itemIdentifier(meta: CitationMetadata): string {
+export function itemIdentifier(meta: CitationMetadata): string {
   // Use DOI if available, otherwise title+year
   if (meta.doi) { return `doi:${meta.doi}`; }
   return `${meta.title}::${meta.year}`;
@@ -569,6 +570,11 @@ function getSurname(meta: CitationMetadata): string {
   return meta.fullItemData.publisher || meta.journal || 'unknown';
 }
 
+/** Strip characters that are significant in Pandoc citation syntax. */
+function sanitizeLocator(locator: string): string {
+  return locator.replace(/[\[\];@]/g, '');
+}
+
 /** Get pandoc keys for a citation's items */
 export function citationPandocKeys(
   citation: ZoteroCitation,
@@ -578,7 +584,11 @@ export function citationPandocKeys(
     .map(meta => {
       const k = keyMap.get(itemIdentifier(meta));
       if (!k) return undefined;
-      return meta.locator ? k + ', p. ' + meta.locator : k;
+      if (meta.locator) {
+        const safe = sanitizeLocator(meta.locator);
+        return safe ? k + ', p. ' + safe : k;
+      }
+      return k;
     })
     .filter((k): k is string => k !== undefined);
 }
@@ -980,7 +990,7 @@ export function generateBibTeX(
       if (meta.year) { fields.push(`  year = {${escapeBibtex(meta.year)}}`); }
       if (meta.doi) { fields.push(`  doi = {${meta.doi}}`); }
       if (meta.zoteroKey) { fields.push(`  zotero-key = {${meta.zoteroKey}}`); }
-      if (meta.zoteroUri) { fields.push(`  zotero-uri = {${meta.zoteroUri}}`); }
+      if (meta.zoteroUri) { fields.push(`  zotero-uri = {${escapeBibtex(meta.zoteroUri)}}`); }
 
       entries.push(`@${entryType}{${key},\n${fields.join(',\n')},\n}`);
     }

@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'bun:test';
 import fc from 'fast-check';
+import {
+  generateBibTeX,
+  citationPandocKeys,
+  escapeBibtex,
+  itemIdentifier,
+  buildCitationKeyMap,
+} from './converter';
+import type { ZoteroCitation, CitationMetadata } from './converter';
 
 /**
  * Feature: zotero-citation-roundtrip
@@ -56,8 +64,6 @@ describe('Feature: zotero-citation-roundtrip, Property 1: URI key extraction acr
   });
 });
 
-import { generateBibTeX } from './converter';
-
 /**
  * Feature: zotero-citation-roundtrip
  * Property 2: BibTeX zotero fields biconditional
@@ -87,8 +93,8 @@ const citationMetaArb = fc.record({
   zoteroKey: zoteroKeyArb,
   zoteroUri: zoteroUriArb.map(({ uri }) => uri),
 }).map(({ title, year, doi, hasZoteroKey, hasZoteroUri, zoteroKey, zoteroUri }) => {
-  const meta = {
-    authors: [] as Array<{ family?: string; given?: string }>,
+  const meta: CitationMetadata = {
+    authors: [],
     title,
     year,
     journal: '',
@@ -96,7 +102,7 @@ const citationMetaArb = fc.record({
     pages: '',
     doi,
     type: 'article-journal',
-    fullItemData: {} as Record<string, any>,
+    fullItemData: {},
     ...(hasZoteroKey ? { zoteroKey } : {}),
     ...(hasZoteroUri ? { zoteroUri } : {}),
   };
@@ -107,11 +113,10 @@ describe('Feature: zotero-citation-roundtrip, Property 2: BibTeX zotero fields b
   it('BibTeX output contains zotero-key iff meta.zoteroKey is set, and zotero-uri iff meta.zoteroUri is set, with matching values', () => {
     fc.assert(
       fc.property(citationMetaArb, ({ meta, hasZoteroKey, hasZoteroUri, zoteroKey, zoteroUri }) => {
-        // Build identifier and keyMap so generateBibTeX emits this item
-        const id = meta.doi ? `doi:${meta.doi}` : `${meta.title}::${meta.year}`;
+        const id = itemIdentifier(meta);
         const citKey = 'testkey';
         const keyMap = new Map([[id, citKey]]);
-        const citation = { plainCitation: '', items: [meta] };
+        const citation: ZoteroCitation = { plainCitation: '', items: [meta] };
 
         const bibtex = generateBibTeX([citation], keyMap);
 
@@ -122,11 +127,11 @@ describe('Feature: zotero-citation-roundtrip, Property 2: BibTeX zotero fields b
           expect(bibtex).toContain(`zotero-key = {${zoteroKey}}`);
         }
 
-        // zotero-uri biconditional
+        // zotero-uri biconditional — value is now escapeBibtex'd
         const hasUriField = bibtex.includes('zotero-uri = {');
         expect(hasUriField).toBe(hasZoteroUri);
         if (hasZoteroUri) {
-          expect(bibtex).toContain(`zotero-uri = {${zoteroUri}}`);
+          expect(bibtex).toContain(`zotero-uri = {${escapeBibtex(zoteroUri)}}`);
         }
       }),
       { numRuns: 200 },
@@ -135,17 +140,14 @@ describe('Feature: zotero-citation-roundtrip, Property 2: BibTeX zotero fields b
 });
 
 
-import { citationPandocKeys } from './converter';
-import type { ZoteroCitation, CitationMetadata } from './converter';
-
 /**
  * Feature: zotero-citation-roundtrip
  * Property 3: Locator formatting in Pandoc keys
  *
  * For any ZoteroCitation with items that have keys in the key map,
  * citationPandocKeys() returns a key ending with `, p. <locator>` iff
- * that item's locator field is a non-empty string. Items without a
- * locator produce a bare key with no suffix.
+ * that item's locator field is a non-empty string (after sanitization).
+ * Items without a locator produce a bare key with no suffix.
  *
  * **Validates: Requirements 3.1, 3.2**
  */
@@ -190,13 +192,7 @@ const citationItemArb = (idx: number) =>
 const zoteroCitationArb = fc.integer({ min: 1, max: 5 }).chain(n =>
   fc.tuple(...Array.from({ length: n }, (_, i) => citationItemArb(i))).map(items => {
     const citation: ZoteroCitation = { plainCitation: '', items };
-    // Build keyMap from items using the same identifier logic as the code:
-    // doi ? `doi:${doi}` : `${title}::${year}`
-    const keyMap = new Map<string, string>();
-    items.forEach((meta, i) => {
-      const id = meta.doi ? `doi:${meta.doi}` : `${meta.title}::${meta.year}`;
-      keyMap.set(id, `key${i}`);
-    });
+    const keyMap = buildCitationKeyMap([citation]);
     return { citation, keyMap, items };
   }),
 );
@@ -213,11 +209,16 @@ describe('Feature: zotero-citation-roundtrip, Property 3: Locator formatting in 
         for (let i = 0; i < items.length; i++) {
           const meta = items[i];
           const result = results[i];
-          const baseKey = `key${i}`;
+          const baseKey = keyMap.get(itemIdentifier(meta))!;
 
           if (meta.locator && meta.locator.trim().length > 0) {
-            // Must end with `, p. <locator>`
-            expect(result).toBe(`${baseKey}, p. ${meta.locator}`);
+            // Locator is sanitized (Pandoc-sensitive chars stripped)
+            const sanitized = meta.locator.replace(/[\[\];@]/g, '');
+            if (sanitized) {
+              expect(result).toBe(`${baseKey}, p. ${sanitized}`);
+            } else {
+              expect(result).toBe(baseKey);
+            }
           } else {
             // Must be the bare key with no suffix
             expect(result).toBe(baseKey);
@@ -251,7 +252,8 @@ describe('Feature: zotero-citation-roundtrip, Property 4: Citation grouping pres
 
         // Each result must start with the expected base key (preserving order)
         for (let i = 0; i < items.length; i++) {
-          expect(results[i].startsWith(`key${i}`)).toBe(true);
+          const baseKey = keyMap.get(itemIdentifier(items[i]))!;
+          expect(results[i].startsWith(baseKey)).toBe(true);
         }
       }),
       { numRuns: 200 },
@@ -259,8 +261,6 @@ describe('Feature: zotero-citation-roundtrip, Property 4: Citation grouping pres
   });
 });
 
-
-import { escapeBibtex } from './converter';
 
 /**
  * Feature: zotero-citation-roundtrip
@@ -339,5 +339,60 @@ describe('Feature: zotero-citation-roundtrip, Property 5: BibTeX special charact
       }),
       { numRuns: 200 },
     );
+  });
+});
+
+
+/**
+ * Feature: zotero-citation-roundtrip
+ * Property 6: Locator sanitization strips Pandoc-sensitive characters
+ *
+ * Verifies that citationPandocKeys() strips [ ] ; @ from locators
+ * so they cannot break Pandoc citation syntax.
+ *
+ * **Validates: Locator safety**
+ */
+
+describe('Feature: zotero-citation-roundtrip, Property 6: Locator sanitization', () => {
+  it('strips Pandoc-sensitive characters from locators', () => {
+    const meta: CitationMetadata = {
+      authors: [],
+      title: 'Test',
+      year: '2020',
+      journal: '',
+      volume: '',
+      pages: '',
+      doi: '',
+      type: 'article-journal',
+      fullItemData: {},
+      locator: '20];@next[part',
+    };
+    const citation: ZoteroCitation = { plainCitation: '', items: [meta] };
+    const keyMap = buildCitationKeyMap([citation]);
+    const baseKey = keyMap.get(itemIdentifier(meta))!;
+
+    const results = citationPandocKeys(citation, keyMap);
+    expect(results).toEqual([`${baseKey}, p. 20nextpart`]);
+  });
+
+  it('returns bare key when locator consists entirely of Pandoc-sensitive chars', () => {
+    const meta: CitationMetadata = {
+      authors: [],
+      title: 'Test2',
+      year: '2021',
+      journal: '',
+      volume: '',
+      pages: '',
+      doi: '',
+      type: 'article-journal',
+      fullItemData: {},
+      locator: '[];@',
+    };
+    const citation: ZoteroCitation = { plainCitation: '', items: [meta] };
+    const keyMap = buildCitationKeyMap([citation]);
+    const baseKey = keyMap.get(itemIdentifier(meta))!;
+
+    const results = citationPandocKeys(citation, keyMap);
+    expect(results).toEqual([baseKey]);
   });
 });
