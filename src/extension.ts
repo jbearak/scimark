@@ -13,7 +13,6 @@ import {
 import {
 	VALID_COLOR_IDS,
 	HIGHLIGHT_DECORATION_COLORS,
-	CRITIC_HIGHLIGHT_DECORATION,
 	CRITIC_COMMENT_DECORATION,
 	extractHighlightRanges,
 	extractCommentRanges,
@@ -241,8 +240,8 @@ export function activate(context: vscode.ExtensionContext) {
 		context.subscriptions.push(decType);
 	}
 	const criticDecType = vscode.window.createTextEditorDecorationType({
-		light: { backgroundColor: CRITIC_HIGHLIGHT_DECORATION.light, color: new vscode.ThemeColor('editor.foreground') },
-		dark: { backgroundColor: CRITIC_HIGHLIGHT_DECORATION.dark, color: new vscode.ThemeColor('editor.foreground') },
+		light: { backgroundColor: CRITIC_COMMENT_DECORATION.light, color: new vscode.ThemeColor('editor.foreground') },
+		dark: { backgroundColor: CRITIC_COMMENT_DECORATION.dark, color: new vscode.ThemeColor('editor.foreground') },
 	});
 	decorationTypes.set('critic', criticDecType);
 	context.subscriptions.push(criticDecType);

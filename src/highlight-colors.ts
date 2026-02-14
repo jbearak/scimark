@@ -34,14 +34,7 @@ export const HIGHLIGHT_DECORATION_COLORS: Record<string, { light: string; dark: 
   'black':       { light: 'rgba(0, 0, 0, 0.15)',       dark: 'rgba(0, 0, 0, 0.40)' },
 };
 
-/** Default background for CriticMarkup highlights {==text==} (MS Word comment gray) */
-export const CRITIC_HIGHLIGHT_BG = '#D9D9D9';
-export const CRITIC_HIGHLIGHT_DECORATION = {
-  light: 'rgba(217, 217, 217, 0.50)',
-  dark: 'rgba(217, 217, 217, 0.30)',
-};
-
-/** Theme-aware background colors for editor comment decorations {>>text<<} */
+/** Theme-aware background for CriticMarkup highlights and comments */
 export const CRITIC_COMMENT_DECORATION = {
   light: 'rgba(200, 200, 200, 0.35)',
   dark: 'rgba(200, 200, 200, 0.20)',
