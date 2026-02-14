@@ -53,11 +53,11 @@ This feature adds equation/math support to the existing DOCX-to-Markdown convert
 5. WHEN the Converter encounters an `m:rad` (radical) element with no explicit degree, THE Converter SHALL emit `\sqrt{radicand}` in LaTeX_Notation
 6. WHEN the Converter encounters an `m:rad` (radical) element with an explicit degree, THE Converter SHALL emit `\sqrt[degree]{radicand}` in LaTeX_Notation
 7. WHEN the Converter encounters an `m:nary` (n-ary operator) element, THE Converter SHALL emit the appropriate operator (e.g., `\sum`, `\prod`, `\int`) with subscript and superscript limits in LaTeX_Notation
-8. WHEN the Converter encounters an `m:d` (delimiter/parentheses) element, THE Converter SHALL emit the content wrapped in the specified opening and closing delimiters in LaTeX_Notation
+8. WHEN the Converter encounters an `m:d` (delimiter/parentheses) element, THE Converter SHALL emit `\left` and `\right` delimiters (e.g., `\left( ... \right)` or `\left[ ... \right]`) to wrap the content, allowing it to scale automatically
 9. WHEN the Converter encounters an `m:acc` (accent) element, THE Converter SHALL emit the corresponding LaTeX accent command (e.g., `\hat`, `\bar`, `\dot`) in LaTeX_Notation
-10. WHEN the Converter encounters an `m:m` (matrix) element, THE Converter SHALL emit a LaTeX matrix environment with rows separated by `\\` and columns separated by `&`
-11. WHEN the Converter encounters an `m:func` (function) element, THE Converter SHALL emit the function name followed by its argument in LaTeX_Notation
-12. WHEN the Converter encounters an `m:r` (math run) element containing text, THE Converter SHALL emit the text content, applying italic formatting for single-letter variables by default
+10. WHEN the Converter encounters an `m:m` (matrix) element, THE Converter SHALL emit a `matrix` environment (e.g., `\begin{matrix} ... \end{matrix}`), relying on the parent `m:d` element to provide any surrounding delimiters (e.g. parentheses or brackets)
+11. WHEN the Converter encounters an `m:func` (function) element, THE Converter SHALL emit the function name (using standard commands like `\sin` for known functions, or `\operatorname{name}` for others) followed by its argument
+12. WHEN the Converter encounters an `m:r` (math run) element containing text, THE Converter SHALL emit the text content. Single-letter variables SHALL be emitted as-is (defaulting to italics in LaTeX), while multi-letter text runs SHALL be wrapped in `\mathrm{...}` unless specific styling properties indicate otherwise
 13. WHEN the Converter encounters nested OMML_Elements, THE Converter SHALL recursively translate each element and compose the LaTeX output correctly
 
 ### Requirement 3B: Mixed WordprocessingML Content in Math Context
@@ -118,7 +118,7 @@ This feature adds equation/math support to the existing DOCX-to-Markdown convert
 
 #### Acceptance Criteria
 
-1. IF the Converter encounters an unrecognized OMML_Element, THEN THE Converter SHALL emit the plain text content of that element as a fallback
+1. IF the Converter encounters an unrecognized OMML_Element, THEN THE Converter SHALL emit the plain text content of that element wrapped in `\text{[UNSUPPORTED: element_name]}` (or similar) as a visible fallback placeholder
 2. IF the Converter encounters an OMML_Element with missing required children, THEN THE Converter SHALL emit an empty placeholder and continue conversion
 3. IF the Converter encounters an empty `m:oMath` or `m:oMathPara` element, THEN THE Converter SHALL skip the element without emitting delimiters
 4. IF fallback behavior is used for an OMML_Element, THEN THE Converter SHALL continue converting subsequent content without throwing a fatal error
