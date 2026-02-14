@@ -662,8 +662,25 @@ export function prettyPrintMd(tokens: MdToken[]): string {
   return lines.join('\n').replace(/\n+$/, '\n');
 }
 
+function mergeAdjacentRuns(runs: MdRun[]): MdRun[] {
+  const result: MdRun[] = [];
+  for (const run of runs) {
+    const prev = result[result.length - 1];
+    if (prev && prev.type === 'text' && run.type === 'text' &&
+        !!prev.bold === !!run.bold && !!prev.italic === !!run.italic &&
+        !!prev.underline === !!run.underline && !!prev.strikethrough === !!run.strikethrough &&
+        !!prev.code === !!run.code && !!prev.superscript === !!run.superscript &&
+        !!prev.subscript === !!run.subscript && prev.href === run.href) {
+      prev.text += run.text;
+    } else {
+      result.push({ ...run });
+    }
+  }
+  return result;
+}
+
 function formatRuns(runs: MdRun[]): string {
-  return runs.map(run => {
+  return mergeAdjacentRuns(runs).map(run => {
     let text = run.text;
     
     switch (run.type) {
