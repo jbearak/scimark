@@ -919,7 +919,7 @@ export function generateRun(text: string, rPr: string): string {
   return '<w:r>' + rPr + '<w:t xml:space="preserve">' + escapeXml(text) + '</w:t></w:r>';
 }
 
-export function generateParagraph(token: MdToken, state: DocxGenState): string {
+export function generateParagraph(token: MdToken, state: DocxGenState, options?: MdToDocxOptions): string {
   let pPr = '';
   
   switch (token.type) {
@@ -970,8 +970,43 @@ export function generateParagraph(token: MdToken, state: DocxGenState): string {
       }
     } else if (run.type === 'softbreak') {
       runs += '<w:r><w:br/></w:r>';
+    } else if (run.type === 'critic_add') {
+      const author = run.author || options?.authorName || 'Unknown';
+      const date = run.date || new Date().toISOString();
+      const rPr = generateRPr(run);
+      runs += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + generateRun(run.text, rPr) + '</w:ins>';
+    } else if (run.type === 'critic_del') {
+      const author = run.author || options?.authorName || 'Unknown';
+      const date = run.date || new Date().toISOString();
+      const rPr = generateRPr(run);
+      runs += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '"><w:r>' + (rPr ? rPr : '') + '<w:delText xml:space="preserve">' + escapeXml(run.text) + '</w:delText></w:r></w:del>';
+    } else if (run.type === 'critic_sub') {
+      const author = run.author || options?.authorName || 'Unknown';
+      const date = run.date || new Date().toISOString();
+      const rPr = generateRPr(run);
+      runs += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '"><w:r>' + (rPr ? rPr : '') + '<w:delText xml:space="preserve">' + escapeXml(run.text) + '</w:delText></w:r></w:del>';
+      runs += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + generateRun(run.newText || '', rPr) + '</w:ins>';
+    } else if (run.type === 'critic_highlight') {
+      const highlightRun = { ...run, type: 'text' as const, highlight: true };
+      runs += generateRun(run.text, generateRPr(highlightRun));
+    } else if (run.type === 'critic_comment') {
+      const commentId = state.commentId++;
+      const author = run.author || options?.authorName || 'Unknown';
+      const date = run.date || new Date().toISOString();
+      const commentBody = run.commentText || '';
+      
+      state.comments.push({ id: commentId, author, date, text: commentBody });
+      state.hasComments = true;
+      
+      if (run.text) {
+        runs += '<w:commentRangeStart w:id="' + commentId + '"/>';
+        const highlightRun = { ...run, type: 'text' as const, highlight: true };
+        runs += generateRun(run.text, generateRPr(highlightRun));
+        runs += '<w:commentRangeEnd w:id="' + commentId + '"/>';
+      }
+      runs += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
     }
-    // Skip critic_*, citation, math runs for now
+    // Skip citation, math runs for now
   }
   
   return '<w:p>' + pPr + runs + '</w:p>';
@@ -1005,14 +1040,26 @@ export function generateTable(token: MdToken, state: DocxGenState): string {
   return xml;
 }
 
-export function generateDocumentXml(tokens: MdToken[], state: DocxGenState): string {
+function commentsXml(comments: CommentEntry[]): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+  for (const c of comments) {
+    xml += '<w:comment w:id="' + c.id + '" w:author="' + escapeXml(c.author) + '" w:date="' + escapeXml(c.date) + '">';
+    xml += '<w:p><w:r><w:t>' + escapeXml(c.text) + '</w:t></w:r></w:p>';
+    xml += '</w:comment>';
+  }
+  xml += '</w:comments>';
+  return xml;
+}
+
+export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions): string {
   let body = '';
   
   for (const token of tokens) {
     if (token.type === 'table') {
       body += generateTable(token, state);
     } else {
-      body += generateParagraph(token, state);
+      body += generateParagraph(token, state, options);
     }
   }
   
@@ -1039,7 +1086,7 @@ export async function convertMdToDocx(
     hasComments: false,
   };
   
-  const documentXml = generateDocumentXml(tokens, state);
+  const documentXml = generateDocumentXml(tokens, state, options);
   
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
@@ -1047,7 +1094,12 @@ export async function convertMdToDocx(
   zip.file('_rels/.rels', relsXml());
   zip.file('word/document.xml', documentXml);
   zip.file('word/styles.xml', stylesXml());
-  if (state.hasList) zip.file('word/numbering.xml', numberingXml());
+  if (state.hasList) {
+    zip.file('word/numbering.xml', numberingXml());
+  }
+  if (state.hasComments) {
+    zip.file('word/comments.xml', commentsXml(state.comments));
+  }
   if (state.relationships.size > 0 || state.hasComments) {
     zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasComments));
   }

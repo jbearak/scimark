@@ -464,3 +464,119 @@ console.log('code');
     expect(fileNames.length).toBeGreaterThanOrEqual(6);
   });
 });
+
+describe('CriticMarkup OOXML generation', () => {
+  const createState = () => ({
+    commentId: 0,
+    comments: [],
+    relationships: new Map(),
+    nextRId: 1,
+    warnings: [],
+    hasList: false,
+    hasComments: false
+  });
+
+  it('generates w:ins for additions', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [{ type: 'critic_add', text: 'added text', author: 'John', date: '2024-01-01T00:00:00Z' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state, { authorName: 'Default' });
+    expect(result).toContain('<w:ins w:id="0" w:author="John" w:date="2024-01-01T00:00:00Z">');
+    expect(result).toContain('added text');
+    expect(result).toContain('</w:ins>');
+  });
+
+  it('generates w:del with w:delText for deletions', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [{ type: 'critic_del', text: 'deleted text', author: 'Jane', date: '2024-01-02T00:00:00Z' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state, { authorName: 'Default' });
+    expect(result).toContain('<w:del w:id="0" w:author="Jane" w:date="2024-01-02T00:00:00Z">');
+    expect(result).toContain('<w:delText xml:space="preserve">deleted text</w:delText>');
+    expect(result).toContain('</w:del>');
+  });
+
+  it('generates w:del + w:ins for substitutions', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [{ type: 'critic_sub', text: 'old text', newText: 'new text', author: 'Bob', date: '2024-01-03T00:00:00Z' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state, { authorName: 'Default' });
+    expect(result).toContain('<w:del w:id="0" w:author="Bob" w:date="2024-01-03T00:00:00Z">');
+    expect(result).toContain('<w:delText xml:space="preserve">old text</w:delText>');
+    expect(result).toContain('<w:ins w:id="1" w:author="Bob" w:date="2024-01-03T00:00:00Z">');
+    expect(result).toContain('new text');
+  });
+
+  it('generates comment anchors and comments.xml entries', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [{ type: 'critic_comment', text: 'highlighted text', commentText: 'This is a comment', author: 'Alice', date: '2024-01-04T00:00:00Z' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state, { authorName: 'Default' });
+    expect(result).toContain('<w:commentRangeStart w:id="0"/>');
+    expect(result).toContain('<w:commentRangeEnd w:id="0"/>');
+    expect(result).toContain('<w:commentReference w:id="0"/>');
+    expect(result).toContain('highlighted text');
+    expect(state.hasComments).toBe(true);
+    expect(state.comments).toHaveLength(1);
+    expect(state.comments[0]).toEqual({
+      id: 0,
+      author: 'Alice',
+      date: '2024-01-04T00:00:00Z',
+      text: 'This is a comment'
+    });
+  });
+
+  it('generates zero-width comment for standalone comments', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [{ type: 'critic_comment', text: '', commentText: 'Standalone comment', author: 'Charlie', date: '2024-01-05T00:00:00Z' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state, { authorName: 'Default' });
+    expect(result).not.toContain('<w:commentRangeStart');
+    expect(result).not.toContain('<w:commentRangeEnd');
+    expect(result).toContain('<w:commentReference w:id="0"/>');
+    expect(state.comments[0].text).toBe('Standalone comment');
+  });
+
+  it('uses author attribution from CriticMarkup', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [{ type: 'critic_add', text: 'text', author: 'SpecificAuthor' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state, { authorName: 'DefaultAuthor' });
+    expect(result).toContain('w:author="SpecificAuthor"');
+  });
+
+  it('falls back to options.authorName', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [{ type: 'critic_add', text: 'text' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state, { authorName: 'FallbackAuthor' });
+    expect(result).toContain('w:author="FallbackAuthor"');
+  });
+
+  it('generates highlighted text for critic_highlight', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [{ type: 'critic_highlight', text: 'highlighted text', highlightColor: 'green' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state, { authorName: 'Default' });
+    expect(result).toContain('<w:highlight w:val="green"/>');
+    expect(result).toContain('highlighted text');
+    expect(result).not.toContain('<w:ins');
+    expect(result).not.toContain('<w:del');
+  });
+});
