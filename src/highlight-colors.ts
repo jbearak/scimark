@@ -41,6 +41,12 @@ export const CRITIC_HIGHLIGHT_DECORATION = {
   dark: 'rgba(217, 217, 217, 0.30)',
 };
 
+/** Theme-aware background colors for editor comment decorations {>>text<<} */
+export const CRITIC_COMMENT_DECORATION = {
+  light: 'rgba(200, 200, 200, 0.35)',
+  dark: 'rgba(200, 200, 200, 0.20)',
+};
+
 /** All valid color identifiers */
 export const VALID_COLOR_IDS = Object.keys(HIGHLIGHT_COLORS);
 
@@ -93,4 +99,18 @@ export function extractHighlightRanges(text: string, defaultColor: string): Map<
   }
 
   return result;
+}
+
+/**
+ * Extract CriticMarkup comment ranges {>>text<<} from document text.
+ * Returns an array of offset ranges.
+ */
+export function extractCommentRanges(text: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const re = /\{>>([\s\S]*?)<<\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    ranges.push({ start: m.index, end: m.index + m[0].length });
+  }
+  return ranges;
 }

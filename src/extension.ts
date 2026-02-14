@@ -14,7 +14,9 @@ import {
 	VALID_COLOR_IDS,
 	HIGHLIGHT_DECORATION_COLORS,
 	CRITIC_HIGHLIGHT_DECORATION,
+	CRITIC_COMMENT_DECORATION,
 	extractHighlightRanges,
+	extractCommentRanges,
 	setDefaultHighlightColor,
 	getDefaultHighlightColor,
 } from './highlight-colors';
@@ -245,6 +247,13 @@ export function activate(context: vscode.ExtensionContext) {
 	decorationTypes.set('critic', criticDecType);
 	context.subscriptions.push(criticDecType);
 
+	const commentDecType = vscode.window.createTextEditorDecorationType({
+		light: { backgroundColor: CRITIC_COMMENT_DECORATION.light },
+		dark: { backgroundColor: CRITIC_COMMENT_DECORATION.dark },
+		fontStyle: 'italic',
+	});
+	context.subscriptions.push(commentDecType);
+
 	function updateHighlightDecorations(editor: vscode.TextEditor) {
 		if (editor.document.languageId !== 'markdown') { return; }
 		const text = editor.document.getText();
@@ -262,6 +271,17 @@ export function activate(context: vscode.ExtensionContext) {
 			} else {
 				editor.setDecorations(decType, []);
 			}
+		}
+
+		// Apply comment decorations
+		const commentRanges = extractCommentRanges(text);
+		if (commentRanges.length > 0) {
+			editor.setDecorations(commentDecType, commentRanges.map(r => new vscode.Range(
+				editor.document.positionAt(r.start),
+				editor.document.positionAt(r.end)
+			)));
+		} else {
+			editor.setDecorations(commentDecType, []);
 		}
 	}
 	let highlightDecorationUpdateTimer: ReturnType<typeof setTimeout> | undefined;
