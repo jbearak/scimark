@@ -23,6 +23,9 @@ export interface CitationMetadata {
   doi: string;
   type: string;
   fullItemData: Record<string, any>;
+  zoteroKey?: string;
+  zoteroUri?: string;
+  locator?: string;
 }
 
 /** Each Zotero field in the document produces one of these. */
@@ -426,6 +429,9 @@ export async function extractComments(data: Uint8Array | JSZip): Promise<Map<str
   return comments;
 }
 
+/** Matches the 8-character Zotero item key at the end of a URI. */
+export const ZOTERO_KEY_RE = /\/items\/([A-Z0-9]{8})$/;
+
 // Zotero metadata extraction
 
 export async function extractZoteroCitations(data: Uint8Array | JSZip): Promise<ZoteroCitation[]> {
@@ -453,7 +459,8 @@ export async function extractZoteroCitations(data: Uint8Array | JSZip): Promise<
         const issued = d.issued ?? {};
         const dateParts = issued['date-parts'] ?? [[]];
         const year = dateParts[0]?.[0] ? String(dateParts[0][0]) : '';
-        return {
+        
+        const result: CitationMetadata = {
           authors: d.author ?? [],
           title: d.title ?? '',
           year,
@@ -464,6 +471,24 @@ export async function extractZoteroCitations(data: Uint8Array | JSZip): Promise<
           type: d.type ?? 'article-journal',
           fullItemData: d,
         };
+
+        // Extract Zotero URI and key
+        const uris = item.uris ?? item.uri ?? [];
+        const uri = Array.isArray(uris) ? uris[0] : uris;
+        if (uri) {
+          result.zoteroUri = uri;
+          const keyMatch = uri.match(ZOTERO_KEY_RE);
+          if (keyMatch) {
+            result.zoteroKey = keyMatch[1];
+          }
+        }
+
+        // Extract locator
+        if (item.locator && typeof item.locator === 'string' && item.locator.trim()) {
+          result.locator = item.locator;
+        }
+
+        return result;
       });
 
       citations.push({ plainCitation, items });
@@ -524,7 +549,7 @@ export function buildCitationKeyMap(
   return keyMap;
 }
 
-function itemIdentifier(meta: CitationMetadata): string {
+export function itemIdentifier(meta: CitationMetadata): string {
   // Use DOI if available, otherwise title+year
   if (meta.doi) { return `doi:${meta.doi}`; }
   return `${meta.title}::${meta.year}`;
@@ -537,13 +562,26 @@ function getSurname(meta: CitationMetadata): string {
   return meta.fullItemData.publisher || meta.journal || 'unknown';
 }
 
+/** Strip characters that are significant in Pandoc citation syntax. */
+function sanitizeLocator(locator: string): string {
+  return locator.replace(/[\[\];@]/g, '');
+}
+
 /** Get pandoc keys for a citation's items */
 export function citationPandocKeys(
   citation: ZoteroCitation,
   keyMap: Map<string, string>
 ): string[] {
   return citation.items
-    .map(meta => keyMap.get(itemIdentifier(meta)))
+    .map(meta => {
+      const k = keyMap.get(itemIdentifier(meta));
+      if (!k) return undefined;
+      if (meta.locator) {
+        const safe = sanitizeLocator(meta.locator);
+        return safe ? k + ', p. ' + safe : k;
+      }
+      return k;
+    })
     .filter((k): k is string => k !== undefined);
 }
 
@@ -910,7 +948,7 @@ export function formatLocalIsoMinute(ts: string): string {
 // BibTeX generation
 
 /** Escape special LaTeX/BibTeX characters in field values. */
-function escapeBibtex(s: string): string {
+export function escapeBibtex(s: string): string {
   return s.replace(/([&%$#_{}~^\\])/g, '\\$1');
 }
 
@@ -943,6 +981,8 @@ export function generateBibTeX(
       if (meta.pages) { fields.push(`  pages = {${escapeBibtex(meta.pages)}}`); }
       if (meta.year) { fields.push(`  year = {${escapeBibtex(meta.year)}}`); }
       if (meta.doi) { fields.push(`  doi = {${meta.doi}}`); }
+      if (meta.zoteroKey) { fields.push(`  zotero-key = {${meta.zoteroKey}}`); }
+      if (meta.zoteroUri) { fields.push(`  zotero-uri = {${escapeBibtex(meta.zoteroUri)}}`); }
 
       entries.push(`@${entryType}{${key},\n${fields.join(',\n')},\n}`);
     }
