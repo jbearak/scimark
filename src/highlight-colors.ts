@@ -110,6 +110,36 @@ export function extractCommentRanges(text: string): Array<{ start: number; end: 
 }
 
 /**
+ * Extract CriticMarkup addition content ranges {++text++} (content only, excluding delimiters).
+ */
+export function extractAdditionRanges(text: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const re = /\{\+\+([\s\S]*?)\+\+\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index + 3;
+    const end = m.index + m[0].length - 3;
+    if (end > start) { ranges.push({ start, end }); }
+  }
+  return ranges;
+}
+
+/**
+ * Extract CriticMarkup deletion content ranges {--text--} (content only, excluding delimiters).
+ */
+export function extractDeletionRanges(text: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const re = /\{--([\s\S]*?)--\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index + 3;
+    const end = m.index + m[0].length - 3;
+    if (end > start) { ranges.push({ start, end }); }
+  }
+  return ranges;
+}
+
+/**
  * Extract offset ranges for all CriticMarkup delimiters.
  * Returns ranges for: {== ==} {>> <<} {++ ++} {-- --} {~~ ~~} ~>
  */

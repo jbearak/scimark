@@ -16,6 +16,8 @@ import {
 	CRITIC_COMMENT_DECORATION,
 	extractHighlightRanges,
 	extractCommentRanges,
+	extractAdditionRanges,
+	extractDeletionRanges,
 	extractCriticDelimiterRanges,
 	extractSubstitutionNewRanges,
 	setDefaultHighlightColor,
@@ -260,6 +262,16 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(delimiterDecType);
 
+	const additionDecType = vscode.window.createTextEditorDecorationType({
+		color: new vscode.ThemeColor('gitDecoration.addedResourceForeground'),
+	});
+	context.subscriptions.push(additionDecType);
+
+	const deletionDecType = vscode.window.createTextEditorDecorationType({
+		color: new vscode.ThemeColor('gitDecoration.deletedResourceForeground'),
+	});
+	context.subscriptions.push(deletionDecType);
+
 	const substitutionNewDecType = vscode.window.createTextEditorDecorationType({
 		color: new vscode.ThemeColor('gitDecoration.addedResourceForeground'),
 	});
@@ -294,6 +306,19 @@ export function activate(context: vscode.ExtensionContext) {
 		} else {
 			editor.setDecorations(commentDecType, []);
 		}
+
+		// Apply addition/deletion content decorations
+		const additionRanges = extractAdditionRanges(text);
+		editor.setDecorations(additionDecType, additionRanges.map(r => new vscode.Range(
+			editor.document.positionAt(r.start),
+			editor.document.positionAt(r.end)
+		)));
+
+		const deletionRanges = extractDeletionRanges(text);
+		editor.setDecorations(deletionDecType, deletionRanges.map(r => new vscode.Range(
+			editor.document.positionAt(r.start),
+			editor.document.positionAt(r.end)
+		)));
 
 		// Apply muted delimiter decorations
 		const delimiterRanges = extractCriticDelimiterRanges(text);
