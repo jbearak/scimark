@@ -936,7 +936,7 @@ export function formatLocalIsoMinute(ts: string): string {
 // BibTeX generation
 
 /** Escape special LaTeX/BibTeX characters in field values. */
-function escapeBibtex(s: string): string {
+export function escapeBibtex(s: string): string {
   return s.replace(/([&%$#_{}~^\\])/g, '\\$1');
 }
 

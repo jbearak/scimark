@@ -120,3 +120,72 @@ Pandoc citation syntax:
 - **Malformed URI**: URI doesn't match expected pattern → omit `zotero-key`; still store `zotero-uri` for debugging
 - **Duplicate items**: Same item cited multiple times → `generateBibTeX()` already deduplicates via `emitted` set; `zotero-key` is consistent across occurrences
 - **Empty locator string**: Treat as no locator
+
+## Correctness Properties
+
+*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+
+The following properties target the pure functions in `src/converter.ts` that can be tested without constructing DOCX zip files: URI key extraction (regex), `generateBibTeX()`, `citationPandocKeys()`, and `escapeBibtex()`.
+
+### Property 1: URI key extraction across all formats
+
+*For any* 8-character alphanumeric key and any Zotero URI format (local, synced, or group), applying the regex `/\/items\/([A-Z0-9]{8})$/` to the URI SHALL extract exactly that key.
+
+Generators produce URIs in all three formats:
+- `http://zotero.org/users/local/{localID}/items/{KEY}`
+- `http://zotero.org/users/{numericID}/items/{KEY}`
+- `http://zotero.org/groups/{numericID}/items/{KEY}`
+
+**Validates: Requirements 1.2, 1.3, 1.4, 1.5**
+
+### Property 2: BibTeX zotero fields biconditional
+
+*For any* `CitationMetadata`, the output of `generateBibTeX()` contains a `zotero-key` field if and only if `CitationMetadata.zoteroKey` is set, and contains a `zotero-uri` field if and only if `CitationMetadata.zoteroUri` is set. When present, the field values match the input exactly.
+
+**Validates: Requirements 1.6, 2.1, 2.2, 2.3**
+
+### Property 3: Locator formatting in Pandoc keys
+
+*For any* `ZoteroCitation` with items that have keys in the key map, `citationPandocKeys()` returns a key ending with `, p. <locator>` if and only if that item's `locator` field is a non-empty string. Items without a locator produce a bare key with no suffix.
+
+**Validates: Requirements 3.1, 3.2**
+
+### Property 4: Citation grouping preserves all items
+
+*For any* `ZoteroCitation` containing N items (all with entries in the key map), `citationPandocKeys()` returns exactly N strings — one per item, in order.
+
+**Validates: Requirements 4.1, 4.2**
+
+### Property 5: BibTeX special character escaping
+
+*For any* input string, the output of `escapeBibtex()` contains no unescaped occurrences of the BibTeX special characters `& % $ # _ { } ~ ^ \`. Every special character in the output is preceded by a backslash.
+
+**Validates: Requirements 2.4**
+
+## Error Handling
+
+Error handling is unchanged from the existing converter design:
+
+- **Malformed JSON in field codes**: `extractZoteroCitations()` catches parse errors and pushes a placeholder `{ plainCitation: '', items: [] }` to keep positional indices aligned.
+- **Missing URI fields**: Gracefully omitted — `zoteroKey` and `zoteroUri` remain `undefined`, and `generateBibTeX()` skips those fields.
+- **Empty/whitespace locator**: Treated as absent — the `if (item.locator && ... item.locator.trim())` guard filters these out.
+
+## Testing Strategy
+
+### Dual approach
+
+- **Unit tests** (existing, all passing): Cover specific examples — known URI formats, known BibTeX output shapes, known locator formatting. These are already implemented in `src/converter.test.ts`.
+- **Property-based tests** (new): Cover universal properties across randomly generated inputs using `fast-check` (v4.3.0, already a devDependency). These validate that the pure functions behave correctly for *all* valid inputs, not just hand-picked examples.
+
+### Property-based testing configuration
+
+- Library: `fast-check` (already installed)
+- Runner: `bun test`
+- Minimum iterations: 100 per property
+- Each test tagged with: **Feature: zotero-citation-roundtrip, Property {N}: {title}**
+- Use bounded generators to avoid timeouts on large strings (per AGENTS.md learning)
+- `escapeBibtex` is currently not exported; the PBT task must export it first
+
+### Test file
+
+Property tests go in a new file `src/converter.property.test.ts`, separate from the existing unit tests in `src/converter.test.ts`.
