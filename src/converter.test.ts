@@ -190,7 +190,7 @@ describe('extractDocumentContent', () => {
     const citItems = content.filter(c => c.type === 'citation');
     expect(citItems.length).toBe(3);
     if (citItems[0].type === 'citation') {
-      expect(citItems[0].pandocKeys).toContain('smith2020effects');
+      expect(citItems[0].pandocKeys).toContain('smith2020effects, p. 15');
     }
   });
 

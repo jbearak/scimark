@@ -565,7 +565,11 @@ export function citationPandocKeys(
   keyMap: Map<string, string>
 ): string[] {
   return citation.items
-    .map(meta => keyMap.get(itemIdentifier(meta)))
+    .map(meta => {
+      const k = keyMap.get(itemIdentifier(meta));
+      if (!k) return undefined;
+      return meta.locator ? k + ', p. ' + meta.locator : k;
+    })
     .filter((k): k is string => k !== undefined);
 }
 
