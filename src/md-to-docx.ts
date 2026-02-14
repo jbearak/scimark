@@ -1009,7 +1009,9 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   }
   
   let runs = '';
-  for (const run of token.runs) {
+  for (let ri = 0; ri < token.runs.length; ri++) {
+    const run = token.runs[ri];
+    const nextRun = token.runs[ri + 1];
     if (run.type === 'text') {
       const rPr = generateRPr(run);
       if (run.href) {
@@ -1042,8 +1044,24 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       runs += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '"><w:r>' + (rPr ? rPr : '') + '<w:delText xml:space="preserve">' + escapeXml(run.text) + '</w:delText></w:r></w:del>';
       runs += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + generateRun(run.newText || '', rPr) + '</w:ins>';
     } else if (run.type === 'critic_highlight') {
-      const highlightRun = { ...run, type: 'text' as const, highlight: true };
-      runs += generateRun(run.text, generateRPr(highlightRun));
+      // Check if next run is a comment anchored to this highlight
+      if (nextRun?.type === 'critic_comment') {
+        const commentId = state.commentId++;
+        const author = nextRun.author || options?.authorName || 'Unknown';
+        const date = nextRun.date || new Date().toISOString();
+        const commentBody = nextRun.commentText || '';
+        state.comments.push({ id: commentId, author, date, text: commentBody });
+        state.hasComments = true;
+        runs += '<w:commentRangeStart w:id="' + commentId + '"/>';
+        const highlightRun = { ...run, type: 'text' as const, highlight: true };
+        runs += generateRun(run.text, generateRPr(highlightRun));
+        runs += '<w:commentRangeEnd w:id="' + commentId + '"/>';
+        runs += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
+        ri++; // skip the comment run
+      } else {
+        const highlightRun = { ...run, type: 'text' as const, highlight: true };
+        runs += generateRun(run.text, generateRPr(highlightRun));
+      }
     } else if (run.type === 'critic_comment') {
       const commentId = state.commentId++;
       const author = run.author || options?.authorName || 'Unknown';
