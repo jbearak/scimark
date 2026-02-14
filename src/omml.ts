@@ -420,11 +420,11 @@ function translateDelimiter(children: any[]): string {
   const pr = findChild(children, 'm:dPr');
 
   const begChrNode = findChildNode(pr, 'm:begChr');
-  const begChr = getOmmlAttr(begChrNode, 'val') || '(';
+  const begChr = begChrNode !== undefined ? getOmmlAttr(begChrNode, 'val') : '(';
   const endChrNode = findChildNode(pr, 'm:endChr');
-  const endChr = getOmmlAttr(endChrNode, 'val') || ')';
+  const endChr = endChrNode !== undefined ? getOmmlAttr(endChrNode, 'val') : ')';
   const sepChrNode = findChildNode(pr, 'm:sepChr');
-  const sepChr = getOmmlAttr(sepChrNode, 'val') || '|';
+  const sepChr = sepChrNode !== undefined ? getOmmlAttr(sepChrNode, 'val') : '|';
 
   const elements = findAllChildren(children, 'm:e');
   const inner = elements.map(e => ommlToLatex(e)).join(sepChr);
@@ -436,7 +436,7 @@ function translateAccent(children: any[]): string {
   // Read m:accPr for the accent character
   const pr = findChild(children, 'm:accPr');
   const chrNode = findChildNode(pr, 'm:chr');
-  const chr = chrNode ? getOmmlAttr(chrNode, 'val') : '\u0302'; // default combining circumflex
+  const chr = (chrNode ? getOmmlAttr(chrNode, 'val') : '') || '\u0302'; // default combining circumflex
 
   const accentCmd = ACCENT_MAP.get(chr);
   if (!accentCmd) {
