@@ -18,6 +18,8 @@ import {
   parseHeadingLevel,
   parseRunProperties,
   formatLocalIsoMinute,
+  citationPandocKeys,
+  ZoteroCitation,
 } from './converter';
 
 const fixturesDir = join(__dirname, '..', 'test', 'fixtures');
@@ -1028,5 +1030,164 @@ describe('Integration: DOCX equation conversion', () => {
     const buf = await buildSyntheticDocx(xml);
     const result = await convertDocx(buf);
     expect(result.markdown).toContain('$\\frac{a}{b}$');
+  });
+});
+describe('Zotero citation roundtrip', () => {
+  test('extracts zoteroKey and zoteroUri from local library URI', async () => {
+    const citations = await extractZoteroCitations(sampleData);
+    // citation1 has URI http://zotero.org/users/0/items/AAAA1111
+    expect(citations[0].items[0].zoteroKey).toBe('AAAA1111');
+    expect(citations[0].items[0].zoteroUri).toBe('http://zotero.org/users/0/items/AAAA1111');
+  });
+
+  test('extracts keys from all URI formats', async () => {
+    // Build a synthetic docx with different URI formats
+    const cslPayload = JSON.stringify({
+      citationItems: [
+        { id: 1, uris: ['http://zotero.org/users/local/abc/items/LLLL1111'], itemData: { type: 'book', title: 'Local', author: [{ family: 'A', given: 'B' }], issued: { 'date-parts': [[2020]] } } },
+        { id: 2, uris: ['http://zotero.org/users/12345/items/SSSS2222'], itemData: { type: 'book', title: 'Synced', author: [{ family: 'C', given: 'D' }], issued: { 'date-parts': [[2021]] } } },
+        { id: 3, uris: ['http://zotero.org/groups/99/items/GGGG3333'], itemData: { type: 'book', title: 'Group', author: [{ family: 'E', given: 'F' }], issued: { 'date-parts': [[2022]] } } },
+      ],
+      properties: { plainCitation: '(test)' },
+    });
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+      + '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ' + cslPayload + '</w:instrText></w:r>'
+      + '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+      + '<w:r><w:t>(test)</w:t></w:r>'
+      + '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>'
+    );
+    const docx = await buildSyntheticDocx(xml);
+    const citations = await extractZoteroCitations(docx);
+    expect(citations[0].items[0].zoteroKey).toBe('LLLL1111');
+    expect(citations[0].items[1].zoteroKey).toBe('SSSS2222');
+    expect(citations[0].items[2].zoteroKey).toBe('GGGG3333');
+  });
+
+  test('handles missing uris gracefully', async () => {
+    const cslPayload = JSON.stringify({
+      citationItems: [{ id: 1, itemData: { type: 'book', title: 'No URI', author: [{ family: 'X', given: 'Y' }], issued: { 'date-parts': [[2020]] } } }],
+      properties: { plainCitation: '(test)' },
+    });
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+      + '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ' + cslPayload + '</w:instrText></w:r>'
+      + '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+      + '<w:r><w:t>(test)</w:t></w:r>'
+      + '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>'
+    );
+    const docx = await buildSyntheticDocx(xml);
+    const citations = await extractZoteroCitations(docx);
+    expect(citations[0].items[0].zoteroKey).toBeUndefined();
+    expect(citations[0].items[0].zoteroUri).toBeUndefined();
+  });
+
+  test('handles malformed URI without item key', async () => {
+    const cslPayload = JSON.stringify({
+      citationItems: [{ id: 1, uris: ['http://zotero.org/bad/path'], itemData: { type: 'book', title: 'Bad URI', author: [{ family: 'X', given: 'Y' }], issued: { 'date-parts': [[2020]] } } }],
+      properties: { plainCitation: '(test)' },
+    });
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+      + '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ' + cslPayload + '</w:instrText></w:r>'
+      + '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+      + '<w:r><w:t>(test)</w:t></w:r>'
+      + '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>'
+    );
+    const docx = await buildSyntheticDocx(xml);
+    const citations = await extractZoteroCitations(docx);
+    expect(citations[0].items[0].zoteroKey).toBeUndefined();
+    expect(citations[0].items[0].zoteroUri).toBeUndefined();
+  });
+
+  test('generateBibTeX emits zotero-key and zotero-uri when present', () => {
+    const citations: ZoteroCitation[] = [{
+      plainCitation: '(Test)',
+      items: [{
+        authors: [{ family: 'Test', given: 'A' }],
+        title: 'Test Title', year: '2020', journal: 'J', volume: '1',
+        pages: '1-2', doi: '10.1/test', type: 'article-journal',
+        fullItemData: {}, zoteroKey: 'ABCD1234',
+        zoteroUri: 'http://zotero.org/users/0/items/ABCD1234',
+      }],
+    }];
+    const keyMap = buildCitationKeyMap(citations);
+    const bib = generateBibTeX(citations, keyMap);
+    expect(bib).toContain('zotero-key = {ABCD1234}');
+    expect(bib).toContain('zotero-uri = {http://zotero.org/users/0/items/ABCD1234}');
+  });
+
+  test('generateBibTeX omits zotero fields when absent', () => {
+    const citations: ZoteroCitation[] = [{
+      plainCitation: '(Test)',
+      items: [{
+        authors: [{ family: 'Test', given: 'A' }],
+        title: 'Test Title', year: '2020', journal: 'J', volume: '1',
+        pages: '1-2', doi: '10.1/test', type: 'article-journal',
+        fullItemData: {},
+      }],
+    }];
+    const keyMap = buildCitationKeyMap(citations);
+    const bib = generateBibTeX(citations, keyMap);
+    expect(bib).not.toContain('zotero-key');
+    expect(bib).not.toContain('zotero-uri');
+  });
+
+  test('citationPandocKeys includes locator suffix', () => {
+    const citation: ZoteroCitation = {
+      plainCitation: '(Test)',
+      items: [{
+        authors: [{ family: 'Test', given: 'A' }],
+        title: 'Test Title', year: '2020', journal: 'J', volume: '1',
+        pages: '1-2', doi: '10.1/test', type: 'article-journal',
+        fullItemData: {}, locator: '42',
+      }],
+    };
+    const keyMap = buildCitationKeyMap([citation]);
+    const keys = citationPandocKeys(citation, keyMap);
+    expect(keys[0]).toContain(', p. 42');
+  });
+
+  test('citationPandocKeys omits locator when absent', () => {
+    const citation: ZoteroCitation = {
+      plainCitation: '(Test)',
+      items: [{
+        authors: [{ family: 'Test', given: 'A' }],
+        title: 'Test Title', year: '2020', journal: 'J', volume: '1',
+        pages: '1-2', doi: '10.1/test', type: 'article-journal',
+        fullItemData: {},
+      }],
+    };
+    const keyMap = buildCitationKeyMap([citation]);
+    const keys = citationPandocKeys(citation, keyMap);
+    expect(keys[0]).not.toContain(', p.');
+  });
+
+  test('grouped citation preserves per-item locators', () => {
+    const citation: ZoteroCitation = {
+      plainCitation: '(A; B)',
+      items: [
+        { authors: [{ family: 'A', given: 'X' }], title: 'T1', year: '2020', journal: 'J', volume: '1', pages: '1', doi: '10.1/a', type: 'article-journal', fullItemData: {}, locator: '20' },
+        { authors: [{ family: 'B', given: 'Y' }], title: 'T2', year: '2021', journal: 'J', volume: '2', pages: '2', doi: '10.1/b', type: 'article-journal', fullItemData: {} },
+      ],
+    };
+    const keyMap = buildCitationKeyMap([citation]);
+    const keys = citationPandocKeys(citation, keyMap);
+    expect(keys[0]).toContain(', p. 20');
+    expect(keys[1]).not.toContain(', p.');
+  });
+
+  test('end-to-end: sample DOCX produces BibTeX with zotero-key and markdown with locators', async () => {
+    const result = await convertDocx(sampleData);
+    // BibTeX should contain zotero-key fields
+    expect(result.bibtex).toContain('zotero-key = {AAAA1111}');
+    expect(result.bibtex).toContain('zotero-key = {BBBB2222}');
+    expect(result.bibtex).toContain('zotero-key = {CCCC3333}');
+    // Markdown should contain locators
+    expect(result.markdown).toContain('@smith2020effects, p. 15');
+    expect(result.markdown).toContain('@jones2019urban, p. 110');
+    // Davis has no locator
+    expect(result.markdown).toContain('@davis2021advances]');
+    expect(result.markdown).not.toContain('@davis2021advances, p.');
   });
 });
