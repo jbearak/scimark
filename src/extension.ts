@@ -251,8 +251,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(criticDecType);
 
 	const commentDecType = vscode.window.createTextEditorDecorationType({
-		light: { backgroundColor: CRITIC_COMMENT_DECORATION.light, color: new vscode.ThemeColor('descriptionForeground') },
-		dark: { backgroundColor: CRITIC_COMMENT_DECORATION.dark, color: new vscode.ThemeColor('descriptionForeground') },
+		light: { backgroundColor: CRITIC_COMMENT_DECORATION.light },
+		dark: { backgroundColor: CRITIC_COMMENT_DECORATION.dark },
 		fontStyle: 'italic',
 	});
 	context.subscriptions.push(commentDecType);
@@ -268,7 +268,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(additionDecType);
 
 	const deletionDecType = vscode.window.createTextEditorDecorationType({
-		color: new vscode.ThemeColor('gitDecoration.deletedResourceForeground'),
+		textDecoration: 'line-through',
 	});
 	context.subscriptions.push(deletionDecType);
 

@@ -55,12 +55,12 @@
 		"comment": {
 			"begin": "\\{>>",
 			"end": "<<\\}",
-			"name": "entity.name.function.mdmarkup",
-			"contentName": "entity.name.function",
+			"name": "comment.block.mdmarkup",
+			"contentName": "comment.block",
 			"patterns": [
 				{
 					"match": ".",
-					"name": "entity.name.function"
+					"name": "comment.block"
 				}
 			]
 		},
