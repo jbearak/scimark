@@ -198,6 +198,39 @@ class Parser {
     }
   }
 
+  private parseScriptsForBase(base: string): string {
+    let current = base;
+
+    while (this.peek() && (this.peek()?.type === 'caret' || this.peek()?.type === 'underscore')) {
+      const firstOp = this.consume()!;
+      const firstScript = this.parseGroup();
+
+      const nextToken = this.peek();
+      if (
+        nextToken &&
+        ((firstOp.type === 'caret' && nextToken.type === 'underscore') ||
+          (firstOp.type === 'underscore' && nextToken.type === 'caret'))
+      ) {
+        this.consume(); // consume second script operator
+        const secondScript = this.parseGroup();
+
+        if (firstOp.type === 'caret') {
+          current = '<m:sSubSup><m:e>' + current + '</m:e><m:sub>' + secondScript + '</m:sub><m:sup>' + firstScript + '</m:sup></m:sSubSup>';
+        } else {
+          current = '<m:sSubSup><m:e>' + current + '</m:e><m:sub>' + firstScript + '</m:sub><m:sup>' + secondScript + '</m:sup></m:sSubSup>';
+        }
+      } else {
+        if (firstOp.type === 'caret') {
+          current = '<m:sSup><m:e>' + current + '</m:e><m:sup>' + firstScript + '</m:sup></m:sSup>';
+        } else {
+          current = '<m:sSub><m:e>' + current + '</m:e><m:sub>' + firstScript + '</m:sub></m:sSub>';
+        }
+      }
+    }
+
+    return current;
+  }
+
   private parseCommand(cmd: string): string {
     // Greek letters and symbols
     const unicode = LATEX_UNICODE_MAP.get(cmd);
@@ -225,12 +258,13 @@ class Parser {
     }
 
     switch (cmd) {
-      case '\\frac':
+      case '\\frac': {
         const num = this.parseGroup();
         const den = this.parseGroup();
         return '<m:f><m:num>' + num + '</m:num><m:den>' + den + '</m:den></m:f>';
+      }
 
-      case '\\sqrt':
+      case '\\sqrt': {
         // Check for optional argument [n]
         if (this.peek()?.type === 'text' && this.peek()?.value.startsWith('[')) {
           const token = this.consume()!;
@@ -248,6 +282,7 @@ class Parser {
         }
         const radicand = this.parseGroup();
         return '<m:rad><m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/><m:e>' + radicand + '</m:e></m:rad>';
+      }
 
       case '\\left':
         return this.parseDelimiter();
@@ -255,14 +290,16 @@ class Parser {
       case '\\begin':
         return this.parseEnvironment();
 
-      case '\\mathrm':
+      case '\\mathrm': {
         const text = this.parseGroup();
         return makeStyledRun(this.extractText(text));
+      }
 
-      case '\\operatorname':
+      case '\\operatorname': {
         const name = this.parseGroup();
         const funcArg = this.parseGroup();
         return '<m:func><m:fName>' + makeStyledRun(this.extractText(name)) + '</m:fName><m:e>' + funcArg + '</m:e></m:func>';
+      }
 
       case '\\limits':
         // This should be handled by nary parsing, but if encountered alone, ignore
@@ -295,7 +332,8 @@ class Parser {
       }
     }
 
-    const body = this.parseGroup();
+    const bodyAtom = this.parseGroup();
+    const body = this.parseScriptsForBase(bodyAtom);
 
     return '<m:nary><m:naryPr><m:chr m:val="' + escapeXmlChars(naryChar) + '"/>' + limits + '</m:naryPr>' + sub + sup + '<m:e>' + body + '</m:e></m:nary>';
   }
@@ -415,7 +453,7 @@ class Parser {
   }
 
   parseExpression(): string {
-    let result = '';
+    const atoms: string[] = [];
     
     while (this.peek()) {
       const token = this.peek();
@@ -426,47 +464,28 @@ class Parser {
 
       if (token?.type === 'caret' || token?.type === 'underscore') {
         // Handle superscript/subscript - need a base first
-        if (!result) {
+        if (atoms.length === 0) {
           // No base, treat as regular text
           const consumed = this.consume()!;
-          result += this.parseToken(consumed);
+          atoms.push(this.parseToken(consumed));
           continue;
         }
 
-        const hasSuper = token.type === 'caret';
-        const hasSuber = token.type === 'underscore';
-        
-        this.consume(); // consume ^ or _
-        const firstScript = this.parseGroup();
-        
-        // Check for combined sub/superscript
-        const nextToken = this.peek();
-        if (nextToken && ((hasSuper && nextToken.type === 'underscore') || (hasSuber && nextToken.type === 'caret'))) {
-          this.consume(); // consume the second script operator
-          const secondScript = this.parseGroup();
-          
-          if (hasSuper) {
-            // x^{a}_{b} -> sSubSup
-            result = '<m:sSubSup><m:e>' + result + '</m:e><m:sub>' + secondScript + '</m:sub><m:sup>' + firstScript + '</m:sup></m:sSubSup>';
-          } else {
-            // x_{a}^{b} -> sSubSup  
-            result = '<m:sSubSup><m:e>' + result + '</m:e><m:sub>' + firstScript + '</m:sub><m:sup>' + secondScript + '</m:sup></m:sSubSup>';
-          }
-        } else {
-          // Single script
-          if (hasSuper) {
-            result = '<m:sSup><m:e>' + result + '</m:e><m:sup>' + firstScript + '</m:sup></m:sSup>';
-          } else {
-            result = '<m:sSub><m:e>' + result + '</m:e><m:sub>' + firstScript + '</m:sub></m:sSub>';
-          }
-        }
+        const base = atoms.pop()!;
+        atoms.push(this.parseScriptsForBase(base));
       } else {
         const consumed = this.consume()!;
-        result += this.parseToken(consumed);
+        if (consumed.type === 'text' && consumed.value.length > 1) {
+          for (const ch of consumed.value) {
+            atoms.push(makeRun(ch));
+          }
+        } else {
+          atoms.push(this.parseToken(consumed));
+        }
       }
     }
     
-    return result;
+    return atoms.join('');
   }
 }
 

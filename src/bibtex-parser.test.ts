@@ -58,6 +58,21 @@ describe('BibTeX Parser', () => {
     expect(entry.fields.get('author')).toBe('Jane Doe');
   });
 
+  it('handles quoted values with escaped backslashes before quotes', () => {
+    const input = String.raw`@article{key1,
+  title = "He said \\\"hello\\\\\\\" there",
+  author = {Jane Doe}
+}
+
+@article{key2,
+  title = {Second Entry}
+}`;
+    const result = parseBibtex(input);
+    expect(result.has('key1')).toBe(true);
+    expect(result.has('key2')).toBe(true);
+    expect(result.get('key1')?.fields.get('author')).toBe('Jane Doe');
+  });
+
   it('skips malformed entries gracefully', () => {
     const input = `@article{key1,
   title = {Good Entry}

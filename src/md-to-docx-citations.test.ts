@@ -95,6 +95,49 @@ describe('generateCitation', () => {
     expect(result.xml).toContain('(Smith 2020; Doe 2021)');
   });
 
+  it('falls back to plain text for mixed Zotero/non-Zotero grouped citations', () => {
+    const entries = new Map<string, BibtexEntry>();
+    entries.set('smith2020', {
+      type: 'article',
+      key: 'smith2020',
+      fields: new Map([['author', 'Smith, John'], ['year', '2020']]),
+      zoteroKey: 'ABCD1234',
+      zoteroUri: 'http://zotero.org/users/123/items/ABCD1234'
+    });
+    entries.set('doe2021', {
+      type: 'book',
+      key: 'doe2021',
+      fields: new Map([['author', 'Doe, Jane'], ['year', '2021']])
+    });
+
+    const run = { keys: ['smith2020', 'doe2021'], text: 'smith2020; doe2021' };
+    const result = generateCitation(run, entries);
+
+    expect(result.xml).toBe('<w:r><w:t>(Smith 2020; Doe 2021)</w:t></w:r>');
+    expect(result.warning).toContain('Mixed Zotero and non-Zotero citations');
+  });
+
+  it('omits issued date-parts for non-numeric years', () => {
+    const entries = new Map<string, BibtexEntry>();
+    entries.set('smithInPress', {
+      type: 'article',
+      key: 'smithInPress',
+      fields: new Map([
+        ['author', 'Smith, John'],
+        ['year', 'in press']
+      ]),
+      zoteroKey: 'ABCD1234',
+      zoteroUri: 'http://zotero.org/users/123/items/ABCD1234'
+    });
+
+    const run = { keys: ['smithInPress'], text: 'smithInPress' };
+    const result = generateCitation(run, entries);
+
+    expect(result.xml).toContain('ZOTERO_ITEM CSL_CITATION');
+    expect(result.xml).not.toContain('date-parts');
+    expect(result.xml).toContain('(Smith in press)');
+  });
+
   it('returns warning with unknown key', () => {
     const entries = new Map<string, BibtexEntry>();
     const run = { keys: ['unknown'], text: 'unknown' };

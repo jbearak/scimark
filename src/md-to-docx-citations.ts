@@ -21,11 +21,13 @@ export function generateCitation(
   const citationItems: any[] = [];
   const warnings: string[] = [];
   let hasZoteroData = false;
+  let shouldFallbackToPlain = false;
 
   for (const key of run.keys) {
     const entry = entries.get(key);
     if (!entry) {
       warnings.push(`Citation key not found: ${key}`);
+      shouldFallbackToPlain = true;
       continue;
     }
 
@@ -45,10 +47,12 @@ export function generateCitation(
       }
 
       citationItems.push(citationItem);
+    } else {
+      shouldFallbackToPlain = true;
     }
   }
 
-  if (hasZoteroData && citationItems.length > 0) {
+  if (hasZoteroData && citationItems.length > 0 && !shouldFallbackToPlain) {
     const cslCitation = {
       citationItems,
       properties: { noteIndex: 0 }
@@ -64,6 +68,9 @@ export function generateCitation(
       '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
     
     return { xml, warning: warnings.length > 0 ? warnings.join('; ') : undefined };
+  }
+  if (hasZoteroData && shouldFallbackToPlain) {
+    warnings.push('Mixed Zotero and non-Zotero citations in grouped citation; emitted plain-text fallback to avoid partial field code');
   }
 
   // No Zotero data, emit plain text
@@ -86,7 +93,9 @@ function buildItemData(entry: BibtexEntry): any {
   if (author) itemData.author = parseAuthors(author);
 
   const year = entry.fields.get('year');
-  if (year) itemData.issued = { 'date-parts': [[parseInt(year)]] };
+  if (year && /^\d+$/.test(year)) {
+    itemData.issued = { 'date-parts': [[parseInt(year, 10)]] };
+  }
 
   const journal = entry.fields.get('journal');
   if (journal) itemData['container-title'] = journal;

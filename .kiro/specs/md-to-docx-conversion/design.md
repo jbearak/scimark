@@ -144,14 +144,14 @@ For each text token with formatting flags, emit `w:rPr` children in OOXML-conven
 
 | Priority | Element | Condition |
 |----------|---------|-----------|
-| 1 | `<w:b/>` | bold |
-| 2 | `<w:i/>` | italic |
-| 3 | `<w:strike/>` | strikethrough |
-| 4 | `<w:u w:val="single"/>` | underline |
-| 5 | `<w:highlight w:val="{color}"/>` | highlight (default "yellow") |
-| 6 | `<w:vertAlign w:val="superscript"/>` | superscript |
-| 6 | `<w:vertAlign w:val="subscript"/>` | subscript (mutually exclusive with superscript) |
-| 7 | `<w:rStyle w:val="CodeChar"/>` | inline code (references a character style in styles.xml) |
+| 1 | `<w:rStyle w:val=\"CodeChar\"/>` | inline code (references a character style in styles.xml) |
+| 2 | `<w:b/>` | bold |
+| 3 | `<w:i/>` | italic |
+| 4 | `<w:strike/>` | strikethrough |
+| 5 | `<w:u w:val=\"single\"/>` | underline |
+| 6 | `<w:highlight w:val=\"{color}\"/>` | highlight (default \"yellow\") |
+| 7 | `<w:vertAlign w:val=\"superscript\"/>` | superscript |
+| 8 | `<w:vertAlign w:val=\"subscript\"/>` | subscript (mutually exclusive with superscript) |
 
 Boolean toggles use bare elements (no `w:val` attribute) for true, and are omitted entirely for false, per ST_OnOff convention.
 

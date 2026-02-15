@@ -34,10 +34,16 @@ export function parseBibtex(input: string): Map<string, BibtexEntry> {
       
       for (let j = startPos; j < input.length && braceCount > 0; j++) {
         const char = input[j];
-        const prevChar = j > 0 ? input[j - 1] : '';
         
-        if (char === '"' && prevChar !== '\\') {
-          inQuotes = !inQuotes;
+        if (char === '\"') {
+          // Toggle quote state only when preceded by an even number of backslashes.
+          let backslashCount = 0;
+          for (let k = j - 1; k >= 0 && input[k] === '\\\\'; k--) {
+            backslashCount++;
+          }
+          if (backslashCount % 2 === 0) {
+            inQuotes = !inQuotes;
+          }
         } else if (!inQuotes) {
           if (char === '{') {
             braceCount++;
@@ -60,6 +66,8 @@ export function parseBibtex(input: string): Map<string, BibtexEntry> {
       const fields = new Map<string, string>();
       
       // Parse fields more carefully
+      // NOTE: This regex handles nested braces only up to a small fixed depth.
+      // If we need arbitrary nesting, replace with a balanced-brace field parser.
       const fieldRegex = /(\w+(?:-\w+)*)\s*=\s*(?:\{((?:[^{}]|\{(?:[^{}]|\{[^}]*\})*\})*)\}|"([^"]*)"|(\w+))/g;
       let fieldMatch;
       

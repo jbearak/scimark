@@ -110,9 +110,9 @@ describe('LaTeX-to-OMML round-trip property tests', () => {
           // Allow for some differences in bracing and symbol representation
           return semanticallyEquivalent(latex, roundTrip);
         } catch (error) {
-          // Log errors but don't fail the test for edge cases
+          // Surface unexpected crashes so property tests can catch real defects.
           console.warn('Round-trip error for:', latex, error);
-          return true;
+          throw error;
         }
       }),
       { 

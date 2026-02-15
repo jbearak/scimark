@@ -38,6 +38,12 @@ describe('latexToOmml', () => {
     expect(result2).toBe('<m:sSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup>');
   });
 
+  test('scripts bind to the nearest preceding atom', () => {
+    const result = latexToOmml('a+b^2');
+    expect(result).toContain('<m:r><m:t>a</m:t></m:r><m:r><m:t>+</m:t></m:r><m:sSup><m:e><m:r><m:t>b</m:t></m:r></m:e>');
+    expect(result).not.toContain('<m:sSup><m:e><m:r><m:t>a+b</m:t></m:r></m:e>');
+  });
+
   test('subscripts', () => {
     const result = latexToOmml('x_{i}');
     expect(result).toBe('<m:sSub><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sub><m:r><m:t>i</m:t></m:r></m:sub></m:sSub>');
@@ -68,6 +74,9 @@ describe('latexToOmml', () => {
     expect(result).toContain('<m:chr m:val="∑"/>');
     expect(result).toContain('<m:sub>');
     expect(result).toContain('<m:sup>');
+    expect(result).toContain('<m:naryPr>');
+    expect(result).toContain('<m:e><m:sSub><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sub><m:r><m:t>i</m:t></m:r></m:sub></m:sSub></m:e>');
+    expect(result).not.toContain('<m:sSub><m:e><m:nary>');
   });
 
   test('delimiters', () => {

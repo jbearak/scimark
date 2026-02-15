@@ -19,7 +19,7 @@ describe('OOXML Generation Properties', () => {
       expect(zip.file('word/styles.xml')).toBeTruthy();
       
       // Conditional files
-      const hasLists = markdown.includes('- ') || markdown.includes('1. ');
+      const hasLists = /^- /m.test(markdown) || /^\d+\. /m.test(markdown);
       const hasLinks = markdown.includes('[') && markdown.includes('](');
       
       if (hasLists) {
