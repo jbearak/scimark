@@ -16,6 +16,9 @@ import {
 import { parseBibtex } from './bibtex-parser';
 import { convertMdToDocx } from './md-to-docx';
 import { convertDocx } from './converter';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 // Sample BibTeX for testing
 const SAMPLE_BIBTEX = `
@@ -458,5 +461,65 @@ describe('buildItemData', () => {
     expect(itemData.volume).toBe('10');
     expect(itemData.page).toBe('1-15');
     expect(itemData.DOI).toBe('10.1234/test.2020.001');
+  });
+});
+
+// ============================================================================
+// CSL file path resolution (relative, absolute, bundled)
+// ============================================================================
+
+describe('CSL file path resolution', () => {
+  const apaCslPath = join(__dirname, 'csl-styles', 'apa.csl');
+  const apaCslContent = readFileSync(apaCslPath, 'utf-8');
+
+  test('resolves a relative .csl path via sourceDir', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'csl-test-'));
+    try {
+      writeFileSync(join(tmpDir, 'my-style.csl'), apaCslContent);
+      const md = '---\ncsl: my-style.csl\n---\n\nText [@smith2020effects].\n';
+      const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX, sourceDir: tmpDir });
+      expect(result.warnings.length).toBe(0);
+      expect(result.docx).toBeDefined();
+    } finally {
+      rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  test('resolves an absolute .csl path', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'csl-test-'));
+    try {
+      const absPath = join(tmpDir, 'abs-style.csl');
+      writeFileSync(absPath, apaCslContent);
+      const md = `---\ncsl: ${absPath}\n---\n\nText [@smith2020effects].\n`;
+      const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+      expect(result.warnings.length).toBe(0);
+      expect(result.docx).toBeDefined();
+    } finally {
+      rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  test('warns when relative .csl path does not exist in sourceDir', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'csl-test-'));
+    try {
+      const md = '---\ncsl: nonexistent.csl\n---\n\nText [@smith2020effects].\n';
+      const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX, sourceDir: tmpDir });
+      expect(result.warnings.length).toBeGreaterThan(0);
+    } finally {
+      rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  test('warns when relative .csl path has no sourceDir', async () => {
+    const md = '---\ncsl: some-style.csl\n---\n\nText [@smith2020effects].\n';
+    const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+    expect(result.warnings.some(w => w.includes('cannot be resolved'))).toBe(true);
+  });
+
+  test('bundled style names are unaffected by sourceDir', async () => {
+    const md = '---\ncsl: apa\n---\n\nText [@smith2020effects].\n';
+    const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX, sourceDir: '/nonexistent' });
+    expect(result.warnings.length).toBe(0);
+    expect(result.docx).toBeDefined();
   });
 });
