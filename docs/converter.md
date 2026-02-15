@@ -62,7 +62,7 @@ When the Markdown file includes YAML frontmatter with a `csl` field, the convert
 ---
 csl: apa
 locale: en-US
-note-type: 0
+note-type: in-text
 ---
 ```
 
@@ -70,7 +70,7 @@ note-type: 0
 |-------|-------------|
 | `csl` | CSL style short name (e.g., `apa`, `chicago-author-date`, `bmj`) or absolute path to a `.csl` file |
 | `locale` | Optional locale override (e.g., `en-US`, `en-GB`). Defaults to the style's own locale. |
-| `note-type` | Optional Zotero note type (`0` = in-text, `1` = footnotes, `2` = endnotes). Defaults to `0`. |
+| `note-type` | Optional Zotero note type: `in-text` (default), `footnotes`, or `endnotes`. Legacy numeric values (0, 1, 2) are still accepted. |
 
 #### Bundled CSL styles
 

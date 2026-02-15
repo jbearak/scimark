@@ -53,7 +53,7 @@ Install from the [releases page](https://github.com/jbearak/manuscript-markdown/
 - [CriticMarkup Syntax](docs/criticmarkup.md)
 - [Custom Extensions](docs/custom-extensions.md)
 - [DOCX Converter](docs/converter.md)
-- [Zotero Citation Roundtrip](docs/zotero-roundtrip-spec.md)
+- [Zotero Citation Roundtrip](docs/zotero-roundtrip.md)
 - [Development Guide](docs/development.md)
 
 ## License
