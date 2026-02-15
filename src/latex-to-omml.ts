@@ -62,12 +62,16 @@ const KNOWN_FUNCTIONS = new Set([
 // Helper functions
 // ---------------------------------------------------------------------------
 
+function escapeXmlChars(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function makeRun(text: string): string {
-  return '<m:r><m:t>' + text + '</m:t></m:r>';
+  return '<m:r><m:t>' + escapeXmlChars(text) + '</m:t></m:r>';
 }
 
 function makeStyledRun(text: string): string {
-  return '<m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>' + text + '</m:t></m:r>';
+  return '<m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>' + escapeXmlChars(text) + '</m:t></m:r>';
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +215,7 @@ class Parser {
     const accent = LATEX_ACCENT_MAP.get(cmd);
     if (accent) {
       const base = this.parseGroup();
-      return '<m:acc><m:accPr><m:chr m:val="' + accent + '"/></m:accPr><m:e>' + base + '</m:e></m:acc>';
+      return '<m:acc><m:accPr><m:chr m:val="' + escapeXmlChars(accent) + '"/></m:accPr><m:e>' + base + '</m:e></m:acc>';
     }
 
     // Functions
@@ -291,9 +295,9 @@ class Parser {
       }
     }
 
-    const body = this.parseExpression();
-    
-    return '<m:nary><m:naryPr><m:chr m:val="' + naryChar + '"/>' + limits + '</m:naryPr>' + sub + sup + '<m:e>' + body + '</m:e></m:nary>';
+    const body = this.parseGroup();
+
+    return '<m:nary><m:naryPr><m:chr m:val="' + escapeXmlChars(naryChar) + '"/>' + limits + '</m:naryPr>' + sub + sup + '<m:e>' + body + '</m:e></m:nary>';
   }
 
   private parseDelimiter(): string {
@@ -336,7 +340,7 @@ class Parser {
       }
     }
 
-    return '<m:d><m:dPr><m:begChr m:val="' + begChr + '"/><m:endChr m:val="' + endChr + '"/></m:dPr><m:e>' + content + '</m:e></m:d>';
+    return '<m:d><m:dPr><m:begChr m:val="' + escapeXmlChars(begChr) + '"/><m:endChr m:val="' + escapeXmlChars(endChr) + '"/></m:dPr><m:e>' + content + '</m:e></m:d>';
   }
 
   private parseUntilRight(): string {

@@ -7,7 +7,8 @@ export interface BibtexEntry {
 }
 
 function escapeBibtex(s: string): string {
-  return s.replace(/([&%$#_{}~^\\])/g, '\\$1');
+  // Unescape first to avoid double-escaping on round-trips (idempotent)
+  return unescapeBibtex(s).replace(/([&%$#_{}~^\\])/g, '\\$1');
 }
 
 function unescapeBibtex(s: string): string {

@@ -213,10 +213,16 @@ function mathRule(state: any, silent: boolean): boolean {
   
   // Inline math - don't match $ in middle of words
   if (start > 0 && /\w/.test(state.src.charAt(start - 1))) return false;
-  
+
+  // Don't match currency patterns like $100 (digit(s) followed by whitespace/punctuation/end)
+  if (start + 1 < max && /\d/.test(state.src.charAt(start + 1))) {
+    const afterDollar = state.src.slice(start + 1);
+    if (/^\d[\d,.]*(?:\s|$)/.test(afterDollar)) return false;
+  }
+
   const endPos = state.src.indexOf('$', start + 1);
   if (endPos === -1) return false;
-  
+
   // Don't match $ at end if followed by word character
   if (endPos + 1 < max && /\w/.test(state.src.charAt(endPos + 1))) return false;
   

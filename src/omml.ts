@@ -407,7 +407,7 @@ function translateNary(children: any[]): string {
   const sup = supHide ? '' : `^{${ommlToLatex(findChild(children, 'm:sup'))}}`;
   const body = ommlToLatex(findChild(children, 'm:e'));
 
-  return `${op}${limits}${sub}${sup}${body}`;
+  return `${op}${limits}${sub}${sup}{${body}}`;
 }
 
 
