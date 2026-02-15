@@ -5,6 +5,9 @@
 
 # Build output
 out/**
+bin/
+dist/
+.*.bun-build
 **/*.map
 *.vsix
 test/fixtures/*.js

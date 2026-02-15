@@ -1,0 +1,66 @@
+---
+name: Release Build
+
+"on":
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g., v1.2.3)'
+        required: true
+        type: string
+
+# Releases should be strictly serialized per tag.
+concurrency:
+  group: release-build-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Build binaries
+        run: bun run build:binary
+
+      - name: Build VS Code extension
+        run: bun run package
+
+      - name: Calculate checksums
+        run: |
+          cd bin
+          for file in manuscript-markdown-*; do
+            sha256sum "$file" > "$file.sha256"
+          done
+          cd ..
+          if ls *.vsix >/dev/null 2>&1; then
+            for vsix in *.vsix; do
+              sha256sum "$vsix" > "$vsix.sha256"
+            done
+          fi
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ inputs.tag || github.ref_name }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            bin/manuscript-markdown-*
+            *.vsix
+            *.vsix.sha256

@@ -18,6 +18,7 @@
     ".vscode-test",
     "src/test",
     "**/*.test.ts",
-    "test"
+    "test",
+    "scripts"
   ]
 }

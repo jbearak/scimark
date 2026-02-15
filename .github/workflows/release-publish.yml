@@ -1,0 +1,136 @@
+---
+name: Release Publish
+
+"on":
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v1.2.3)'
+        required: true
+        type: string
+      publish_vscode:
+        description: 'Publish to VS Code Marketplace'
+        required: false
+        type: boolean
+        default: false
+
+# Serialize by tag so retries/second runs don't collide.
+concurrency:
+  group: release-publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    # Configure this Environment in GitHub with required reviewers,
+    # and store publish tokens as environment secrets.
+    environment: release
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Validate tag + version
+        shell: bash
+        env:
+          THE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          the_tag="$THE_TAG"
+
+          # Basic format validation
+          if [[ ! "$the_tag" =~ ^v[0-9] ]]; then
+            echo "ERROR: tag must start with 'v' and a digit (e.g., v1.2.3). Got: $the_tag" >&2
+            exit 1
+          fi
+          if [[ "$the_tag" =~ [[:space:]] ]]; then
+            echo "ERROR: tag must not contain whitespace. Got: $the_tag" >&2
+            exit 1
+          fi
+
+          # Confirm tag exists in the checked-out repo
+          if ! git rev-parse -q --verify "refs/tags/$the_tag" >/dev/null; then
+            echo "ERROR: tag does not exist in this repository: $the_tag" >&2
+            exit 1
+          fi
+
+          # Confirm tag matches package.json version
+          the_pkg_version=$(node -p "require('./package.json').version")
+          the_expected_tag="v${the_pkg_version}"
+          if [[ "$the_tag" != "$the_expected_tag" ]]; then
+            echo "ERROR: tag/version mismatch. tag=$the_tag package.json=$the_pkg_version (expected tag $the_expected_tag)" >&2
+            exit 1
+          fi
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Download build artifacts
+        shell: bash
+        env:
+          THE_TAG: ${{ inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          ARTIFACT_NAME="release-${THE_TAG}"
+
+          BUILD_RUN_ID=$(gh api --paginate "repos/${{ github.repository }}/actions/artifacts" \
+            --jq ".artifacts[] | select(.name == \"$ARTIFACT_NAME\" and .expired == false) | .workflow_run.id" \
+            | head -1)
+
+          if [ -z "$BUILD_RUN_ID" ]; then
+            echo "ERROR: No artifact found named '$ARTIFACT_NAME'"
+            echo "Make sure release-build.yml completed successfully for ${THE_TAG}"
+            exit 1
+          fi
+
+          echo "Found artifact in build run: $BUILD_RUN_ID"
+          gh run download "$BUILD_RUN_ID" --name "$ARTIFACT_NAME"
+          echo "Downloaded artifact contents:"
+          ls -la
+          ls -la bin || true
+
+      - name: Verify checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d bin ]; then
+            (cd bin && for file in manuscript-markdown-*; do
+              if [[ "$file" != *.sha256 ]]; then
+                sha256sum -c "$file.sha256"
+              fi
+            done)
+          fi
+          if ls *.vsix.sha256 >/dev/null 2>&1; then
+            sha256sum -c *.vsix.sha256
+          fi
+
+      - name: Publish to VS Code Marketplace
+        if: ${{ inputs.publish_vscode }}
+        run: bunx @vscode/vsce publish --packagePath *.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
+
+      - name: Create GitHub Release
+        # Tag v2.5.0 -> commit a06a81a03ee405af7f2048a818ed3f03bbf83c7b
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: Release ${{ inputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            bin/manuscript-markdown-*
+            *.vsix
+            *.vsix.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
