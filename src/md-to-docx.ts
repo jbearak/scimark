@@ -1235,8 +1235,15 @@ function commentsXml(comments: CommentEntry[]): string {
   return xml;
 }
 
-export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any): string {
+export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any, frontmatter?: Frontmatter): string {
   let body = '';
+
+  // Emit title paragraphs from frontmatter before body content
+  if (frontmatter?.title) {
+    for (const line of frontmatter.title) {
+      body += '<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>' + generateRun(line, '') + '</w:p>';
+    }
+  }
 
   for (const token of tokens) {
     if (token.type === 'table') {
@@ -1351,7 +1358,7 @@ export async function convertMdToDocx(
     hasComments: false,
   };
 
-  const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine);
+  const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
 
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
