@@ -55,10 +55,8 @@ const COLOR_TO_OOXML: Record<string, string> = {
   'dark-yellow': 'darkYellow', 'gray-50': 'darkGray', 'gray-25': 'lightGray',
 };
 
-// Placeholder used to preserve paragraph breaks inside CriticMarkup spans.
-// Uses Private Use Area characters to avoid markdown-it's normalize step
-// which replaces \u0000 with \uFFFD.
-const PARA_PLACEHOLDER = '\uE000PARA\uE000';
+import { PARA_PLACEHOLDER, preprocessCriticMarkup } from './critic-markup';
+export { PARA_PLACEHOLDER, preprocessCriticMarkup };
 
 // Custom inline rules
 function criticMarkupRule(state: any, silent: boolean): boolean {
@@ -245,53 +243,6 @@ function mathRule(state: any, silent: boolean): boolean {
   }
   state.pos = endPos + 1;
   return true;
-}
-
-/**
- * Preprocess markdown source: replace \n\n inside CriticMarkup spans with a
- * placeholder so markdown-it's block parser doesn't split them into separate
- * paragraphs.
- */
-export function preprocessCriticMarkup(markdown: string): string {
-  // Fast path: if no CriticMarkup opening markers, return unchanged
-  if (!markdown.includes('{++') && !markdown.includes('{--') &&
-      !markdown.includes('{~~') && !markdown.includes('{>>') &&
-      !markdown.includes('{==')) {
-    return markdown;
-  }
-
-  const markers: Array<{ open: string; close: string }> = [
-    { open: '{++', close: '++}' },
-    { open: '{--', close: '--}' },
-    { open: '{~~', close: '~~}' },
-    { open: '{>>', close: '<<}' },
-    { open: '{==', close: '==}' },
-  ];
-
-  let result = markdown;
-  for (const { open, close } of markers) {
-    let searchFrom = 0;
-    while (true) {
-      const openIdx = result.indexOf(open, searchFrom);
-      if (openIdx === -1) break;
-      const contentStart = openIdx + open.length;
-      const closeIdx = result.indexOf(close, contentStart);
-      if (closeIdx === -1) {
-        searchFrom = contentStart;
-        continue;
-      }
-      const content = result.slice(contentStart, closeIdx);
-      if (content.includes('\n\n')) {
-        const replaced = content.replace(/\n\n/g, PARA_PLACEHOLDER);
-        result = result.slice(0, contentStart) + replaced + result.slice(closeIdx);
-        // Advance past the replaced span
-        searchFrom = contentStart + replaced.length + close.length;
-      } else {
-        searchFrom = closeIdx + close.length;
-      }
-    }
-  }
-  return result;
 }
 
 /** Inline rule that converts the paragraph placeholder back into softbreak tokens. */
@@ -1355,7 +1306,7 @@ function commentsXml(comments: CommentEntry[]): string {
     // Split on \n\n for paragraph breaks within the comment
     const paragraphs = c.text.split('\n\n');
     for (const para of paragraphs) {
-      xml += '<w:p><w:r><w:t>' + escapeXml(para) + '</w:t></w:r></w:p>';
+      xml += '<w:p><w:r><w:t xml:space="preserve">' + escapeXml(para) + '</w:t></w:r></w:p>';
     }
     xml += '</w:comment>';
   }

@@ -693,6 +693,7 @@ describe('parseMd multi-paragraph CriticMarkup', () => {
     const tokens = parseMd('{++added\n\nmore++}');
     const addRuns = tokens.flatMap(t => t.runs).filter(r => r.type === 'critic_add');
     expect(addRuns[0].text).not.toContain('\u0000');
+    expect(addRuns[0].text).not.toContain('PARA');
     expect(addRuns[0].text).toContain('added\n\nmore');
   });
 });
