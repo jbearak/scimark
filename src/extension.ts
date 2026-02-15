@@ -216,65 +216,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('manuscript-markdown.exportToWord', async (uri?: vscode.Uri) => {
 			try {
-				let markdown: string;
-				let basePath: string;
-				if (uri) {
-					const data = await vscode.workspace.fs.readFile(uri);
-					markdown = new TextDecoder().decode(data);
-					basePath = uri.fsPath.replace(/\.md$/i, '');
-				} else {
-					const editor = vscode.window.activeTextEditor;
-					if (!editor || editor.document.languageId !== 'markdown') {
-						vscode.window.showErrorMessage('No active Markdown file');
-						return;
-					}
-					markdown = editor.document.getText();
-					basePath = editor.document.uri.fsPath.replace(/\.md$/i, '');
-				}
-				
-				// Check for companion .bib file
-				let bibtex: string | undefined;
-				const bibUri = vscode.Uri.file(basePath + '.bib');
-				if (await fileExists(bibUri)) {
-					const bibData = await vscode.workspace.fs.readFile(bibUri);
-					bibtex = new TextDecoder().decode(bibData);
-				}
-				
-				const authorName = author.getAuthorName();
-				const result = await convertMdToDocx(markdown, { bibtex, authorName: authorName ?? undefined });
-				
-				let docxUri = vscode.Uri.file(basePath + '.docx');
-				const docxExists = await fileExists(docxUri);
-				
-				if (docxExists) {
-					const name = basePath.split(/[/\\]/).pop()!;
-					const choice = await vscode.window.showWarningMessage(
-						'"' + name + '.docx" already exists. Replace it or save with a new name?',
-						{ modal: true },
-						'Replace',
-						'New Name',
-						'Cancel'
-					);
-					
-					if (!choice || choice === 'Cancel') return;
-					
-					if (choice === 'New Name') {
-						const selectedUri = await vscode.window.showSaveDialog({
-							defaultUri: docxUri,
-							filters: { 'Word Documents': ['docx'] },
-							saveLabel: 'Choose output file name'
-						});
-						if (!selectedUri) return;
-						docxUri = selectedUri;
-					}
-				}
-				
-				await vscode.workspace.fs.writeFile(docxUri, result.docx);
-				
-				if (result.warnings.length > 0) {
-					vscode.window.showWarningMessage('Export completed with warnings: ' + result.warnings.join('; '));
-				}
-				vscode.window.showInformationMessage('Exported to ' + docxUri.fsPath.split(/[/\\]/).pop()!);
+				await exportMdToDocx(uri);
 			} catch (err: any) {
 				vscode.window.showErrorMessage('Export to Word failed: ' + err.message);
 			}
@@ -295,66 +237,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 				const templateData = await vscode.workspace.fs.readFile(templateFiles[0]);
 				const templateDocx = new Uint8Array(templateData);
-
-				let markdown: string;
-				let basePath: string;
-				if (uri) {
-					const data = await vscode.workspace.fs.readFile(uri);
-					markdown = new TextDecoder().decode(data);
-					basePath = uri.fsPath.replace(/\.md$/i, '');
-				} else {
-					const editor = vscode.window.activeTextEditor;
-					if (!editor || editor.document.languageId !== 'markdown') {
-						vscode.window.showErrorMessage('No active Markdown file');
-						return;
-					}
-					markdown = editor.document.getText();
-					basePath = editor.document.uri.fsPath.replace(/\.md$/i, '');
-				}
-				
-				// Check for companion .bib file
-				let bibtex: string | undefined;
-				const bibUri = vscode.Uri.file(basePath + '.bib');
-				if (await fileExists(bibUri)) {
-					const bibData = await vscode.workspace.fs.readFile(bibUri);
-					bibtex = new TextDecoder().decode(bibData);
-				}
-				
-				const authorName = author.getAuthorName();
-				const result = await convertMdToDocx(markdown, { bibtex, authorName: authorName ?? undefined, templateDocx });
-				
-				let docxUri = vscode.Uri.file(basePath + '.docx');
-				const docxExists = await fileExists(docxUri);
-				
-				if (docxExists) {
-					const name = basePath.split(/[/\\]/).pop()!;
-					const choice = await vscode.window.showWarningMessage(
-						'"' + name + '.docx" already exists. Replace it or save with a new name?',
-						{ modal: true },
-						'Replace',
-						'New Name',
-						'Cancel'
-					);
-					
-					if (!choice || choice === 'Cancel') return;
-					
-					if (choice === 'New Name') {
-						const selectedUri = await vscode.window.showSaveDialog({
-							defaultUri: docxUri,
-							filters: { 'Word Documents': ['docx'] },
-							saveLabel: 'Choose output file name'
-						});
-						if (!selectedUri) return;
-						docxUri = selectedUri;
-					}
-				}
-				
-				await vscode.workspace.fs.writeFile(docxUri, result.docx);
-				
-				if (result.warnings.length > 0) {
-					vscode.window.showWarningMessage('Export completed with warnings: ' + result.warnings.join('; '));
-				}
-				vscode.window.showInformationMessage('Exported to ' + docxUri.fsPath.split(/[/\\]/).pop()!);
+				await exportMdToDocx(uri, templateDocx);
 			} catch (err: any) {
 				vscode.window.showErrorMessage('Export to Word failed: ' + err.message);
 			}
@@ -683,6 +566,100 @@ function applyTableFormatting(formatter: (text: string) => formatting.TextTransf
 			editBuilder.replace(fullLineRange, transformation.newText);
 		}
 	});
+}
+
+interface MdExportInput {
+	markdown: string;
+	basePath: string;
+	bibtex?: string;
+}
+
+async function getMdExportInput(uri?: vscode.Uri): Promise<MdExportInput | undefined> {
+	let markdown: string;
+	let basePath: string;
+	if (uri) {
+		const data = await vscode.workspace.fs.readFile(uri);
+		markdown = new TextDecoder().decode(data);
+		basePath = uri.fsPath.replace(/\.md$/i, '');
+	} else {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor || editor.document.languageId !== 'markdown') {
+			vscode.window.showErrorMessage('No active Markdown file');
+			return undefined;
+		}
+		markdown = editor.document.getText();
+		basePath = editor.document.uri.fsPath.replace(/\.md$/i, '');
+	}
+
+	let bibtex: string | undefined;
+	const bibUri = vscode.Uri.file(basePath + '.bib');
+	if (await fileExists(bibUri)) {
+		const bibData = await vscode.workspace.fs.readFile(bibUri);
+		bibtex = new TextDecoder().decode(bibData);
+	}
+
+	return { markdown, basePath, bibtex };
+}
+
+async function resolveDocxOutputUri(basePath: string): Promise<vscode.Uri | undefined> {
+	let docxUri = vscode.Uri.file(basePath + '.docx');
+	const docxExists = await fileExists(docxUri);
+	if (!docxExists) {
+		return docxUri;
+	}
+
+	const name = basePath.split(/[/\\]/).pop()!;
+	const choice = await vscode.window.showWarningMessage(
+		'\"' + name + '.docx\" already exists. Replace it or save with a new name?',
+		{ modal: true },
+		'Replace',
+		'New Name',
+		'Cancel'
+	);
+
+	if (!choice || choice === 'Cancel') {
+		return undefined;
+	}
+
+	if (choice === 'New Name') {
+		const selectedUri = await vscode.window.showSaveDialog({
+			defaultUri: docxUri,
+			filters: { 'Word Documents': ['docx'] },
+			saveLabel: 'Choose output file name'
+		});
+		if (!selectedUri) {
+			return undefined;
+		}
+		docxUri = selectedUri;
+	}
+
+	return docxUri;
+}
+
+async function exportMdToDocx(uri?: vscode.Uri, templateDocx?: Uint8Array): Promise<void> {
+	const input = await getMdExportInput(uri);
+	if (!input) {
+		return;
+	}
+
+	const authorName = author.getAuthorName();
+	const result = await convertMdToDocx(input.markdown, {
+		bibtex: input.bibtex,
+		authorName: authorName ?? undefined,
+		templateDocx
+	});
+
+	const docxUri = await resolveDocxOutputUri(input.basePath);
+	if (!docxUri) {
+		return;
+	}
+
+	await vscode.workspace.fs.writeFile(docxUri, result.docx);
+
+	if (result.warnings.length > 0) {
+		vscode.window.showWarningMessage('Export completed with warnings: ' + result.warnings.join('; '));
+	}
+	vscode.window.showInformationMessage('Exported to ' + docxUri.fsPath.split(/[/\\]/).pop()!);
 }
 
 export function deactivate() {}
