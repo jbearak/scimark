@@ -78,3 +78,11 @@ Code (authoritative for behavior):
 - Zotero locators belong in Markdown Pandoc citations (`[@key, p. 20]`), not in BibTeX entries, because locators are per-citation-instance, not per-bibliographic-entry
 - Zotero numeric locators: Some Zotero versions/plugins may serialize locators as JSON numbers instead of strings; coerce to string with `String()` during extraction and in `sanitizeLocator()` to prevent silent data loss
 - BibTeX DOI escaping: DOIs can contain underscores and other BibTeX special characters; apply `escapeBibtex()` to DOI field like all other text fields to prevent malformed BibTeX output
+- LaTeX script binding: In LaTeX-to-OMML conversion, apply `^`/`_` to the nearest preceding atom (not the whole accumulated expression), and attach body scripts inside n-ary `<m:e>` content when parsing `\\sum`/`\\int` style operators
+- Zotero grouped citations: If any key in a grouped citation lacks Zotero metadata (or is missing), emit plain-text fallback for the whole group and warn to avoid partial CSL field codes that drop keys on Zotero refresh
+- CSL year reconstruction: Only set `issued.date-parts` when BibTeX `year` is fully numeric; never emit `date-parts:[[null]]`
+- BibTeX entry scanning: Quote-state detection must count consecutive preceding backslashes before `\"` to avoid mis-parsing entries containing escaped backslashes and quotes
+- BibTeX scanner literals: When comparing `input[k]` (single character), compare against `'\\'` (or char code), not `'\\\\'` (two-character runtime string), otherwise backslash counts silently stay zero
+- Delimiter parsing (`\\left...\\right`): If the right-delimiter token is combined text like `)+c`, preserve trailing text by re-inserting `+c` into the token stream after consuming the delimiter character
+- Delimiter inner parsing: Script operators (`^`, `_`) inside `\\left...\\right` must be parsed with script-binding logic (not emitted as literal text runs)
+- OMML text extraction: `<m:t>` content is XML-escaped; unescape entities before passing it back through `escapeXmlChars()` to avoid double-escaping (e.g. `&amp;` → `&amp;amp;`)

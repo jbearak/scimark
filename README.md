@@ -11,7 +11,7 @@ A specification, converter, and VS Code extension for roundtrip manuscript editi
 ## What It Is
 
 1. A **specification** extending Markdown + CriticMarkup + Pandoc
-2. A **converter** (DOCX to Markdown)
+2. A **converter** (DOCX ↔ Markdown)
 3. A **VS Code extension**
 
 ## Quick Start
@@ -28,7 +28,7 @@ Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/ite
 
 - **Annotations**: Click **Markdown Annotations** in the toolbar or right-click menu for comment, highlight, addition, deletion, and substitution marks
 - **Formatting**: Click **Markdown Formatting** for bold, italic, lists, headings, links, code, and table reflow
-- **DOCX Conversion**: Right-click a `.docx` file and select **Export to Markdown**
+- **DOCX Conversion**: Right-click a `.docx` file and select **Export to Markdown**, or use the **Export to Word** submenu to convert Markdown back to DOCX
 - **Navigation**: Use `Alt+Shift+J` / `Alt+Shift+K` to jump between changes
 
 ## Features
@@ -36,6 +36,7 @@ Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/ite
 - CriticMarkup annotations with comment attribution and timestamps
 - Markdown formatting toolbar (bold, italic, lists, headings, code, links, tables)
 - DOCX to Markdown conversion preserving formatting, comments, and citations
+- Markdown to DOCX export with template support and Zotero field code reconstruction
 - Zotero citation roundtrip with BibTeX export
 - Colored highlights with 14 color options
 - Syntax highlighting and Markdown preview rendering
@@ -44,7 +45,6 @@ Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/ite
 ## Known Limitations
 
 - No table conversion from DOCX
-- No conversion back to MS Word (DOCX export)
 - No marking comments as resolved (only delete)
 - Multi-line patterns only render in preview when starting at beginning of line
 
