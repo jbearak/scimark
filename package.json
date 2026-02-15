@@ -449,20 +449,76 @@
         }
       ],
       "markdown.highlightColor": [
-        { "command": "manuscript-markdown.formatHighlight_yellow", "when": "editorLangId == markdown", "group": "1_color@1" },
-        { "command": "manuscript-markdown.formatHighlight_green", "when": "editorLangId == markdown", "group": "1_color@2" },
-        { "command": "manuscript-markdown.formatHighlight_turquoise", "when": "editorLangId == markdown", "group": "1_color@3" },
-        { "command": "manuscript-markdown.formatHighlight_pink", "when": "editorLangId == markdown", "group": "1_color@4" },
-        { "command": "manuscript-markdown.formatHighlight_blue", "when": "editorLangId == markdown", "group": "1_color@5" },
-        { "command": "manuscript-markdown.formatHighlight_red", "when": "editorLangId == markdown", "group": "1_color@6" },
-        { "command": "manuscript-markdown.formatHighlight_dark-blue", "when": "editorLangId == markdown", "group": "2_color@1" },
-        { "command": "manuscript-markdown.formatHighlight_teal", "when": "editorLangId == markdown", "group": "2_color@2" },
-        { "command": "manuscript-markdown.formatHighlight_violet", "when": "editorLangId == markdown", "group": "2_color@3" },
-        { "command": "manuscript-markdown.formatHighlight_dark-red", "when": "editorLangId == markdown", "group": "2_color@4" },
-        { "command": "manuscript-markdown.formatHighlight_dark-yellow", "when": "editorLangId == markdown", "group": "2_color@5" },
-        { "command": "manuscript-markdown.formatHighlight_gray-50", "when": "editorLangId == markdown", "group": "3_color@1" },
-        { "command": "manuscript-markdown.formatHighlight_gray-25", "when": "editorLangId == markdown", "group": "3_color@2" },
-        { "command": "manuscript-markdown.formatHighlight_black", "when": "editorLangId == markdown", "group": "3_color@3" }
+        {
+          "command": "manuscript-markdown.formatHighlight_yellow",
+          "when": "editorLangId == markdown",
+          "group": "1_color@1"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_green",
+          "when": "editorLangId == markdown",
+          "group": "1_color@2"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_turquoise",
+          "when": "editorLangId == markdown",
+          "group": "1_color@3"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_pink",
+          "when": "editorLangId == markdown",
+          "group": "1_color@4"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_blue",
+          "when": "editorLangId == markdown",
+          "group": "1_color@5"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_red",
+          "when": "editorLangId == markdown",
+          "group": "1_color@6"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_dark-blue",
+          "when": "editorLangId == markdown",
+          "group": "2_color@1"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_teal",
+          "when": "editorLangId == markdown",
+          "group": "2_color@2"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_violet",
+          "when": "editorLangId == markdown",
+          "group": "2_color@3"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_dark-red",
+          "when": "editorLangId == markdown",
+          "group": "2_color@4"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_dark-yellow",
+          "when": "editorLangId == markdown",
+          "group": "2_color@5"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_gray-50",
+          "when": "editorLangId == markdown",
+          "group": "3_color@1"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_gray-25",
+          "when": "editorLangId == markdown",
+          "group": "3_color@2"
+        },
+        {
+          "command": "manuscript-markdown.formatHighlight_black",
+          "when": "editorLangId == markdown",
+          "group": "3_color@3"
+        }
       ],
       "markdown.exportDocx": [
         {
@@ -586,6 +642,7 @@
   },
   "private": true,
   "dependencies": {
+    "citeproc": "^2.4.63",
     "fast-xml-parser": "^5.3.5",
     "jszip": "^3.10.1",
     "markdown-it": "^14.1.0"

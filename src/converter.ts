@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
 import { ommlToLatex } from './omml';
+import { Frontmatter, serializeFrontmatter } from './frontmatter';
 
 /** Matches a "Sources" heading (with or without leading `#` markers). */
 const SOURCES_HEADING_RE = /^(?:#+\s*)?Sources\s*$/;
@@ -82,9 +83,23 @@ export type ContentItem =
 
 export type CitationKeyFormat = 'authorYearTitle' | 'authorYear' | 'numeric';
 
+export interface ZoteroDocPrefs {
+  styleId: string;
+  locale?: string;
+  noteType?: number;
+}
+
+export interface ZoteroBiblData {
+  uncited?: any[];
+  omitted?: any[];
+  custom?: any[];
+}
+
 export interface ConvertResult {
   markdown: string;
   bibtex: string;
+  zoteroPrefs?: ZoteroDocPrefs;
+  zoteroBiblData?: ZoteroBiblData;
 }
 
 // XML helpers
@@ -432,6 +447,91 @@ export async function extractComments(data: Uint8Array | JSZip): Promise<Map<str
 /** Matches the 8-character Zotero item key at the end of a URI. */
 export const ZOTERO_KEY_RE = /\/items\/([A-Z0-9]{8})$/;
 
+// Zotero document preferences extraction
+
+const ZOTERO_STYLE_PREFIX = 'http://www.zotero.org/styles/';
+
+export async function extractZoteroPrefs(data: Uint8Array | JSZip): Promise<ZoteroDocPrefs | undefined> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return undefined;
+
+  // Find ZOTERO_PREF_* properties and concatenate in order
+  const prefParts: Array<{ index: number; value: string }> = [];
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (!name.startsWith('ZOTERO_PREF_')) continue;
+
+    const idxStr = name.replace('ZOTERO_PREF_', '');
+    const idx = parseInt(idxStr, 10);
+    if (isNaN(idx)) continue;
+
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const val = nodeText(child['vt:lpwstr'] || []);
+        prefParts.push({ index: idx, value: val });
+      }
+    }
+  }
+
+  if (prefParts.length === 0) return undefined;
+
+  prefParts.sort((a, b) => a.index - b.index);
+  const prefString = prefParts.map(p => p.value).join('');
+
+  // Try JSON parse (dataVersion 4)
+  try {
+    const data = JSON.parse(prefString);
+    const styleId: string = data?.style?.styleID ?? '';
+    const locale: string = data?.style?.locale ?? '';
+    const noteType: number | undefined = data?.prefs?.noteType;
+    if (!styleId) return undefined;
+    return {
+      styleId,
+      locale: locale || undefined,
+      noteType: noteType !== undefined && noteType !== 0 ? noteType : undefined,
+    };
+  } catch {
+    // Try XML parse (dataVersion 3)
+    try {
+      const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+      const xmlData = xmlParser.parse(prefString);
+      const styleId: string = xmlData?.data?.style?.['@_id'] ?? '';
+      const locale: string = xmlData?.data?.style?.['@_locale'] ?? '';
+      const noteType: number | undefined = xmlData?.data?.prefs?.['@_noteType'] != null
+        ? parseInt(xmlData.data.prefs['@_noteType'], 10) : undefined;
+      if (!styleId) return undefined;
+      return {
+        styleId,
+        locale: locale || undefined,
+        noteType: noteType !== undefined && !isNaN(noteType) && noteType !== 0 ? noteType : undefined,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+/** Strip the Zotero styles URL prefix to get a short style name. */
+export function zoteroStyleShortName(styleId: string): string {
+  if (styleId.startsWith(ZOTERO_STYLE_PREFIX)) {
+    return styleId.slice(ZOTERO_STYLE_PREFIX.length);
+  }
+  return styleId;
+}
+
+/** Build the full Zotero style URL from a short name. */
+export function zoteroStyleFullId(shortName: string): string {
+  if (shortName.startsWith('http://') || shortName.startsWith('https://')) {
+    return shortName;
+  }
+  return ZOTERO_STYLE_PREFIX + shortName;
+}
+
 // Zotero metadata extraction
 
 export async function extractZoteroCitations(data: Uint8Array | JSZip): Promise<ZoteroCitation[]> {
@@ -598,14 +698,19 @@ export function citationPandocKeys(
 
 // Document content extraction
 
+export interface DocumentContentResult {
+  content: ContentItem[];
+  zoteroBiblData?: ZoteroBiblData;
+}
+
 export async function extractDocumentContent(
   data: Uint8Array | JSZip,
   zoteroCitations: ZoteroCitation[],
   keyMap: Map<string, string>
-): Promise<ContentItem[]> {
+): Promise<DocumentContentResult> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
   const parsed = await readZipXml(zip, 'word/document.xml');
-  if (!parsed) { return []; }
+  if (!parsed) { return { content: [] }; }
 
   // Parse relationships and numbering definitions
   const relationshipMap = await parseRelationships(zip);
@@ -618,10 +723,12 @@ export async function extractDocumentContent(
   const activeComments = new Set<string>();
   let inField = false;
   let inCitationField = false;
+  let inBibliographyField = false;
   let fieldInstrParts: string[] = [];
   let currentCitation: ZoteroCitation | undefined;
   let citationTextParts: string[] = [];
   let currentHref: string | undefined;
+  let zoteroBiblData: ZoteroBiblData | undefined;
 
   function walk(nodes: any[], currentFormatting: RunFormatting = DEFAULT_FORMATTING): void {
     for (const node of nodes) {
@@ -634,6 +741,7 @@ export async function extractDocumentContent(
             inField = true;
             fieldInstrParts = [];
             inCitationField = false;
+            inBibliographyField = false;
           } else if (fldType === 'separate') {
             if (inField) {
               const instrText = fieldInstrParts.join('');
@@ -641,6 +749,20 @@ export async function extractDocumentContent(
                 inCitationField = true;
                 currentCitation = zoteroCitations[citationIdx++];
                 citationTextParts = [];
+              } else if (instrText.includes('ZOTERO_BIBL')) {
+                inBibliographyField = true;
+                // Extract bibliography JSON payload
+                const jsonStart = instrText.indexOf('{');
+                if (jsonStart >= 0) {
+                  try {
+                    const biblJson = JSON.parse(instrText.slice(jsonStart));
+                    zoteroBiblData = {
+                      uncited: biblJson?.uncited,
+                      omitted: biblJson?.omitted,
+                      custom: biblJson?.custom,
+                    };
+                  } catch { /* ignore parse errors */ }
+                }
               }
             }
           } else if (fldType === 'end') {
@@ -655,6 +777,7 @@ export async function extractDocumentContent(
             }
             inField = false;
             inCitationField = false;
+            inBibliographyField = false;
             currentCitation = undefined;
           }
         } else if (key === 'w:instrText' && inField) {
@@ -684,7 +807,9 @@ export async function extractDocumentContent(
         } else if (key === 'w:t') {
           const text = nodeText(node['w:t'] || []);
           if (text) {
-            if (inCitationField) {
+            if (inBibliographyField) {
+              // Skip text inside ZOTERO_BIBL field
+            } else if (inCitationField) {
               citationTextParts.push(text);
             } else {
               const textItem: ContentItem = { 
@@ -767,7 +892,7 @@ export async function extractDocumentContent(
   }
 
   walk(Array.isArray(parsed) ? parsed : [parsed]);
-  return content;
+  return { content, zoteroBiblData };
 }
 
 // Markdown generation
@@ -1013,22 +1138,38 @@ export async function convertDocx(
   format: CitationKeyFormat = 'authorYearTitle'
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
+    extractZoteroPrefs(zip),
   ]);
 
   const keyMap = buildCitationKeyMap(zoteroCitations, format);
-  const docContent = await extractDocumentContent(zip, zoteroCitations, keyMap);
+  const { content: docContent, zoteroBiblData } = await extractDocumentContent(zip, zoteroCitations, keyMap);
   let markdown = buildMarkdown(docContent, comments);
 
-  // Strip Sources section if present
-  const lines = markdown.split('\n');
-  const sourcesIdx = lines.findIndex(l => SOURCES_HEADING_RE.test(l.trim()));
-  if (sourcesIdx >= 0) {
-    markdown = lines.slice(0, sourcesIdx).join('\n').trimEnd();
+  // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
+  if (!zoteroBiblData) {
+    const lines = markdown.split('\n');
+    const sourcesIdx = lines.findIndex(l => SOURCES_HEADING_RE.test(l.trim()));
+    if (sourcesIdx >= 0) {
+      markdown = lines.slice(0, sourcesIdx).join('\n').trimEnd();
+    }
+  }
+
+  // Prepend YAML frontmatter if Zotero prefs were found
+  if (zoteroPrefs) {
+    const fm: Frontmatter = {
+      csl: zoteroStyleShortName(zoteroPrefs.styleId),
+      locale: zoteroPrefs.locale,
+      noteType: zoteroPrefs.noteType,
+    };
+    const frontmatterStr = serializeFrontmatter(fm);
+    if (frontmatterStr) {
+      markdown = frontmatterStr + '\n' + markdown;
+    }
   }
 
   const bibtex = generateBibTeX(zoteroCitations, keyMap);
-  return { markdown, bibtex };
+  return { markdown, bibtex, zoteroPrefs, zoteroBiblData };
 }

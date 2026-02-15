@@ -1,6 +1,8 @@
 import MarkdownIt from 'markdown-it';
-import { escapeXml, generateCitation, generateMathXml } from './md-to-docx-citations';
+import { escapeXml, generateCitation, generateMathXml, createCiteprocEngine, generateBibliographyXml } from './md-to-docx-citations';
 import { parseBibtex, BibtexEntry } from './bibtex-parser';
+import { parseFrontmatter, Frontmatter } from './frontmatter';
+import { ZoteroBiblData, zoteroStyleFullId } from './converter';
 
 // Types for the parsed token stream
 export interface MdToken {
@@ -780,6 +782,7 @@ export interface MdToDocxOptions {
   bibtex?: string;
   authorName?: string;
   templateDocx?: Uint8Array;
+  zoteroBiblData?: ZoteroBiblData;
 }
 
 export interface MdToDocxResult {
@@ -805,7 +808,7 @@ interface CommentEntry {
   text: string;
 }
 
-function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean): string {
+function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n';
   xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n';
@@ -825,17 +828,24 @@ function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: bool
   }
   xml += '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>\n';
   xml += '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>\n';
+  if (hasCustomProps) {
+    xml += '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>\n';
+  }
   xml += '</Types>';
   return xml;
 }
 
-function relsXml(): string {
-  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+function relsXml(hasCustomProps?: boolean): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n' +
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>\n' +
     '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>\n' +
-    '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>\n' +
-    '</Relationships>';
+    '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>\n';
+  if (hasCustomProps) {
+    xml += '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/>\n';
+  }
+  xml += '</Relationships>';
+  return xml;
 }
 
 function stylesXml(): string {
@@ -970,6 +980,42 @@ function appPropsXml(): string {
     '</Properties>';
 }
 
+function zoteroCustomPropsXml(fm: Frontmatter): string {
+  const styleId = zoteroStyleFullId(fm.csl || '');
+  const prefData = JSON.stringify({
+    dataVersion: 4,
+    zoteroVersion: '6.0',
+    style: {
+      styleID: styleId,
+      locale: fm.locale || 'en-US',
+      hasBibliography: true,
+      bibliographyStyleHasBeenSet: true,
+    },
+    prefs: {
+      fieldType: 'Field',
+      noteType: fm.noteType || 0,
+    },
+  });
+
+  // Chunk the pref string into ZOTERO_PREF_1, ZOTERO_PREF_2, etc. (max 240 chars each)
+  const CHUNK_SIZE = 240;
+  const chunks: string[] = [];
+  for (let i = 0; i < prefData.length; i += CHUNK_SIZE) {
+    chunks.push(prefData.slice(i, i + CHUNK_SIZE));
+  }
+
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  xml += '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">\n';
+  for (let i = 0; i < chunks.length; i++) {
+    const pid = i + 2; // fmtid starts at pid=2 per OOXML convention
+    xml += '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="' + pid + '" name="ZOTERO_PREF_' + (i + 1) + '">';
+    xml += '<vt:lpwstr>' + escapeXml(chunks[i]) + '</vt:lpwstr>';
+    xml += '</property>\n';
+  }
+  xml += '</Properties>';
+  return xml;
+}
+
 function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
@@ -1022,7 +1068,7 @@ export function generateRun(text: string, rPr: string): string {
   return '<w:r>' + rPr + '<w:t xml:space="preserve">' + escapeXml(text) + '</w:t></w:r>';
 }
 
-export function generateParagraph(token: MdToken, state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>): string {
+export function generateParagraph(token: MdToken, state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any): string {
   let pPr = '';
   
   switch (token.type) {
@@ -1127,7 +1173,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       }
       runs += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
     } else if (run.type === 'citation') {
-      const result = generateCitation(run, bibEntries || new Map());
+      const result = generateCitation(run, bibEntries || new Map(), citeprocEngine);
       runs += result.xml;
       if (result.warning) state.warnings.push(result.warning);
     } else if (run.type === 'math') {
@@ -1179,15 +1225,20 @@ function commentsXml(comments: CommentEntry[]): string {
   return xml;
 }
 
-export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>): string {
+export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any): string {
   let body = '';
-  
+
   for (const token of tokens) {
     if (token.type === 'table') {
       body += generateTable(token);
     } else {
-      body += generateParagraph(token, state, options, bibEntries);
+      body += generateParagraph(token, state, options, bibEntries, citeprocEngine);
     }
+  }
+
+  // Append bibliography field if we have a citeproc engine
+  if (citeprocEngine) {
+    body += generateBibliographyXml(citeprocEngine, options?.zoteroBiblData);
   }
   
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
@@ -1200,20 +1251,28 @@ export async function convertMdToDocx(
   markdown: string,
   options?: MdToDocxOptions
 ): Promise<MdToDocxResult> {
-  const tokens = parseMd(markdown);
-  
+  // Parse frontmatter for CSL style and other metadata
+  const { metadata: frontmatter, body } = parseFrontmatter(markdown);
+  const tokens = parseMd(body);
+
   // Parse BibTeX if provided
   let bibEntries: Map<string, BibtexEntry> | undefined;
   if (options?.bibtex) {
     bibEntries = parseBibtex(options.bibtex);
   }
-  
+
+  // Create citeproc engine if CSL style specified in frontmatter
+  let citeprocEngine: any;
+  if (frontmatter.csl && bibEntries) {
+    citeprocEngine = createCiteprocEngine(bibEntries, frontmatter.csl, frontmatter.locale);
+  }
+
   // Extract template parts if provided
   let templateParts: Map<string, Uint8Array> | undefined;
   if (options?.templateDocx) {
     templateParts = await extractTemplateParts(options.templateDocx);
   }
-  
+
   const hasTheme = !!templateParts?.has('word/theme/theme1.xml');
 
   // Reserve rId slots: 1=styles, 2=numbering, 3=comments, 4+=theme/settings/fontTable
@@ -1230,12 +1289,10 @@ export async function convertMdToDocx(
     hasComments: false,
   };
 
-  const documentXml = generateDocumentXml(tokens, state, options, bibEntries);
+  const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine);
 
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
-  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme));
-  zip.file('_rels/.rels', relsXml());
   zip.file('word/document.xml', documentXml);
 
   // Use template styles if available, otherwise default
@@ -1274,8 +1331,16 @@ export async function convertMdToDocx(
   zip.file('docProps/core.xml', corePropsXml());
   zip.file('docProps/app.xml', appPropsXml());
 
+  // Write Zotero document preferences if CSL style specified
+  const hasCustomProps = !!frontmatter.csl;
+  if (frontmatter.csl) {
+    zip.file('docProps/custom.xml', zoteroCustomPropsXml(frontmatter));
+  }
+
+  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps));
+  zip.file('_rels/.rels', relsXml(hasCustomProps));
   zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme));
-  
+
   const docx = await zip.generateAsync({ type: 'uint8array' });
   return { docx, warnings: state.warnings };
 }

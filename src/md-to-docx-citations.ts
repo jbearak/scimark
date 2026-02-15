@@ -1,5 +1,14 @@
 import { BibtexEntry } from './bibtex-parser';
 import { latexToOmml } from './latex-to-omml';
+import { loadStyle, loadLocale } from './csl-loader';
+
+// citeproc is a CommonJS module exporting the CSL namespace
+let CSL: any;
+try {
+  CSL = require('citeproc');
+} catch {
+  // citeproc not available — fallback rendering will be used
+}
 
 export interface CitationResult {
   xml: string;
@@ -10,9 +19,105 @@ export function escapeXml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/**
+ * Create a citeproc CSL.Engine instance from BibTeX entries, a CSL style name,
+ * and an optional locale.  Returns undefined if citeproc is not available or
+ * the style cannot be loaded.
+ */
+export function createCiteprocEngine(
+  entries: Map<string, BibtexEntry>,
+  styleName: string,
+  locale?: string
+): any | undefined {
+  if (!CSL) return undefined;
+
+  let styleXml: string;
+  try {
+    styleXml = loadStyle(styleName);
+  } catch {
+    return undefined;
+  }
+
+  // Build CSL-JSON item map keyed by citation key
+  const items = new Map<string, any>();
+  for (const [key, entry] of entries) {
+    const itemData = buildItemData(entry);
+    itemData.id = key;
+    items.set(key, itemData);
+  }
+
+  const sys = {
+    retrieveLocale: (lang: string) => {
+      try { return loadLocale(lang); } catch { return ''; }
+    },
+    retrieveItem: (id: string) => items.get(id),
+  };
+
+  try {
+    const engine = new CSL.Engine(sys, styleXml, locale || 'en-US');
+    // Register all item IDs
+    engine.updateItems([...items.keys()]);
+    return engine;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Use a citeproc engine to render a citation cluster for the given keys/locators.
+ * Returns the formatted citation text, or undefined if rendering fails.
+ */
+export function renderCitationText(
+  engine: any,
+  keys: string[],
+  locators?: Map<string, string>
+): string | undefined {
+  if (!engine || !CSL) return undefined;
+
+  try {
+    const rawList = keys.map(key => {
+      const item: any = { id: key };
+      const locator = locators?.get(key);
+      if (locator) {
+        const parsed = parseLocator(locator);
+        item.locator = parsed.locator;
+        item.label = parsed.label;
+      }
+      return item;
+    });
+
+    return engine.makeCitationCluster(rawList) as string;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Use a citeproc engine to render the bibliography.
+ * Returns an array of formatted bibliography entry strings (HTML-ish),
+ * or undefined if rendering fails.
+ */
+export function renderBibliography(engine: any): { bibStart: string; bibEnd: string; entries: string[] } | undefined {
+  if (!engine || !CSL) return undefined;
+
+  try {
+    const result = engine.makeBibliography();
+    if (!result || !result[1]) return undefined;
+    const [meta, entries] = result;
+    return {
+      bibStart: meta.bibstart || '',
+      bibEnd: meta.bibend || '',
+      entries: entries as string[],
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export function generateCitation(
   run: { keys?: string[]; locators?: Map<string, string>; text: string },
-  entries: Map<string, BibtexEntry>
+  entries: Map<string, BibtexEntry>,
+  citeprocEngine?: any
 ): CitationResult {
   if (!run.keys || run.keys.length === 0) {
     return { xml: '<w:r><w:t>[@' + escapeXml(run.text) + ']</w:t></w:r>' };
@@ -57,31 +162,45 @@ export function generateCitation(
       citationItems,
       properties: { noteIndex: 0 }
     };
-    
+
     const json = JSON.stringify(cslCitation);
-    const fallbackText = generateFallbackText(run.keys, entries, run.locators);
-    
+
+    // Use citeproc-rendered text if available, otherwise fallback
+    let visibleText: string;
+    if (citeprocEngine) {
+      const rendered = renderCitationText(citeprocEngine, run.keys, run.locators);
+      visibleText = rendered || generateFallbackText(run.keys, entries, run.locators);
+    } else {
+      visibleText = generateFallbackText(run.keys, entries, run.locators);
+    }
+
     const xml = '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
       '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ' + escapeXml(json) + ' </w:instrText></w:r>' +
       '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
-      '<w:r><w:t>' + escapeXml(fallbackText) + '</w:t></w:r>' +
+      '<w:r><w:t>' + escapeXml(visibleText) + '</w:t></w:r>' +
       '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
-    
+
     return { xml, warning: warnings.length > 0 ? warnings.join('; ') : undefined };
   }
   if (hasZoteroData && shouldFallbackToPlain) {
     warnings.push('Mixed Zotero and non-Zotero citations in grouped citation; emitted plain-text fallback to avoid partial field code');
   }
 
-  // No Zotero data, emit plain text
-  const fallbackText = generateFallbackText(run.keys, entries, run.locators);
-  return { 
+  // No Zotero data, emit plain text — still use citeproc if available
+  let fallbackText: string;
+  if (citeprocEngine) {
+    const rendered = renderCitationText(citeprocEngine, run.keys, run.locators);
+    fallbackText = rendered || generateFallbackText(run.keys, entries, run.locators);
+  } else {
+    fallbackText = generateFallbackText(run.keys, entries, run.locators);
+  }
+  return {
     xml: '<w:r><w:t>' + escapeXml(fallbackText) + '</w:t></w:r>',
     warning: warnings.length > 0 ? warnings.join('; ') : undefined
   };
 }
 
-function buildItemData(entry: BibtexEntry): any {
+export function buildItemData(entry: BibtexEntry): any {
   const itemData: any = {
     type: mapBibtexTypeToCSL(entry.type)
   };
@@ -157,14 +276,14 @@ function parseLocator(locator: string): { locator: string; label: string } {
   return { locator: trimmed, label: 'page' };
 }
 
-function generateFallbackText(keys: string[], entries: Map<string, BibtexEntry>, locators?: Map<string, string>): string {
+export function generateFallbackText(keys: string[], entries: Map<string, BibtexEntry>, locators?: Map<string, string>): string {
   const parts = keys.map(key => {
     const entry = entries.get(key);
     if (!entry) return key;
-    
+
     const author = entry.fields.get('author');
     const year = entry.fields.get('year');
-    
+
     let text = '';
     if (author) {
       const firstAuthor = author.split(' and ')[0].trim();
@@ -174,21 +293,58 @@ function generateFallbackText(keys: string[], entries: Map<string, BibtexEntry>,
     } else {
       text = key;
     }
-    
+
     if (year) text += ' ' + year;
-    
+
     const locator = locators?.get(key);
     if (locator) text += ', ' + locator;
-    
+
     return text;
   });
-  
+
   return '(' + parts.join('; ') + ')';
+}
+
+/**
+ * Generate OOXML for a ZOTERO_BIBL field code with rendered bibliography.
+ */
+export function generateBibliographyXml(
+  citeprocEngine: any,
+  biblData?: { uncited?: any[]; omitted?: any[]; custom?: any[] }
+): string {
+  const biblPayload = JSON.stringify({
+    uncited: biblData?.uncited || [],
+    omitted: biblData?.omitted || [],
+    custom: biblData?.custom || [],
+  });
+
+  const bib = renderBibliography(citeprocEngine);
+  let bibText = '';
+  if (bib && bib.entries.length > 0) {
+    // Strip HTML tags from bibliography entries for plain text display
+    bibText = bib.entries.map(e => e.replace(/<[^>]+>/g, '').trim()).join('\n');
+  }
+
+  // Generate bibliography paragraphs
+  let bibParagraphs = '';
+  if (bibText) {
+    const lines = bibText.split('\n').filter(l => l.trim());
+    for (const line of lines) {
+      bibParagraphs += '<w:p><w:r><w:t xml:space="preserve">' + escapeXml(line) + '</w:t></w:r></w:p>';
+    }
+  }
+
+  // Wrap in field code
+  return '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+    '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_BIBL ' + escapeXml(biblPayload) + ' CSL_BIBLIOGRAPHY </w:instrText></w:r>' +
+    '<w:r><w:fldChar w:fldCharType="separate"/></w:r></w:p>' +
+    bibParagraphs +
+    '<w:p><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>';
 }
 
 export function generateMathXml(latex: string, display: boolean): string {
   const omml = latexToOmml(latex);
-  
+
   if (display) {
     return '<m:oMathPara><m:oMath>' + omml + '</m:oMath></m:oMathPara>';
   } else {

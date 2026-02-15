@@ -167,7 +167,7 @@ describe('extractDocumentContent', () => {
   test('extracts text, citations, and paragraphs', async () => {
     const citations = await extractZoteroCitations(sampleData);
     const keyMap = buildCitationKeyMap(citations);
-    const content = await extractDocumentContent(sampleData, citations, keyMap);
+    const { content } = await extractDocumentContent(sampleData, citations, keyMap);
 
     const types = content.map(c => c.type);
     expect(types).toContain('text');
@@ -178,7 +178,7 @@ describe('extractDocumentContent', () => {
   test('tracks comment ranges on text items', async () => {
     const citations = await extractZoteroCitations(sampleData);
     const keyMap = buildCitationKeyMap(citations);
-    const content = await extractDocumentContent(sampleData, citations, keyMap);
+    const { content } = await extractDocumentContent(sampleData, citations, keyMap);
 
     const commented = content.filter(c => c.type === 'text' && c.commentIds.size > 0);
     expect(commented.length).toBeGreaterThan(0);
@@ -187,7 +187,7 @@ describe('extractDocumentContent', () => {
   test('citation items have pandoc keys', async () => {
     const citations = await extractZoteroCitations(sampleData);
     const keyMap = buildCitationKeyMap(citations);
-    const content = await extractDocumentContent(sampleData, citations, keyMap);
+    const { content } = await extractDocumentContent(sampleData, citations, keyMap);
 
     const citItems = content.filter(c => c.type === 'citation');
     expect(citItems.length).toBe(3);
