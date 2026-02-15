@@ -157,7 +157,7 @@ export async function downloadStyle(name: string, targetDir: string): Promise<st
     throw new Error(`HTTP ${response.status}`);
   }
   const xml = await response.text();
-  if (!xml.includes('<style')) {
+  if (!xml.includes('<style') || !xml.includes('xmlns="http://purl.org/net/xbiblio/csl"')) {
     throw new Error('Downloaded content is not a valid CSL style');
   }
 
@@ -218,6 +218,9 @@ export async function loadLocaleAsync(lang: string): Promise<string> {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const xml = await response.text();
+    if (!xml.includes('xmlns="http://purl.org/net/xbiblio/csl"')) {
+      throw new Error('Downloaded content is not a valid CSL locale');
+    }
 
     // Cache to disk
     try {
