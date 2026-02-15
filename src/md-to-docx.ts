@@ -1312,7 +1312,7 @@ export async function convertMdToDocx(
       if (shouldDownload && options?.cslCacheDir) {
         try {
           await downloadStyle(styleName, options.cslCacheDir);
-          const downloadedPath = join(options.cslCacheDir, styleName + '.csl');
+          const downloadedPath = join(options.cslCacheDir, styleName.endsWith('.csl') ? styleName : styleName + '.csl');
           result = createCiteprocEngineLocal(bibEntries, downloadedPath, frontmatter.locale);
         } catch {
           earlyWarnings.push(`CSL style "${styleName}" could not be downloaded. Export completed without CSL citation formatting.`);

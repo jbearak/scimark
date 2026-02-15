@@ -116,7 +116,7 @@ export async function loadStyleAsync(name: string, cacheDir?: string): Promise<s
   }
 
   // Try downloading from the CSL repository
-  const url = CSL_STYLES_URL + name + '.csl';
+  const url = CSL_STYLES_URL + (name.endsWith('.csl') ? name.slice(0, -4) : name) + '.csl';
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -151,7 +151,7 @@ export async function loadStyleAsync(name: string, cacheDir?: string): Promise<s
  */
 export async function downloadStyle(name: string, targetDir: string): Promise<string> {
   validateStyleName(name);
-  const url = CSL_STYLES_URL + name + '.csl';
+  const url = CSL_STYLES_URL + (name.endsWith('.csl') ? name.slice(0, -4) : name) + '.csl';
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -165,7 +165,7 @@ export async function downloadStyle(name: string, targetDir: string): Promise<st
   if (!existsSync(targetDir)) {
     mkdirSync(targetDir, { recursive: true });
   }
-  writeFileSync(join(targetDir, name + '.csl'), xml, 'utf-8');
+  writeFileSync(join(targetDir, name.endsWith('.csl') ? name : name + '.csl'), xml, 'utf-8');
 
   // Also cache in memory
   styleCache.set(name, xml);
