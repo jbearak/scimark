@@ -30,6 +30,13 @@ export function parseArgs(argv: string[]): CliOptions {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    const requireValue = (flag: string): string => {
+      if (i + 1 >= args.length || args[i + 1].startsWith('--')) {
+        throw new Error(`${flag} requires a value`);
+      }
+      i++;
+      return args[i];
+    };
     
     if (arg === '--help') {
       options.help = true;
@@ -38,27 +45,27 @@ export function parseArgs(argv: string[]): CliOptions {
     } else if (arg === '--force') {
       options.force = true;
     } else if (arg === '--output') {
-      options.outputPath = args[++i];
+      options.outputPath = requireValue('--output');
     } else if (arg === '--citation-key-format') {
-      const format = args[++i];
+      const format = requireValue('--citation-key-format');
       if (!['authorYearTitle', 'authorYear', 'numeric'].includes(format)) {
         throw new Error(`Invalid citation key format "${format}". Use authorYearTitle, authorYear, or numeric`);
       }
       options.citationKeyFormat = format as any;
     } else if (arg === '--bib') {
-      options.bibPath = args[++i];
+      options.bibPath = requireValue('--bib');
     } else if (arg === '--template') {
-      options.templatePath = args[++i];
+      options.templatePath = requireValue('--template');
     } else if (arg === '--author') {
-      options.authorName = args[++i];
+      options.authorName = requireValue('--author');
     } else if (arg === '--mixed-citation-style') {
-      const style = args[++i];
+      const style = requireValue('--mixed-citation-style');
       if (!['separate', 'unified'].includes(style)) {
         throw new Error(`Invalid mixed citation style "${style}". Use separate or unified`);
       }
       options.mixedCitationStyle = style as any;
     } else if (arg === '--csl-cache-dir') {
-      options.cslCacheDir = args[++i];
+      options.cslCacheDir = requireValue('--csl-cache-dir');
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown option "${arg}"`);
     } else if (!options.inputPath) {
@@ -106,11 +113,36 @@ function showVersion() {
 
 export function deriveDocxToMdPaths(inputPath: string, outputPath?: string): { mdPath: string; bibPath: string } {
   const inputDir = path.dirname(inputPath);
-  const inputBase = path.basename(inputPath, '.docx');
+  const ext = path.extname(inputPath);
+  const inputBase = path.basename(inputPath, ext);
   const basePath = outputPath
-    ? outputPath.replace(/\.md$/, '')
+    ? outputPath.replace(/\.md$/i, '')
     : path.join(inputDir, inputBase);
   return { mdPath: basePath + '.md', bibPath: basePath + '.bib' };
+}
+export function findDocxToMdConflicts(
+  mdPath: string,
+  bibPath: string,
+  checks: { checkMd?: boolean; checkBib?: boolean } = {}
+): string[] {
+  const { checkMd = true, checkBib = true } = checks;
+  const conflicts: string[] = [];
+  if (checkMd && fs.existsSync(mdPath)) conflicts.push(mdPath);
+  if (checkBib && fs.existsSync(bibPath)) conflicts.push(bibPath);
+  return conflicts;
+}
+
+export function assertNoDocxToMdConflicts(
+  mdPath: string,
+  bibPath: string,
+  force: boolean,
+  checks: { checkMd?: boolean; checkBib?: boolean } = {}
+) {
+  if (force) return;
+  const conflicts = findDocxToMdConflicts(mdPath, bibPath, checks);
+  if (conflicts.length > 0) {
+    throw new Error(`Output file(s) already exist: ${conflicts.join(', ')}\nUse --force to overwrite`);
+  }
 }
 
 async function runDocxToMd(options: CliOptions) {
@@ -118,18 +150,15 @@ async function runDocxToMd(options: CliOptions) {
   const data = new Uint8Array(fs.readFileSync(options.inputPath));
 
   const { mdPath, bibPath } = deriveDocxToMdPaths(options.inputPath, options.outputPath);
-
-  // Check output conflicts
-  if (!options.force) {
-    const conflicts: string[] = [];
-    if (fs.existsSync(mdPath)) conflicts.push(mdPath);
-    if (fs.existsSync(bibPath)) conflicts.push(bibPath);
-    if (conflicts.length > 0) {
-      throw new Error(`Output file(s) already exist: ${conflicts.join(', ')}\nUse --force to overwrite`);
-    }
-  }
+  // Check markdown output conflict before conversion.
+  assertNoDocxToMdConflicts(mdPath, bibPath, options.force, { checkMd: true, checkBib: false });
 
   const result = await convertDocx(data, options.citationKeyFormat);
+
+  // Check bib output conflict only when a bib file would be written.
+  if (result.bibtex) {
+    assertNoDocxToMdConflicts(mdPath, bibPath, options.force, { checkMd: false, checkBib: true });
+  }
   fs.writeFileSync(mdPath, result.markdown);
   console.log(mdPath);
 
@@ -142,12 +171,19 @@ async function runDocxToMd(options: CliOptions) {
 export function deriveMdToDocxPath(inputPath: string, outputPath?: string): string {
   if (outputPath) return outputPath;
   const inputDir = path.dirname(inputPath);
-  const inputBase = path.basename(inputPath, '.md');
+  const ext = path.extname(inputPath);
+  const inputBase = path.basename(inputPath, ext);
   return path.join(inputDir, inputBase + '.docx');
 }
 
 export function resolveAuthor(authorFlag?: string): string {
   return authorFlag || os.userInfo().username;
+}
+
+export function assertNoMdToDocxConflict(docxPath: string, force: boolean) {
+  if (!force && fs.existsSync(docxPath)) {
+    throw new Error(`Output file already exists: ${docxPath}\nUse --force to overwrite`);
+  }
 }
 
 async function runMdToDocx(options: CliOptions) {
@@ -156,9 +192,11 @@ async function runMdToDocx(options: CliOptions) {
 
   // Auto-detect or use specified bib file
   let bibtex: string | undefined;
+  const inputExt = path.extname(options.inputPath);
+  const inputBase = path.basename(options.inputPath, inputExt);
   const bibPath = options.bibPath || path.join(
     path.dirname(options.inputPath),
-    path.basename(options.inputPath, '.md') + '.bib'
+    inputBase + '.bib'
   );
   if (options.bibPath) {
     if (!fs.existsSync(options.bibPath)) {
@@ -179,11 +217,8 @@ async function runMdToDocx(options: CliOptions) {
   }
 
   const docxPath = deriveMdToDocxPath(options.inputPath, options.outputPath);
-
   // Check output conflict
-  if (!options.force && fs.existsSync(docxPath)) {
-    throw new Error(`Output file already exists: ${docxPath}\nUse --force to overwrite`);
-  }
+  assertNoMdToDocxConflict(docxPath, options.force);
 
   const authorName = resolveAuthor(options.authorName);
 
