@@ -13,6 +13,7 @@ try {
 export interface CitationResult {
   xml: string;
   warning?: string;
+  missingKeys?: string[];
 }
 
 export function escapeXml(text: string): string {
@@ -173,89 +174,189 @@ export function renderBibliography(engine: any): { bibStart: string; bibEnd: str
   }
 }
 
+/**
+ * Generate OOXML paragraphs for missing citation keys, to appear after the bibliography.
+ */
+export function generateMissingKeysXml(missingKeys: string[]): string {
+  return missingKeys.map(key =>
+    '<w:p><w:r><w:t xml:space="preserve">Citation data for @' + escapeXml(key) +
+    ' was not found in the bibliography file.</w:t></w:r></w:p>'
+  ).join('');
+}
+
+function resolveVisibleText(
+  keys: string[],
+  entries: Map<string, BibtexEntry>,
+  locators: Map<string, string> | undefined,
+  citeprocEngine: any | undefined
+): string {
+  if (citeprocEngine) {
+    const rendered = renderCitationText(citeprocEngine, keys, locators);
+    if (rendered) return rendered;
+  }
+  return generateFallbackText(keys, entries, locators);
+}
+
+function stripOuterDelimiters(text: string): string {
+  return text.replace(/^[(\[]/, '').replace(/[)\]]$/, '');
+}
+
+function buildZoteroFieldCode(
+  zoteroKeys: string[],
+  entries: Map<string, BibtexEntry>,
+  locators: Map<string, string> | undefined,
+  citeprocEngine: any | undefined,
+  visibleTextOverride?: string
+): string {
+  const citationItems: any[] = [];
+  for (const key of zoteroKeys) {
+    const entry = entries.get(key);
+    if (!entry) continue;
+    const itemData = buildItemData(entry);
+    const citationItem: any = {
+      uris: [entry.zoteroUri],
+      itemData
+    };
+    const locator = locators?.get(key);
+    if (locator) {
+      const parsed = parseLocator(locator);
+      citationItem.locator = parsed.locator;
+      citationItem.label = parsed.label;
+    }
+    citationItems.push(citationItem);
+  }
+
+  const cslCitation = { citationItems, properties: { noteIndex: 0 } };
+  const json = JSON.stringify(cslCitation);
+
+  const visibleText = visibleTextOverride ?? resolveVisibleText(zoteroKeys, entries, locators, citeprocEngine);
+
+  return '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+    '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ' + escapeXml(json) + ' </w:instrText></w:r>' +
+    '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+    '<w:r><w:t>' + escapeXml(visibleText) + '</w:t></w:r>' +
+    '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+}
+
 export function generateCitation(
   run: { keys?: string[]; locators?: Map<string, string>; text: string },
   entries: Map<string, BibtexEntry>,
-  citeprocEngine?: any
+  citeprocEngine?: any,
+  mixedCitationStyle?: 'separate' | 'unified'
 ): CitationResult {
   if (!run.keys || run.keys.length === 0) {
     return { xml: '<w:r><w:t>[@' + escapeXml(run.text) + ']</w:t></w:r>' };
   }
 
-  const citationItems: any[] = [];
+  // Classify keys into three buckets
+  const zoteroKeys: string[] = [];
+  const plainKeys: string[] = [];
+  const missingKeys: string[] = [];
   const warnings: string[] = [];
-  let hasZoteroData = false;
-  let shouldFallbackToPlain = false;
 
   for (const key of run.keys) {
     const entry = entries.get(key);
     if (!entry) {
+      missingKeys.push(key);
       warnings.push(`Citation key not found: ${key}`);
-      shouldFallbackToPlain = true;
-      continue;
-    }
-
-    if (entry.zoteroKey && entry.zoteroUri) {
-      hasZoteroData = true;
-      const itemData = buildItemData(entry);
-      const citationItem: any = {
-        uris: [entry.zoteroUri],
-        itemData
-      };
-
-      const locator = run.locators?.get(key);
-      if (locator) {
-        const parsed = parseLocator(locator);
-        citationItem.locator = parsed.locator;
-        citationItem.label = parsed.label;
-      }
-
-      citationItems.push(citationItem);
+    } else if (entry.zoteroKey && entry.zoteroUri) {
+      zoteroKeys.push(key);
     } else {
-      shouldFallbackToPlain = true;
+      plainKeys.push(key);
     }
   }
 
-  if (hasZoteroData && citationItems.length > 0 && !shouldFallbackToPlain) {
-    const cslCitation = {
-      citationItems,
-      properties: { noteIndex: 0 }
+  // Pure Zotero — emit field code
+  if (zoteroKeys.length > 0 && plainKeys.length === 0 && missingKeys.length === 0) {
+    const xml = buildZoteroFieldCode(zoteroKeys, entries, run.locators, citeprocEngine);
+    return { xml };
+  }
+
+  // Pure non-Zotero (no missing) — emit plain text
+  if (zoteroKeys.length === 0 && missingKeys.length === 0) {
+    const fallbackText = resolveVisibleText(run.keys, entries, run.locators, citeprocEngine);
+    return {
+      xml: '<w:r><w:t>' + escapeXml(fallbackText) + '</w:t></w:r>',
     };
+  }
 
-    const json = JSON.stringify(cslCitation);
+  // Pure missing — emit @citekey references as plain text
+  if (zoteroKeys.length === 0 && plainKeys.length === 0) {
+    const missingText = '(' + missingKeys.map(k => '@' + k).join('; ') + ')';
+    return {
+      xml: '<w:r><w:t>' + escapeXml(missingText) + '</w:t></w:r>',
+      warning: warnings.length > 0 ? warnings.join('; ') : undefined,
+      missingKeys
+    };
+  }
 
-    // Use citeproc-rendered text if available, otherwise fallback
-    let visibleText: string;
-    if (citeprocEngine) {
-      const rendered = renderCitationText(citeprocEngine, run.keys, run.locators);
-      visibleText = rendered || generateFallbackText(run.keys, entries, run.locators);
-    } else {
-      visibleText = generateFallbackText(run.keys, entries, run.locators);
+  // Mixed group — split by mode
+  const style = mixedCitationStyle || 'separate';
+
+  if (style === 'unified') {
+    // Unified mode: combine all portions into one parenthetical
+    const parts: string[] = [];
+
+    // Zotero portion — rendered via citeproc, strip outer delimiters
+    if (zoteroKeys.length > 0) {
+      const zoteroText = resolveVisibleText(zoteroKeys, entries, run.locators, citeprocEngine);
+      parts.push(stripOuterDelimiters(zoteroText));
     }
 
-    const xml = '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
-      '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ' + escapeXml(json) + ' </w:instrText></w:r>' +
-      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
-      '<w:r><w:t>' + escapeXml(visibleText) + '</w:t></w:r>' +
-      '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+    // Plain portion
+    if (plainKeys.length > 0) {
+      const plainText = resolveVisibleText(plainKeys, entries, run.locators, citeprocEngine);
+      parts.push(stripOuterDelimiters(plainText));
+    }
 
-    return { xml, warning: warnings.length > 0 ? warnings.join('; ') : undefined };
-  }
-  if (hasZoteroData && shouldFallbackToPlain) {
-    warnings.push('Mixed Zotero and non-Zotero citations in grouped citation; emitted plain-text fallback to avoid partial field code');
+    // Missing keys
+    for (const key of missingKeys) {
+      parts.push('@' + key);
+    }
+
+    const combinedText = '(' + parts.join('; ') + ')';
+
+    // Still emit Zotero field code for the Zotero portion, but with unified visible text
+    let xml: string;
+    if (zoteroKeys.length > 0) {
+      xml = buildZoteroFieldCode(zoteroKeys, entries, run.locators, citeprocEngine, combinedText);
+    } else {
+      xml = '<w:r><w:t>' + escapeXml(combinedText) + '</w:t></w:r>';
+    }
+
+    return {
+      xml,
+      warning: warnings.length > 0 ? warnings.join('; ') : undefined,
+      missingKeys: missingKeys.length > 0 ? missingKeys : undefined
+    };
   }
 
-  // No Zotero data, emit plain text — still use citeproc if available
-  let fallbackText: string;
-  if (citeprocEngine) {
-    const rendered = renderCitationText(citeprocEngine, run.keys, run.locators);
-    fallbackText = rendered || generateFallbackText(run.keys, entries, run.locators);
-  } else {
-    fallbackText = generateFallbackText(run.keys, entries, run.locators);
+  // Separate mode (default): each portion gets its own output
+  let xml = '';
+
+  // Zotero portion — full field code
+  if (zoteroKeys.length > 0) {
+    xml += buildZoteroFieldCode(zoteroKeys, entries, run.locators, citeprocEngine);
   }
+
+  // Plain portion — parenthesized text
+  if (plainKeys.length > 0) {
+    if (xml) xml += '<w:r><w:t xml:space="preserve"> </w:t></w:r>';
+    const plainText = resolveVisibleText(plainKeys, entries, run.locators, citeprocEngine);
+    xml += '<w:r><w:t>' + escapeXml(plainText) + '</w:t></w:r>';
+  }
+
+  // Missing keys — @citekey inline
+  if (missingKeys.length > 0) {
+    if (xml) xml += '<w:r><w:t xml:space="preserve"> </w:t></w:r>';
+    const missingText = '(' + missingKeys.map(k => '@' + k).join('; ') + ')';
+    xml += '<w:r><w:t>' + escapeXml(missingText) + '</w:t></w:r>';
+  }
+
   return {
-    xml: '<w:r><w:t>' + escapeXml(fallbackText) + '</w:t></w:r>',
-    warning: warnings.length > 0 ? warnings.join('; ') : undefined
+    xml,
+    warning: warnings.length > 0 ? warnings.join('; ') : undefined,
+    missingKeys: missingKeys.length > 0 ? missingKeys : undefined
   };
 }
 

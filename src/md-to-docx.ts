@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { escapeXml, generateCitation, generateMathXml, createCiteprocEngineLocal, createCiteprocEngineAsync, generateBibliographyXml } from './md-to-docx-citations';
+import { escapeXml, generateCitation, generateMathXml, createCiteprocEngineLocal, createCiteprocEngineAsync, generateBibliographyXml, generateMissingKeysXml } from './md-to-docx-citations';
 import { downloadStyle } from './csl-loader';
 import { existsSync } from 'fs';
 import { isAbsolute, join } from 'path';
@@ -793,6 +793,8 @@ export interface MdToDocxOptions {
   /** Called when a CSL style is not bundled or found locally.
    *  Return true to attempt downloading from the CSL repository. */
   onStyleNotFound?: (styleName: string) => Promise<boolean>;
+  /** How to render mixed Zotero/non-Zotero grouped citations. */
+  mixedCitationStyle?: 'separate' | 'unified';
 }
 
 export interface MdToDocxResult {
@@ -809,6 +811,7 @@ interface DocxGenState {
   warnings: string[];
   hasList: boolean;
   hasComments: boolean;
+  missingKeys: Set<string>;
 }
 
 interface CommentEntry {
@@ -1189,9 +1192,12 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       }
       runs += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
     } else if (run.type === 'citation') {
-      const result = generateCitation(run, bibEntries || new Map(), citeprocEngine);
+      const result = generateCitation(run, bibEntries || new Map(), citeprocEngine, options?.mixedCitationStyle);
       runs += result.xml;
       if (result.warning) state.warnings.push(result.warning);
+      if (result.missingKeys) {
+        for (const k of result.missingKeys) state.missingKeys.add(k);
+      }
     } else if (run.type === 'math') {
       runs += generateMathXml(run.text, !!run.display);
     }
@@ -1263,7 +1269,12 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
   if (citeprocEngine) {
     body += generateBibliographyXml(citeprocEngine, options?.zoteroBiblData);
   }
-  
+
+  // Append missing-key notes after bibliography
+  if (state.missingKeys.size > 0) {
+    body += generateMissingKeysXml([...state.missingKeys]);
+  }
+
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 w15 wp14">\n' +
     '<w:body>\n' + body + '\n</w:body>\n' +
@@ -1298,7 +1309,7 @@ export async function convertMdToDocx(
         if (existsSync(resolved)) {
           styleName = resolved;
         } else {
-          earlyWarnings.push(`Relative CSL file not found: "${resolved}".`);
+          earlyWarnings.push(`CSL file "${styleName}" not found in source directory (${options.sourceDir}).`);
         }
       } else {
         earlyWarnings.push(`Relative CSL path "${styleName}" cannot be resolved without a source directory.`);
@@ -1364,6 +1375,7 @@ export async function convertMdToDocx(
     warnings: [...earlyWarnings],
     hasList: false,
     hasComments: false,
+    missingKeys: new Set(),
   };
 
   const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
