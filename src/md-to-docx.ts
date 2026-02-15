@@ -1277,9 +1277,6 @@ export async function convertMdToDocx(
 
     // 1. Try bundled styles
     let result = createCiteprocEngineLocal(bibEntries, styleName, frontmatter.locale);
-    if (!result.engine && !result.styleNotFound) {
-      earlyWarnings.push('CiteProc library not available. Export completed without CSL citation formatting.');
-    }
 
     // 2. Try CSL cache directory (e.g. VS Code global storage)
     if (result.styleNotFound && options?.cslCacheDir) {
