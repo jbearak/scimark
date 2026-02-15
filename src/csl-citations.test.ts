@@ -559,7 +559,7 @@ describe('Mixed citation groups in pipeline', () => {
     expect(docXml).toContain('ZOTERO_ITEM CSL_CITATION');
     expect(docXml).toContain('ZOT11111');
     // Should contain plain text for non-Zotero entry
-    expect(docXml).toContain('(Plain 2021)');
+    expect(docXml).toContain('(Plain, 2021)');
   });
 
   test('missing keys appear after bibliography in DOCX', async () => {
