@@ -189,7 +189,8 @@ function buildZoteroFieldCode(
   zoteroKeys: string[],
   entries: Map<string, BibtexEntry>,
   locators: Map<string, string> | undefined,
-  citeprocEngine: any | undefined
+  citeprocEngine: any | undefined,
+  visibleTextOverride?: string
 ): string {
   const citationItems: any[] = [];
   for (const key of zoteroKeys) {
@@ -212,7 +213,9 @@ function buildZoteroFieldCode(
   const json = JSON.stringify(cslCitation);
 
   let visibleText: string;
-  if (citeprocEngine) {
+  if (visibleTextOverride) {
+    visibleText = visibleTextOverride;
+  } else if (citeprocEngine) {
     const rendered = renderCitationText(citeprocEngine, zoteroKeys, locators);
     visibleText = rendered || generateFallbackText(zoteroKeys, entries, locators);
   } else {
@@ -257,7 +260,7 @@ export function generateCitation(
   // Pure Zotero — emit field code
   if (zoteroKeys.length > 0 && plainKeys.length === 0 && missingKeys.length === 0) {
     const xml = buildZoteroFieldCode(zoteroKeys, entries, run.locators, citeprocEngine);
-    return { xml, warning: warnings.length > 0 ? warnings.join('; ') : undefined };
+    return { xml };
   }
 
   // Pure non-Zotero (no missing) — emit plain text
@@ -329,27 +332,7 @@ export function generateCitation(
     // Still emit Zotero field code for the Zotero portion, but with unified visible text
     let xml: string;
     if (zoteroKeys.length > 0) {
-      const citationItems: any[] = [];
-      for (const key of zoteroKeys) {
-        const entry = entries.get(key)!;
-        const itemData = buildItemData(entry);
-        const citationItem: any = { uris: [entry.zoteroUri], itemData };
-        const locator = run.locators?.get(key);
-        if (locator) {
-          const parsed = parseLocator(locator);
-          citationItem.locator = parsed.locator;
-          citationItem.label = parsed.label;
-        }
-        citationItems.push(citationItem);
-      }
-      const cslCitation = { citationItems, properties: { noteIndex: 0 } };
-      const json = JSON.stringify(cslCitation);
-
-      xml = '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
-        '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ' + escapeXml(json) + ' </w:instrText></w:r>' +
-        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
-        '<w:r><w:t>' + escapeXml(combinedText) + '</w:t></w:r>' +
-        '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+      xml = buildZoteroFieldCode(zoteroKeys, entries, run.locators, citeprocEngine, combinedText);
     } else {
       xml = '<w:r><w:t>' + escapeXml(combinedText) + '</w:t></w:r>';
     }
