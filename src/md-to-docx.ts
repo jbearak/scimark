@@ -1245,12 +1245,9 @@ export async function convertMdToDocx(
     zip.file('word/styles.xml', stylesXml());
   }
 
-  // Always include settings.xml (with compatibilityMode=15) - use template if available
-  if (templateParts?.has('word/settings.xml')) {
-    zip.file('word/settings.xml', templateParts.get('word/settings.xml')!);
-  } else {
-    zip.file('word/settings.xml', settingsXml());
-  }
+  // Always use generated settings.xml to guarantee compatibilityMode >= 15
+  // (template settings.xml may have compatibilityMode < 15, causing "unreadable content" errors)
+  zip.file('word/settings.xml', settingsXml());
 
   // Always include fontTable.xml
   zip.file('word/fontTable.xml', fontTableXml());
