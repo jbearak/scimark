@@ -2,10 +2,17 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, isAbsolute, dirname } from 'path';
 
 const VALID_STYLE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
+const VALID_LOCALE_TAG = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/;
 
 function validateStyleName(name: string): void {
   if (!isAbsolute(name) && !name.endsWith('.csl') && !VALID_STYLE_NAME.test(name)) {
     throw new Error(`Invalid CSL style name: ${name}`);
+  }
+}
+
+function validateLocaleTag(lang: string): void {
+  if (!VALID_LOCALE_TAG.test(lang)) {
+    throw new Error(`Invalid CSL locale tag: ${lang}`);
   }
 }
 
@@ -116,7 +123,7 @@ export async function loadStyleAsync(name: string, cacheDir?: string): Promise<s
       throw new Error(`HTTP ${response.status}`);
     }
     const xml = await response.text();
-    if (!xml.includes('<style')) {
+    if (!xml.includes('<style') || !xml.includes('xmlns="http://purl.org/net/xbiblio/csl"')) {
       throw new Error('Downloaded content is not a valid CSL style');
     }
 
@@ -170,6 +177,7 @@ export async function downloadStyle(name: string, targetDir: string): Promise<st
  * Falls back to en-US if the requested locale is not available.
  */
 export function loadLocale(lang: string): string {
+  validateLocaleTag(lang);
   const cached = localeCache.get(lang);
   if (cached) return cached;
 
@@ -192,6 +200,7 @@ export function loadLocale(lang: string): string {
  * Load a CSL locale, downloading if not available locally.
  */
 export async function loadLocaleAsync(lang: string): Promise<string> {
+  validateLocaleTag(lang);
   const cached = localeCache.get(lang);
   if (cached) return cached;
 
