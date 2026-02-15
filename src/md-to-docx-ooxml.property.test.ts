@@ -160,9 +160,7 @@ describe('OOXML Generation Properties', () => {
         ...rows.map(row => ({ cells: row.map(c => [{ type: 'text' as const, text: c }]), header: false }))
       ];
       const token: MdToken = { type: 'table', runs: [], rows: tableRows };
-      const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, rIdOffset: 3, warnings: [], hasList: false, hasComments: false };
-      
-      const table = generateTable(token, state);
+      const table = generateTable(token);
       
       // Count rows (header + data)
       const rowMatches = table.match(/<w:tr>/g);

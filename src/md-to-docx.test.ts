@@ -238,16 +238,6 @@ describe('generateParagraph', () => {
 });
 
 describe('generateTable', () => {
-  const createState = () => ({
-    commentId: 0,
-    comments: [],
-    relationships: new Map(),
-    nextRId: 1, rIdOffset: 3,
-    warnings: [],
-    hasList: false,
-    hasComments: false
-  });
-
   it('generates basic table', () => {
     const rows: MdTableRow[] = [
       {
@@ -272,8 +262,7 @@ describe('generateTable', () => {
       rows
     };
     
-    const state = createState();
-    const result = generateTable(token, state);
+    const result = generateTable(token);
     
     expect(result).toContain('<w:tbl>');
     expect(result).toContain('<w:tblBorders>');
@@ -302,8 +291,7 @@ describe('generateTable', () => {
       rows
     };
     
-    const state = createState();
-    const result = generateTable(token, state);
+    const result = generateTable(token);
     
     expect(result).toContain('<w:b/>');
   });
@@ -324,8 +312,7 @@ describe('generateTable', () => {
       rows
     };
     
-    const state = createState();
-    const result = generateTable(token, state);
+    const result = generateTable(token);
     
     // Should only have one <w:b/> tag
     const boldMatches = result.match(/<w:b\/>/g);
@@ -468,7 +455,7 @@ console.log('code');
 describe('CriticMarkup OOXML generation', () => {
   const createState = () => ({
     commentId: 0,
-    comments: [],
+    comments: [] as { id: number; author: string; date: string; text: string }[],
     relationships: new Map(),
     nextRId: 1, rIdOffset: 3,
     warnings: [],
