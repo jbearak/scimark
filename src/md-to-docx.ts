@@ -1139,7 +1139,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   return '<w:p>' + pPr + runs + '</w:p>';
 }
 
-export function generateTable(token: MdToken, state: DocxGenState): string {
+export function generateTable(token: MdToken): string {
   if (!token.rows) return '';
   
   let xml = '<w:tbl>';
@@ -1184,7 +1184,7 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
   
   for (const token of tokens) {
     if (token.type === 'table') {
-      body += generateTable(token, state);
+      body += generateTable(token);
     } else {
       body += generateParagraph(token, state, options, bibEntries);
     }
