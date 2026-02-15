@@ -50,7 +50,6 @@ const TARGETS: BuildTarget[] = [
     { platform: 'linux', arch: 'x64', output_name: 'manuscript-markdown-linux-x64' },
     { platform: 'linux', arch: 'arm64', output_name: 'manuscript-markdown-linux-arm64' },
     { platform: 'windows', arch: 'x64', output_name: 'manuscript-markdown-windows-x64.exe' },
-    { platform: 'windows', arch: 'arm64', output_name: 'manuscript-markdown-windows-arm64.exe' },
 ];
 
 const PATHS = {

@@ -90,3 +90,4 @@ Code (authoritative for behavior):
 - CLI flag parsing: For value-taking flags, validate both missing-next-arg and next-token-is-another-flag (`--...`) before consuming; otherwise `args[++i]` can silently propagate `undefined` into downstream file I/O
 - CLI output path derivation: If extension detection is case-insensitive, derive basenames by stripping `path.extname(inputPath)` (actual-case extension) rather than a hard-coded lowercase suffix to avoid doubled extensions like `.DOCX.md`
 - CLI DOCX→MD conflicts: Preserve the up-front combined `.md` + `.bib` conflict check so when both exist, one error reports both paths (Requirement 3.3) instead of surfacing them in separate runs
+- Bun compile targets: Keep `scripts/build-binary.ts` target list aligned with targets actually downloadable in pinned Bun; on Bun `1.3.9`, `bun-windows-aarch64` is unavailable, so including Windows ARM64 causes deterministic CI release-build failures
