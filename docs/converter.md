@@ -91,7 +91,7 @@ If a style is not bundled, you will be prompted to download it from the [CSL sty
 - **Tables**: pipe-delimited tables with header formatting and borders
 - **Track changes**: CriticMarkup additions/deletions/substitutions mapped to Word revisions (`w:ins`/`w:del`)
 - **Comments**: CriticMarkup comments mapped to Word comments with author and date
-- **Citations**: Pandoc `[@key]` citations reconstructed as Zotero field codes when BibTeX contains `zotero-key` and `zotero-uri` fields; visible text formatted by the CSL style if `csl` frontmatter is present
+- **Citations**: Pandoc `[@key]` citations reconstructed as Zotero field codes when BibTeX contains `zotero-key` and `zotero-uri` fields; visible text formatted by the CSL style if `csl` frontmatter is present. Mixed Zotero/non-Zotero grouped citations are split — Zotero entries become a field code and non-Zotero entries become plain text (configurable via `mixedCitationStyle`). Missing keys appear inline as `@citekey` with a post-bibliography note.
 - **Bibliography**: automatically generated and appended as a `ZOTERO_BIBL` field when a CSL style is specified
 - **Zotero document preferences**: `csl`, `locale`, and `note-type` from frontmatter written to `docProps/custom.xml` as `ZOTERO_PREF_*` properties, so Zotero can manage the document after export
 - **Math**: LaTeX equations converted to OMML (inline and display)

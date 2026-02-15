@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { escapeXml, generateCitation, generateMathXml, createCiteprocEngineLocal, createCiteprocEngineAsync, generateBibliographyXml } from './md-to-docx-citations';
+import { escapeXml, generateCitation, generateMathXml, createCiteprocEngineLocal, createCiteprocEngineAsync, generateBibliographyXml, generateMissingKeysXml } from './md-to-docx-citations';
 import { downloadStyle } from './csl-loader';
 import { existsSync } from 'fs';
 import { isAbsolute, join } from 'path';
@@ -793,6 +793,8 @@ export interface MdToDocxOptions {
   /** Called when a CSL style is not bundled or found locally.
    *  Return true to attempt downloading from the CSL repository. */
   onStyleNotFound?: (styleName: string) => Promise<boolean>;
+  /** How to render mixed Zotero/non-Zotero grouped citations. */
+  mixedCitationStyle?: 'separate' | 'unified';
 }
 
 export interface MdToDocxResult {
@@ -809,6 +811,7 @@ interface DocxGenState {
   warnings: string[];
   hasList: boolean;
   hasComments: boolean;
+  missingKeys: Set<string>;
 }
 
 interface CommentEntry {
@@ -1183,9 +1186,12 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       }
       runs += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
     } else if (run.type === 'citation') {
-      const result = generateCitation(run, bibEntries || new Map(), citeprocEngine);
+      const result = generateCitation(run, bibEntries || new Map(), citeprocEngine, options?.mixedCitationStyle);
       runs += result.xml;
       if (result.warning) state.warnings.push(result.warning);
+      if (result.missingKeys) {
+        for (const k of result.missingKeys) state.missingKeys.add(k);
+      }
     } else if (run.type === 'math') {
       runs += generateMathXml(run.text, !!run.display);
     }
@@ -1249,6 +1255,11 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
   // Append bibliography field if we have a citeproc engine
   if (citeprocEngine) {
     body += generateBibliographyXml(citeprocEngine, options?.zoteroBiblData);
+  }
+
+  // Append missing-key notes after bibliography
+  if (state.missingKeys.size > 0) {
+    body += generateMissingKeysXml([...state.missingKeys]);
   }
   
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
@@ -1349,6 +1360,7 @@ export async function convertMdToDocx(
     warnings: [...earlyWarnings],
     hasList: false,
     hasComments: false,
+    missingKeys: new Set(),
   };
 
   const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine);

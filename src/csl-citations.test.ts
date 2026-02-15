@@ -523,3 +523,73 @@ describe('CSL file path resolution', () => {
     expect(result.docx).toBeDefined();
   });
 });
+
+// ============================================================================
+// Mixed citation groups in full pipeline
+// ============================================================================
+
+const MIXED_BIBTEX = `
+@article{zotEntry,
+  author = {Zotero, Alice},
+  title = {{A Zotero Article}},
+  journal = {Journal of Testing},
+  year = {2020},
+  zotero-key = {ZOT11111},
+  zotero-uri = {http://zotero.org/users/0/items/ZOT11111},
+}
+
+@article{plainEntry,
+  author = {Plain, Bob},
+  title = {{A Plain Article}},
+  journal = {Other Journal},
+  year = {2021},
+}
+`;
+
+describe('Mixed citation groups in pipeline', () => {
+  test('mixed group produces field code + plain text in DOCX', async () => {
+    const md = '---\ncsl: apa\n---\n\nText [@zotEntry; @plainEntry].\n';
+    const result = await convertMdToDocx(md, { bibtex: MIXED_BIBTEX });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string');
+
+    // Should contain Zotero field code for the Zotero entry
+    expect(docXml).toContain('ZOTERO_ITEM CSL_CITATION');
+    expect(docXml).toContain('ZOT11111');
+    // Should contain plain text for non-Zotero entry
+    expect(docXml).toContain('(Plain 2021)');
+  });
+
+  test('missing keys appear after bibliography in DOCX', async () => {
+    const md = '---\ncsl: apa\n---\n\nText [@zotEntry; @noSuchKey].\n';
+    const result = await convertMdToDocx(md, { bibtex: MIXED_BIBTEX });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string');
+
+    // Should have the missing key note after bibliography
+    expect(docXml).toContain('Citation data for @noSuchKey was not found in the bibliography file.');
+    // Should still have the Zotero field code
+    expect(docXml).toContain('ZOTERO_ITEM CSL_CITATION');
+    // Warning should mention the missing key
+    expect(result.warnings.some(w => w.includes('noSuchKey'))).toBe(true);
+  });
+
+  test('unified mode produces single parenthetical in DOCX', async () => {
+    const md = '---\ncsl: apa\n---\n\nText [@zotEntry; @plainEntry].\n';
+    const result = await convertMdToDocx(md, { bibtex: MIXED_BIBTEX, mixedCitationStyle: 'unified' });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string');
+
+    // Should contain a Zotero field code
+    expect(docXml).toContain('ZOTERO_ITEM CSL_CITATION');
+    // The visible text should combine both in one parenthetical
+    expect(docXml).toContain('Zotero');
+    expect(docXml).toContain('Plain');
+  });
+});

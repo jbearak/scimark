@@ -79,7 +79,7 @@ Code (authoritative for behavior):
 - Zotero numeric locators: Some Zotero versions/plugins may serialize locators as JSON numbers instead of strings; coerce to string with `String()` during extraction and in `sanitizeLocator()` to prevent silent data loss
 - BibTeX DOI escaping: DOIs can contain underscores and other BibTeX special characters; apply `escapeBibtex()` to DOI field like all other text fields to prevent malformed BibTeX output
 - LaTeX script binding: In LaTeX-to-OMML conversion, apply `^`/`_` to the nearest preceding atom (not the whole accumulated expression), and attach body scripts inside n-ary `<m:e>` content when parsing `\\sum`/`\\int` style operators
-- Zotero grouped citations: If any key in a grouped citation lacks Zotero metadata (or is missing), emit plain-text fallback for the whole group and warn to avoid partial CSL field codes that drop keys on Zotero refresh
+- Zotero grouped citations: Mixed groups are split — Zotero entries become a field code, non-Zotero entries become plain formatted text, missing keys appear as `@citekey` inline with a post-bibliography note. Configurable via `mixedCitationStyle` (`separate` default, `unified`)
 - CSL year reconstruction: Only set `issued.date-parts` when BibTeX `year` is fully numeric; never emit `date-parts:[[null]]`
 - BibTeX entry scanning: Quote-state detection must count consecutive preceding backslashes before `\"` to avoid mis-parsing entries containing escaped backslashes and quotes
 - BibTeX scanner literals: When comparing `input[k]` (single character), compare against `'\\'` (or char code), not `'\\\\'` (two-character runtime string), otherwise backslash counts silently stay zero
