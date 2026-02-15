@@ -105,7 +105,7 @@ describe('generateParagraph', () => {
     commentId: 0,
     comments: [],
     relationships: new Map(),
-    nextRId: 1,
+    nextRId: 1, rIdOffset: 3,
     warnings: [],
     hasList: false,
     hasComments: false
@@ -242,7 +242,7 @@ describe('generateTable', () => {
     commentId: 0,
     comments: [],
     relationships: new Map(),
-    nextRId: 1,
+    nextRId: 1, rIdOffset: 3,
     warnings: [],
     hasList: false,
     hasComments: false
@@ -470,7 +470,7 @@ describe('CriticMarkup OOXML generation', () => {
     commentId: 0,
     comments: [],
     relationships: new Map(),
-    nextRId: 1,
+    nextRId: 1, rIdOffset: 3,
     warnings: [],
     hasList: false,
     hasComments: false

@@ -11,7 +11,7 @@ const createState = () => ({
   commentId: 0,
   comments: [],
   relationships: new Map(),
-  nextRId: 1,
+  nextRId: 1, rIdOffset: 3,
   warnings: [],
   hasList: false,
   hasComments: false

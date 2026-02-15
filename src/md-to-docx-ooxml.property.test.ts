@@ -81,7 +81,7 @@ describe('OOXML Generation Properties', () => {
         level, 
         runs: [{ type: 'text', text }] 
       };
-      const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, warnings: [], hasList: false, hasComments: false };
+      const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, rIdOffset: 3, warnings: [], hasList: false, hasComments: false };
       
       const paragraph = generateParagraph(token, state);
       expect(paragraph).toContain('<w:pStyle w:val="Heading' + level + '"/>');
@@ -103,7 +103,7 @@ describe('OOXML Generation Properties', () => {
         level, 
         runs: [{ type: 'text', text }] 
       };
-      const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, warnings: [], hasList: false, hasComments: false };
+      const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, rIdOffset: 3, warnings: [], hasList: false, hasComments: false };
       
       const paragraph = generateParagraph(token, state);
       expect(paragraph).toContain('<w:numPr>');
@@ -160,7 +160,7 @@ describe('OOXML Generation Properties', () => {
         ...rows.map(row => ({ cells: row.map(c => [{ type: 'text' as const, text: c }]), header: false }))
       ];
       const token: MdToken = { type: 'table', runs: [], rows: tableRows };
-      const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, warnings: [], hasList: false, hasComments: false };
+      const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, rIdOffset: 3, warnings: [], hasList: false, hasComments: false };
       
       const table = generateTable(token, state);
       
@@ -193,7 +193,7 @@ describe('OOXML Generation Properties', () => {
         level, 
         runs: [{ type: 'text', text }] 
       };
-      const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, warnings: [], hasList: false, hasComments: false };
+      const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, rIdOffset: 3, warnings: [], hasList: false, hasComments: false };
       
       const paragraph = generateParagraph(token, state);
       const expectedIndent = level * 720; // 720 twips per level
@@ -218,7 +218,7 @@ describe('OOXML Generation Properties', () => {
           type: 'code_block', 
           runs: [{ type: 'text', text: code.text }] 
         };
-        const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, warnings: [], hasList: false, hasComments: false };
+        const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, rIdOffset: 3, warnings: [], hasList: false, hasComments: false };
         
         const paragraph = generateParagraph(token, state);
         expect(paragraph).toContain('<w:pStyle w:val="CodeBlock"/>');

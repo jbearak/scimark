@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { generateCitation, generateMathXml } from './md-to-docx-citations';
+import { escapeXml, generateCitation, generateMathXml } from './md-to-docx-citations';
 import { parseBibtex, BibtexEntry } from './bibtex-parser';
 
 // Types for the parsed token stream
@@ -783,6 +783,7 @@ interface DocxGenState {
   comments: CommentEntry[];
   relationships: Map<string, string>; // URL -> rId
   nextRId: number;
+  rIdOffset: number; // reserved rIds for fixed relationships (styles, numbering, comments, theme, settings)
   warnings: string[];
   hasList: boolean;
   hasComments: boolean;
@@ -920,28 +921,26 @@ function numberingXml(): string {
     '</w:numbering>';
 }
 
-function documentRelsXml(relationships: Map<string, string>, hasComments: boolean, hasTheme?: boolean, hasSettings?: boolean): string {
+function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasSettings?: boolean): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
   xml += '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
   
-  let rId = 2;
-  xml += '<Relationship Id="rId' + rId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>\n';
-  rId++;
+  if (hasList) {
+    xml += '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>\n';
+  }
   
   if (hasComments) {
-    xml += '<Relationship Id="rId' + rId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>\n';
-    rId++;
+    xml += '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>\n';
   }
   
+  let nextFixed = 4;
   if (hasTheme) {
-    xml += '<Relationship Id="rId' + rId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>\n';
-    rId++;
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>\n';
+    nextFixed++;
   }
-  
   if (hasSettings) {
-    xml += '<Relationship Id="rId' + rId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>\n';
-    rId++;
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>\n';
   }
   
   for (const [url, relId] of relationships) {
@@ -1017,7 +1016,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       if (run.href) {
         let rId = state.relationships.get(run.href);
         if (!rId) {
-          rId = 'rId' + (state.nextRId + 3); // Account for styles, numbering, comments
+          rId = 'rId' + (state.nextRId + state.rIdOffset);
           state.relationships.set(run.href, rId);
           state.nextRId++;
         }
@@ -1166,20 +1165,24 @@ export async function convertMdToDocx(
     templateParts = await extractTemplateParts(options.templateDocx);
   }
   
+  const hasTheme = !!templateParts?.has('word/theme/theme1.xml');
+  const hasSettings = !!templateParts?.has('word/settings.xml');
+  
+  // Reserve rId slots: 1=styles, 2=numbering, 3=comments, 4+=theme/settings
+  const rIdOffset = 3 + (hasTheme ? 1 : 0) + (hasSettings ? 1 : 0);
+  
   const state: DocxGenState = {
     commentId: 0,
     comments: [],
     relationships: new Map(),
     nextRId: 1,
+    rIdOffset,
     warnings: [],
     hasList: false,
     hasComments: false,
   };
   
   const documentXml = generateDocumentXml(tokens, state, options, bibEntries);
-  
-  const hasTheme = templateParts?.has('word/theme/theme1.xml');
-  const hasSettings = templateParts?.has('word/settings.xml');
   
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
@@ -1215,13 +1218,9 @@ export async function convertMdToDocx(
     zip.file('word/comments.xml', commentsXml(state.comments));
   }
   if (state.relationships.size > 0 || state.hasComments || hasTheme || hasSettings) {
-    zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasComments, hasTheme, hasSettings));
+    zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme, hasSettings));
   }
   
   const docx = await zip.generateAsync({ type: 'uint8array' });
   return { docx, warnings: state.warnings };
-}
-
-function escapeXml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
