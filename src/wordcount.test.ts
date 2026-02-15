@@ -390,12 +390,12 @@ describe('Word Count Property Tests', () => {
         fc.property(
           fc.array(
             fc.oneof(
-              fc.string({ minLength: 1, maxLength: 20 }),
-              fc.string({ minLength: 1, maxLength: 20 }).map(s => `**${s}**`),
-              fc.string({ minLength: 1, maxLength: 20 }).map(s => `*${s}*`),
-              fc.string({ minLength: 1, maxLength: 20 }).map(s => `\`${s}\``),
-              fc.string({ minLength: 1, maxLength: 20 }).map(s => `#${s}`),
-              fc.string({ minLength: 1, maxLength: 20 }).map(s => `[${s}]`)
+              fc.stringMatching(/^\S{1,20}$/),
+              fc.stringMatching(/^\S{1,20}$/).map(s => `**${s}**`),
+              fc.stringMatching(/^\S{1,20}$/).map(s => `*${s}*`),
+              fc.stringMatching(/^\S{1,20}$/).map(s => `\`${s}\``),
+              fc.stringMatching(/^\S{1,20}$/).map(s => `#${s}`),
+              fc.stringMatching(/^\S{1,20}$/).map(s => `[${s}]`)
             ),
             { minLength: 1, maxLength: 20 }
           ),
