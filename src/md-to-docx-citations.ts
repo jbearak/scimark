@@ -178,11 +178,27 @@ export function renderBibliography(engine: any): { bibStart: string; bibEnd: str
  * Generate OOXML paragraphs for missing citation keys, to appear after the bibliography.
  */
 export function generateMissingKeysXml(missingKeys: string[]): string {
-  let xml = '';
-  for (const key of missingKeys) {
-    xml += '<w:p><w:r><w:t xml:space="preserve">Citation data for @' + escapeXml(key) + ' was not found in the bibliography file.</w:t></w:r></w:p>';
+  return missingKeys.map(key =>
+    '<w:p><w:r><w:t xml:space="preserve">Citation data for @' + escapeXml(key) +
+    ' was not found in the bibliography file.</w:t></w:r></w:p>'
+  ).join('');
+}
+
+function resolveVisibleText(
+  keys: string[],
+  entries: Map<string, BibtexEntry>,
+  locators: Map<string, string> | undefined,
+  citeprocEngine: any | undefined
+): string {
+  if (citeprocEngine) {
+    const rendered = renderCitationText(citeprocEngine, keys, locators);
+    if (rendered) return rendered;
   }
-  return xml;
+  return generateFallbackText(keys, entries, locators);
+}
+
+function stripOuterDelimiters(text: string): string {
+  return text.replace(/^[(\[]/, '').replace(/[)\]]$/, '');
 }
 
 function buildZoteroFieldCode(
@@ -194,7 +210,8 @@ function buildZoteroFieldCode(
 ): string {
   const citationItems: any[] = [];
   for (const key of zoteroKeys) {
-    const entry = entries.get(key)!;
+    const entry = entries.get(key);
+    if (!entry) continue;
     const itemData = buildItemData(entry);
     const citationItem: any = {
       uris: [entry.zoteroUri],
@@ -212,15 +229,7 @@ function buildZoteroFieldCode(
   const cslCitation = { citationItems, properties: { noteIndex: 0 } };
   const json = JSON.stringify(cslCitation);
 
-  let visibleText: string;
-  if (visibleTextOverride) {
-    visibleText = visibleTextOverride;
-  } else if (citeprocEngine) {
-    const rendered = renderCitationText(citeprocEngine, zoteroKeys, locators);
-    visibleText = rendered || generateFallbackText(zoteroKeys, entries, locators);
-  } else {
-    visibleText = generateFallbackText(zoteroKeys, entries, locators);
-  }
+  const visibleText = visibleTextOverride ?? resolveVisibleText(zoteroKeys, entries, locators, citeprocEngine);
 
   return '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
     '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ' + escapeXml(json) + ' </w:instrText></w:r>' +
@@ -265,16 +274,9 @@ export function generateCitation(
 
   // Pure non-Zotero (no missing) — emit plain text
   if (zoteroKeys.length === 0 && missingKeys.length === 0) {
-    let fallbackText: string;
-    if (citeprocEngine) {
-      const rendered = renderCitationText(citeprocEngine, run.keys, run.locators);
-      fallbackText = rendered || generateFallbackText(run.keys, entries, run.locators);
-    } else {
-      fallbackText = generateFallbackText(run.keys, entries, run.locators);
-    }
+    const fallbackText = resolveVisibleText(run.keys, entries, run.locators, citeprocEngine);
     return {
       xml: '<w:r><w:t>' + escapeXml(fallbackText) + '</w:t></w:r>',
-      warning: warnings.length > 0 ? warnings.join('; ') : undefined
     };
   }
 
@@ -295,31 +297,16 @@ export function generateCitation(
     // Unified mode: combine all portions into one parenthetical
     const parts: string[] = [];
 
-    // Zotero portion — rendered via citeproc, strip outer parens
+    // Zotero portion — rendered via citeproc, strip outer delimiters
     if (zoteroKeys.length > 0) {
-      let zoteroText: string;
-      if (citeprocEngine) {
-        const rendered = renderCitationText(citeprocEngine, zoteroKeys, run.locators);
-        zoteroText = rendered || generateFallbackText(zoteroKeys, entries, run.locators);
-      } else {
-        zoteroText = generateFallbackText(zoteroKeys, entries, run.locators);
-      }
-      // Strip outer parentheses if present
-      zoteroText = zoteroText.replace(/^\(/, '').replace(/\)$/, '');
-      parts.push(zoteroText);
+      const zoteroText = resolveVisibleText(zoteroKeys, entries, run.locators, citeprocEngine);
+      parts.push(stripOuterDelimiters(zoteroText));
     }
 
     // Plain portion
     if (plainKeys.length > 0) {
-      let plainText: string;
-      if (citeprocEngine) {
-        const rendered = renderCitationText(citeprocEngine, plainKeys, run.locators);
-        plainText = rendered || generateFallbackText(plainKeys, entries, run.locators);
-      } else {
-        plainText = generateFallbackText(plainKeys, entries, run.locators);
-      }
-      plainText = plainText.replace(/^\(/, '').replace(/\)$/, '');
-      parts.push(plainText);
+      const plainText = resolveVisibleText(plainKeys, entries, run.locators, citeprocEngine);
+      parts.push(stripOuterDelimiters(plainText));
     }
 
     // Missing keys
@@ -355,13 +342,7 @@ export function generateCitation(
   // Plain portion — parenthesized text
   if (plainKeys.length > 0) {
     if (xml) xml += '<w:r><w:t xml:space="preserve"> </w:t></w:r>';
-    let plainText: string;
-    if (citeprocEngine) {
-      const rendered = renderCitationText(citeprocEngine, plainKeys, run.locators);
-      plainText = rendered || generateFallbackText(plainKeys, entries, run.locators);
-    } else {
-      plainText = generateFallbackText(plainKeys, entries, run.locators);
-    }
+    const plainText = resolveVisibleText(plainKeys, entries, run.locators, citeprocEngine);
     xml += '<w:r><w:t>' + escapeXml(plainText) + '</w:t></w:r>';
   }
 
