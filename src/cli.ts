@@ -104,9 +104,39 @@ function showVersion() {
   console.log(packageJson.version);
 }
 
+export function deriveDocxToMdPaths(inputPath: string, outputPath?: string): { mdPath: string; bibPath: string } {
+  const inputDir = path.dirname(inputPath);
+  const inputBase = path.basename(inputPath, '.docx');
+  const basePath = outputPath
+    ? outputPath.replace(/\.md$/, '')
+    : path.join(inputDir, inputBase);
+  return { mdPath: basePath + '.md', bibPath: basePath + '.bib' };
+}
+
 async function runDocxToMd(options: CliOptions) {
-  // Placeholder for Task 2
-  console.log('DOCX to Markdown conversion not yet implemented');
+  const { convertDocx } = await import('./converter');
+  const data = new Uint8Array(fs.readFileSync(options.inputPath));
+
+  const { mdPath, bibPath } = deriveDocxToMdPaths(options.inputPath, options.outputPath);
+
+  // Check output conflicts
+  if (!options.force) {
+    const conflicts: string[] = [];
+    if (fs.existsSync(mdPath)) conflicts.push(mdPath);
+    if (fs.existsSync(bibPath)) conflicts.push(bibPath);
+    if (conflicts.length > 0) {
+      throw new Error(`Output file(s) already exist: ${conflicts.join(', ')}\nUse --force to overwrite`);
+    }
+  }
+
+  const result = await convertDocx(data, options.citationKeyFormat);
+  fs.writeFileSync(mdPath, result.markdown);
+  console.log(mdPath);
+
+  if (result.bibtex) {
+    fs.writeFileSync(bibPath, result.bibtex);
+    console.log(bibPath);
+  }
 }
 
 async function runMdToDocx(options: CliOptions) {

@@ -1,6 +1,9 @@
 import { test, expect } from 'bun:test';
 import * as fc from 'fast-check';
-import { parseArgs, detectDirection, CliOptions } from './cli';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { parseArgs, detectDirection, deriveDocxToMdPaths, CliOptions } from './cli';
 
 test('Property 1: Extension-based dispatch correctness', () => {
   fc.assert(
@@ -94,4 +97,79 @@ test('parseArgs throws on invalid mixed citation style', () => {
 
 test('parseArgs throws when no input specified', () => {
   expect(() => parseArgs(['node', 'cli.js'])).toThrow('No input file specified');
+});
+
+test('Property 3: Output path derivation with --output override', () => {
+  fc.assert(
+    fc.property(
+      fc.stringMatching(/^[a-zA-Z][a-zA-Z0-9._-]{0,9}$/),
+      fc.option(fc.stringMatching(/^[a-zA-Z][a-zA-Z0-9._/-]{0,19}$/)),
+      (inputBase, outputPath) => {
+        const inputPath = inputBase + '.docx';
+        const result = deriveDocxToMdPaths(inputPath, outputPath);
+        
+        if (outputPath) {
+          const expectedBase = outputPath.replace(/\.md$/, '');
+          expect(result.mdPath).toBe(expectedBase + '.md');
+          expect(result.bibPath).toBe(expectedBase + '.bib');
+        } else {
+          expect(result.mdPath).toBe(inputBase + '.md');
+          expect(result.bibPath).toBe(inputBase + '.bib');
+        }
+      }
+    ),
+    { numRuns: 100 }
+  );
+});
+
+test('Property 5: Dual conflict reporting for DOCX→MD', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-test-'));
+  
+  try {
+    fc.assert(
+      fc.property(
+        fc.stringMatching(/^[a-zA-Z][a-zA-Z0-9._-]{0,9}$/),
+        (basename) => {
+          const inputPath = path.join(tempDir, basename + '.docx');
+          const mdPath = path.join(tempDir, basename + '.md');
+          const bibPath = path.join(tempDir, basename + '.bib');
+          
+          // Create conflicting files
+          fs.writeFileSync(mdPath, 'test');
+          fs.writeFileSync(bibPath, 'test');
+          
+          const options: CliOptions = {
+            help: false,
+            version: false,
+            inputPath,
+            force: false,
+            citationKeyFormat: 'authorYearTitle',
+            mixedCitationStyle: 'separate',
+            cslCacheDir: ''
+          };
+          
+          expect(() => {
+            const { deriveDocxToMdPaths } = require('./cli');
+            const { mdPath: derivedMd, bibPath: derivedBib } = deriveDocxToMdPaths(inputPath);
+            
+            if (!options.force) {
+              const conflicts: string[] = [];
+              if (fs.existsSync(derivedMd)) conflicts.push(derivedMd);
+              if (fs.existsSync(derivedBib)) conflicts.push(derivedBib);
+              if (conflicts.length > 0) {
+                throw new Error(`Output file(s) already exist: ${conflicts.join(', ')}\nUse --force to overwrite`);
+              }
+            }
+          }).toThrow(/Output file\(s\) already exist:.*\.md.*\.bib/);
+          
+          // Clean up for next iteration
+          fs.unlinkSync(mdPath);
+          fs.unlinkSync(bibPath);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
