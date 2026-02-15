@@ -1,0 +1,105 @@
+---
+name: CI
+
+"on":
+  pull_request:
+  workflow_dispatch:
+
+# Avoid wasting CI minutes by canceling older runs of the same PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      source: ${{ steps.filter.outputs.source }}
+      binaries: ${{ steps.filter.outputs.binaries }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - id: filter
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
+        with:
+          filters: |
+            source:
+              - 'package.json'
+              - 'bun.lock'
+              - 'tsconfig*.json'
+              - 'src/**'
+              - 'scripts/**'
+              - 'test/**'
+
+            binaries:
+              - 'src/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'scripts/build-binary.ts'
+
+  verify:
+    name: Verify (typecheck + tests)
+    needs: changes
+    if: needs.changes.outputs.source == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Tests
+        run: bun test
+
+  vscode-extension:
+    name: VS Code extension
+    needs: [changes, verify]
+    if: needs.changes.outputs.source == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Build extension
+        run: bun run package
+      - name: Validate extension package
+        run: |
+          ls -la *.vsix
+          npx vsce ls *.vsix
+      - name: Validate extension manifest
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            if (!pkg.engines?.vscode) throw new Error('Missing VS Code engine');
+            console.log('Extension:', pkg.displayName);
+            console.log('Version:', pkg.version);
+            console.log('Publisher:', pkg.publisher);
+          "
+
+  binaries:
+    name: Binary artifacts
+    needs: [changes, verify]
+    if: needs.changes.outputs.binaries == 'true'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Build current platform binary
+        run: bun run build:current
+      - name: Test binary execution
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Windows) BINARY="bin/manuscript-markdown-windows-x64.exe";;
+            macOS)   BINARY="bin/manuscript-markdown-darwin-arm64";;
+            *)       BINARY="bin/manuscript-markdown-linux-x64";;
+          esac
+
+          chmod +x "$BINARY" 2>/dev/null || true
+          "$BINARY" --version
+          "$BINARY" --help
