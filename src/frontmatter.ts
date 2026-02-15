@@ -35,10 +35,11 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
       case 'locale':
         metadata.locale = value;
         break;
-      case 'note-type':
+      case 'note-type': {
         const n = parseInt(value, 10);
         if (!isNaN(n)) metadata.noteType = n;
         break;
+      }
     }
   }
 
