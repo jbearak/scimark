@@ -1,6 +1,14 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, isAbsolute, dirname } from 'path';
 
+const VALID_STYLE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
+
+function validateStyleName(name: string): void {
+  if (!isAbsolute(name) && !name.endsWith('.csl') && !VALID_STYLE_NAME.test(name)) {
+    throw new Error(`Invalid CSL style name: ${name}`);
+  }
+}
+
 /**
  * Resolve the bundled CSL directory.  Works both when running from source
  * (`src/csl-loader.ts` → `src/csl-styles/`) and from the compiled output
@@ -55,6 +63,7 @@ export const BUNDLED_STYLES = [
  * - Does NOT download. Use `loadStyleAsync` for on-demand downloading.
  */
 export function loadStyle(name: string): string {
+  validateStyleName(name);
   const cached = styleCache.get(name);
   if (cached) return cached;
 
@@ -79,6 +88,7 @@ export function loadStyle(name: string): string {
  * CSL styles distribution repository and caches it locally.
  */
 export async function loadStyleAsync(name: string): Promise<string> {
+  validateStyleName(name);
   // Check memory cache first
   const cached = styleCache.get(name);
   if (cached) return cached;
@@ -132,6 +142,7 @@ export async function loadStyleAsync(name: string): Promise<string> {
  * Returns the XML string on success, or throws on failure.
  */
 export async function downloadStyle(name: string, targetDir: string): Promise<string> {
+  validateStyleName(name);
   const url = CSL_STYLES_URL + name + '.csl';
   const response = await fetch(url);
   if (!response.ok) {
