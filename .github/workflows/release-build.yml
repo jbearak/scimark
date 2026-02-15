@@ -49,7 +49,9 @@ jobs:
           done
           cd ..
           if ls *.vsix >/dev/null 2>&1; then
-            sha256sum *.vsix > "$(basename *.vsix).sha256"
+            for vsix in *.vsix; do
+              sha256sum "$vsix" > "$vsix.sha256"
+            done
           fi
 
       - name: Upload release artifacts

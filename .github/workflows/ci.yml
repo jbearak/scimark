@@ -64,8 +64,16 @@ jobs:
         run: bun run package
       - name: Validate extension package
         run: |
-          ls -la *.vsix
-          npx vsce ls *.vsix
+          shopt -s nullglob
+          vsix_files=( *.vsix )
+          if [ "${#vsix_files[@]}" -eq 0 ]; then
+            echo "ERROR: No .vsix package produced"
+            exit 1
+          fi
+          for vsix in "${vsix_files[@]}"; do
+            ls -la "$vsix"
+            unzip -l "$vsix"
+          done
       - name: Validate extension manifest
         run: |
           node -e "
@@ -94,11 +102,22 @@ jobs:
       - name: Test binary execution
         shell: bash
         run: |
+          ARCH="$(echo "${RUNNER_ARCH}" | tr '[:upper:]' '[:lower:]')"
           case "${{ runner.os }}" in
-            Windows) BINARY="bin/manuscript-markdown-windows-x64.exe";;
-            macOS)   BINARY="bin/manuscript-markdown-darwin-arm64";;
-            *)       BINARY="bin/manuscript-markdown-linux-x64";;
+            Windows) PLATFORM="windows"; EXT=".exe";;
+            macOS)   PLATFORM="darwin"; EXT="";;
+            Linux)   PLATFORM="linux"; EXT="";;
+            *)
+              echo "ERROR: Unsupported runner OS: ${{ runner.os }}"
+              exit 1
+              ;;
           esac
+          BINARY="bin/manuscript-markdown-${PLATFORM}-${ARCH}${EXT}"
+          if [ ! -f "$BINARY" ]; then
+            echo "ERROR: Expected binary not found: $BINARY"
+            ls -la bin || true
+            exit 1
+          fi
 
           chmod +x "$BINARY" 2>/dev/null || true
           "$BINARY" --version

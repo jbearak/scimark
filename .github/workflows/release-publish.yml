@@ -38,10 +38,12 @@ jobs:
 
       - name: Validate tag + version
         shell: bash
+        env:
+          THE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
 
-          the_tag='${{ inputs.tag }}'
+          the_tag="$THE_TAG"
 
           # Basic format validation
           if [[ ! "$the_tag" =~ ^v[0-9] ]]; then
@@ -72,10 +74,13 @@ jobs:
 
       - name: Download build artifacts
         shell: bash
+        env:
+          THE_TAG: ${{ inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          ARTIFACT_NAME="release-${{ inputs.tag }}"
+          ARTIFACT_NAME="release-${THE_TAG}"
 
           ARTIFACT_INFO=$(gh api "repos/${{ github.repository }}/actions/artifacts" \
             --jq ".artifacts[] | select(.name == \"$ARTIFACT_NAME\" and .expired == false) | {id: .id, run_id: .workflow_run.id}" \
@@ -83,15 +88,16 @@ jobs:
 
           if [ -z "$ARTIFACT_INFO" ]; then
             echo "ERROR: No artifact found named '$ARTIFACT_NAME'"
-            echo "Make sure release-build.yml completed successfully for ${{ inputs.tag }}"
+            echo "Make sure release-build.yml completed successfully for ${THE_TAG}"
             exit 1
           fi
 
           BUILD_RUN_ID=$(echo "$ARTIFACT_INFO" | jq -r '.run_id')
           echo "Found artifact in build run: $BUILD_RUN_ID"
           gh run download "$BUILD_RUN_ID" --name "$ARTIFACT_NAME"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Downloaded artifact contents:"
+          ls -la
+          ls -la bin || true
 
       - name: Verify checksums
         shell: bash
@@ -110,9 +116,9 @@ jobs:
 
       - name: Publish to VS Code Marketplace
         if: ${{ inputs.publish_vscode }}
-        run: npx vsce publish --packagePath *.vsix --pat ${{ secrets.VSCE_TOKEN }}
+        run: bunx @vscode/vsce publish --packagePath *.vsix
         env:
-          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+          VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
 
       - name: Create GitHub Release
         # Tag v2.5.0 -> commit a06a81a03ee405af7f2048a818ed3f03bbf83c7b
