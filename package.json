@@ -64,7 +64,7 @@
       },
       {
         "command": "manuscript-markdown.highlightAndComment",
-        "title": "Comment and highlight"
+        "title": "Comment"
       },
       {
         "command": "manuscript-markdown.substituteAndComment",
@@ -302,11 +302,6 @@
           "command": "manuscript-markdown.substituteAndComment",
           "when": "editorLangId == markdown",
           "group": "1_manuscript-markdown@4"
-        },
-        {
-          "command": "manuscript-markdown.highlight",
-          "when": "editorLangId == markdown",
-          "group": "2_manuscript-markdown@1"
         },
         {
           "command": "manuscript-markdown.markAddition",
