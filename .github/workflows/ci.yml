@@ -103,6 +103,17 @@ jobs:
         shell: bash
         run: |
           ARCH="$(echo "${RUNNER_ARCH}" | tr '[:upper:]' '[:lower:]')"
+          if [ -z "${ARCH}" ]; then
+            echo "ERROR: RUNNER_ARCH is not set"
+            exit 1
+          fi
+          case "${ARCH}" in
+            x64|arm64) ;;
+            *)
+              echo "ERROR: Unsupported RUNNER_ARCH value: ${RUNNER_ARCH}"
+              exit 1
+              ;;
+          esac
           case "${{ runner.os }}" in
             Windows) PLATFORM="windows"; EXT=".exe";;
             macOS)   PLATFORM="darwin"; EXT="";;

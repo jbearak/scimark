@@ -82,7 +82,7 @@ jobs:
 
           ARTIFACT_NAME="release-${THE_TAG}"
 
-          ARTIFACT_INFO=$(gh api "repos/${{ github.repository }}/actions/artifacts" \
+          ARTIFACT_INFO=$(gh api --paginate "repos/${{ github.repository }}/actions/artifacts" \
             --jq ".artifacts[] | select(.name == \"$ARTIFACT_NAME\" and .expired == false) | {id: .id, run_id: .workflow_run.id}" \
             | head -1)
 

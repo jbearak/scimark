@@ -104,14 +104,12 @@ async function build_all_binaries(): Promise<void> {
 async function build_current_binary(): Promise<void> {
     const platform_info = detect_platform();
     if (!platform_info) {
-        console.error(`Unsupported platform: ${process.platform}-${process.arch}`);
-        process.exit(1);
+        throw new Error(`Unsupported platform: ${process.platform}-${process.arch}`);
     }
 
     const target = TARGETS.find(t => t.platform === platform_info.platform && t.arch === platform_info.arch);
     if (!target) {
-        console.error(`No build target for ${platform_info.platform}-${platform_info.arch}`);
-        process.exit(1);
+        throw new Error(`No build target for ${platform_info.platform}-${platform_info.arch}`);
     }
 
     await build_binary(target);
