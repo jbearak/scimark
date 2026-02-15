@@ -55,6 +55,11 @@ const COLOR_TO_OOXML: Record<string, string> = {
   'dark-yellow': 'darkYellow', 'gray-50': 'darkGray', 'gray-25': 'lightGray',
 };
 
+// Placeholder used to preserve paragraph breaks inside CriticMarkup spans.
+// Uses Private Use Area characters to avoid markdown-it's normalize step
+// which replaces \u0000 with \uFFFD.
+const PARA_PLACEHOLDER = '\uE000PARA\uE000';
+
 // Custom inline rules
 function criticMarkupRule(state: any, silent: boolean): boolean {
   const start = state.pos;
@@ -79,7 +84,8 @@ function criticMarkupRule(state: any, silent: boolean): boolean {
   if (endPos === -1) return false;
   
   if (!silent) {
-    const content = state.src.slice(start + 3, endPos);
+    // Replace any paragraph placeholders back to real newlines
+    const content = state.src.slice(start + 3, endPos).replaceAll(PARA_PLACEHOLDER, '\n\n');
     const token = state.push('critic_markup', '', 0);
     token.markup = marker;
     token.content = content;
@@ -241,9 +247,6 @@ function mathRule(state: any, silent: boolean): boolean {
   return true;
 }
 
-// Placeholder used to preserve paragraph breaks inside CriticMarkup spans
-const PARA_PLACEHOLDER = '\u0000PARA\u0000';
-
 /**
  * Preprocess markdown source: replace \n\n inside CriticMarkup spans with a
  * placeholder so markdown-it's block parser doesn't split them into separate
@@ -294,7 +297,7 @@ export function preprocessCriticMarkup(markdown: string): string {
 /** Inline rule that converts the paragraph placeholder back into softbreak tokens. */
 function paraPlaceholderRule(state: any, silent: boolean): boolean {
   const start = state.pos;
-  if (state.src.charCodeAt(start) !== 0) return false; // \u0000
+  if (state.src.charCodeAt(start) !== 0xE000) return false; // \uE000
   if (!state.src.startsWith(PARA_PLACEHOLDER, start)) return false;
 
   if (!silent) {
@@ -1349,7 +1352,11 @@ function commentsXml(comments: CommentEntry[]): string {
   xml += '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
   for (const c of comments) {
     xml += '<w:comment w:id="' + c.id + '" w:author="' + escapeXml(c.author) + '" w:date="' + escapeXml(c.date) + '">';
-    xml += '<w:p><w:r><w:t>' + escapeXml(c.text) + '</w:t></w:r></w:p>';
+    // Split on \n\n for paragraph breaks within the comment
+    const paragraphs = c.text.split('\n\n');
+    for (const para of paragraphs) {
+      xml += '<w:p><w:r><w:t>' + escapeXml(para) + '</w:t></w:r></w:p>';
+    }
     xml += '</w:comment>';
   }
   xml += '</w:comments>';

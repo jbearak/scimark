@@ -407,8 +407,10 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
   return false;
 }
 
-// Placeholder used to preserve paragraph breaks inside CriticMarkup spans
-const PARA_PLACEHOLDER = '\u0000PARA\u0000';
+// Placeholder used to preserve paragraph breaks inside CriticMarkup spans.
+// Uses Private Use Area characters to avoid markdown-it's normalize step
+// which replaces \u0000 with \uFFFD.
+const PARA_PLACEHOLDER = '\uE000PARA\uE000';
 
 /**
  * Preprocess markdown source: replace \n\n inside CriticMarkup spans with a
@@ -458,7 +460,7 @@ function preprocessCriticMarkup(markdown: string): string {
 /** Inline rule that converts the paragraph placeholder back into line breaks in the token stream. */
 function paraPlaceholderRule(state: StateInline, silent: boolean): boolean {
   const start = state.pos;
-  if (state.src.charCodeAt(start) !== 0) return false; // \u0000
+  if (state.src.charCodeAt(start) !== 0xE000) return false; // \uE000
   if (!state.src.startsWith(PARA_PLACEHOLDER, start)) return false;
 
   if (!silent) {

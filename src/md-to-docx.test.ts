@@ -680,4 +680,19 @@ describe('parseMd multi-paragraph CriticMarkup', () => {
     expect(commentRuns[0].author).toBe('Alice');
     expect(commentRuns[0].date).toBe('2024-01-15T10:00:00Z');
   });
+
+  it('does not leak placeholder into comment text', () => {
+    const tokens = parseMd('{>>Alice (2024-01-15T10:00:00Z): para 1\n\npara 2<<}');
+    const commentRuns = tokens.flatMap(t => t.runs).filter(r => r.type === 'critic_comment');
+    expect(commentRuns[0].commentText).not.toContain('\u0000');
+    expect(commentRuns[0].commentText).not.toContain('PARA');
+    expect(commentRuns[0].commentText).toContain('para 1\n\npara 2');
+  });
+
+  it('does not leak placeholder into addition text', () => {
+    const tokens = parseMd('{++added\n\nmore++}');
+    const addRuns = tokens.flatMap(t => t.runs).filter(r => r.type === 'critic_add');
+    expect(addRuns[0].text).not.toContain('\u0000');
+    expect(addRuns[0].text).toContain('added\n\nmore');
+  });
 });
