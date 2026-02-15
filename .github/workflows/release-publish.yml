@@ -82,11 +82,11 @@ jobs:
 
           ARTIFACT_NAME="release-${THE_TAG}"
 
-          ARTIFACT_INFO=$(gh api --paginate "repos/${{ github.repository }}/actions/artifacts" \
-            --jq ".artifacts[] | select(.name == \"$ARTIFACT_NAME\" and .expired == false) | {id: .id, run_id: .workflow_run.id}" \
+          BUILD_RUN_ID=$(gh api --paginate "repos/${{ github.repository }}/actions/artifacts" \
+            --jq ".artifacts[] | select(.name == \"$ARTIFACT_NAME\" and .expired == false) | .workflow_run.id" \
             | head -1)
 
-          if [ -z "$ARTIFACT_INFO" ]; then
+          if [ -z "$BUILD_RUN_ID" ]; then
             echo "ERROR: No artifact found named '$ARTIFACT_NAME'"
             echo "Make sure release-build.yml completed successfully for ${THE_TAG}"
             exit 1
