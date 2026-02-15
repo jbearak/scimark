@@ -2,7 +2,7 @@
   "name": "manuscript-markdown",
   "displayName": "Manuscript Markdown",
   "description": "Specification, converter, and VS Code extension for roundtrip manuscript editing between Markdown and MS Word",
-  "version": "0.9.3",
+  "version": "0.90.0",
   "engines": {
     "vscode": "^1.103.2"
   },
@@ -592,13 +592,31 @@
         },
         "manuscriptMarkdown.defaultHighlightColor": {
           "type": "string",
-          "enum": ["yellow", "green", "turquoise", "pink", "blue", "red", "dark-blue", "teal", "violet", "dark-red", "dark-yellow", "gray-50", "gray-25", "black"],
+          "enum": [
+            "yellow",
+            "green",
+            "turquoise",
+            "pink",
+            "blue",
+            "red",
+            "dark-blue",
+            "teal",
+            "violet",
+            "dark-red",
+            "dark-yellow",
+            "gray-50",
+            "gray-25",
+            "black"
+          ],
           "default": "yellow",
           "description": "Default background color for ==highlight== formatting when no color is specified"
         },
         "manuscriptMarkdown.mixedCitationStyle": {
           "type": "string",
-          "enum": ["separate", "unified"],
+          "enum": [
+            "separate",
+            "unified"
+          ],
           "default": "separate",
           "description": "How to render mixed Zotero/non-Zotero grouped citations. 'separate': each portion gets its own parentheses (clean Zotero refresh). 'unified': one set of parentheses wrapping everything (looks like one group but may desync on Zotero refresh)."
         },
