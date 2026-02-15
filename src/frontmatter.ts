@@ -14,11 +14,10 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
     return { metadata: {}, body: markdown };
   }
 
-  const endMatch = trimmed.substring(3).match(/\n---(?:\r?\n|$)/);
-  if (!endMatch) {
+  const endIdx = trimmed.indexOf('\n---', 3);
+  if (endIdx < 0) {
     return { metadata: {}, body: markdown };
   }
-  const endIdx = endMatch.index! + 3;
 
   const yamlBlock = trimmed.slice(3, endIdx).trim();
   const body = trimmed.slice(endIdx + 4).replace(/^\r?\n/, '');
