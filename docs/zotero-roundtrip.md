@@ -111,7 +111,15 @@ When the converter needs a CSL style, it checks in order:
 
 ### Using a local CSL file
 
-Set `csl` to an absolute file path instead of a style name:
+Set `csl` to a file path instead of a style name. Relative paths are resolved relative to the markdown file's directory:
+
+```yaml
+---
+csl: custom-journal.csl
+---
+```
+
+Absolute paths also work:
 
 ```yaml
 ---

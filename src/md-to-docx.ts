@@ -2,7 +2,7 @@ import MarkdownIt from 'markdown-it';
 import { escapeXml, generateCitation, generateMathXml, createCiteprocEngineLocal, createCiteprocEngineAsync, generateBibliographyXml } from './md-to-docx-citations';
 import { downloadStyle } from './csl-loader';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join } from 'path';
 import { parseBibtex, BibtexEntry } from './bibtex-parser';
 import { parseFrontmatter, Frontmatter, noteTypeToNumber } from './frontmatter';
 import { ZoteroBiblData, zoteroStyleFullId } from './converter';
@@ -788,6 +788,8 @@ export interface MdToDocxOptions {
   zoteroBiblData?: ZoteroBiblData;
   /** Directory for caching downloaded CSL styles (e.g. VS Code global storage). */
   cslCacheDir?: string;
+  /** Directory of the source markdown file, used to resolve relative CSL paths. */
+  sourceDir?: string;
   /** Called when a CSL style is not bundled or found locally.
    *  Return true to attempt downloading from the CSL repository. */
   onStyleNotFound?: (styleName: string) => Promise<boolean>;
@@ -1273,7 +1275,20 @@ export async function convertMdToDocx(
   let citeprocEngine: any;
   const earlyWarnings: string[] = [];
   if (frontmatter.csl && bibEntries) {
-    const styleName = frontmatter.csl;
+    let styleName = frontmatter.csl;
+
+    // 0. Resolve file-like CSL values (relative or absolute paths)
+    const isFileLike = styleName.endsWith('.csl') || isAbsolute(styleName);
+    if (isFileLike && !isAbsolute(styleName)) {
+      if (options?.sourceDir) {
+        const resolved = join(options.sourceDir, styleName);
+        if (existsSync(resolved)) {
+          styleName = resolved;
+        }
+      } else {
+        earlyWarnings.push(`Relative CSL path "${styleName}" cannot be resolved without a source directory.`);
+      }
+    }
 
     // 1. Try bundled styles
     let result = createCiteprocEngineLocal(bibEntries, styleName, frontmatter.locale);
