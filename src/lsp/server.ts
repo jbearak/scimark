@@ -489,11 +489,12 @@ function getLocationPathKey(uri: string): string {
 function getEntryDetail(entry: BibtexEntry): string | undefined {
 	const author = entry.fields.get('author');
 	const year = entry.fields.get('year');
-	if (author && year) {
-		return `${author} (${year})`;
+	const formatted = author ? formatBibAuthorsPlain(author) : undefined;
+	if (formatted && year) {
+		return `${formatted} (${year})`;
 	}
-	if (author) {
-		return author;
+	if (formatted) {
+		return formatted;
 	}
 	if (year) {
 		return year;
@@ -502,20 +503,44 @@ function getEntryDetail(entry: BibtexEntry): string | undefined {
 }
 
 function getEntryDocumentation(entry: BibtexEntry): string | undefined {
-	return entry.fields.get('title');
+	const title = entry.fields.get('title');
+	if (!title) {
+		return undefined;
+	}
+	const stripped = title.replace(/[{}]/g, '');
+	const parts = [`\u201C${stripped}\u201D`];
+	const venue = entry.fields.get('journal') ?? entry.fields.get('booktitle');
+	if (venue) {
+		parts.push(venue);
+	}
+	return parts.join('\n');
 }
 
-/** Reformat BibTeX author string ("Last, First and Last, First") to "First Last, First Last, ..., and First Last". First author is bold. */
-function formatBibAuthors(raw: string): string {
-	const authors = raw.split(/\s+and\s+/).map(a => {
+/** Split BibTeX author string and flip each "Last, First" to "First Last". */
+function parseBibAuthorNames(raw: string): string[] {
+	return raw.split(/\s+and\s+/).map(a => {
 		const parts = a.split(',').map(p => p.trim());
 		return parts.length >= 2 ? `${parts[1]} ${parts[0]}` : a.trim();
 	});
-	if (authors.length === 0) return raw;
-	const first = `**${authors[0]}**`;
-	if (authors.length === 1) return first;
-	if (authors.length === 2) return `${first} and ${authors[1]}`;
-	return `${first}, ${authors.slice(1, -1).join(', ')}, and ${authors[authors.length - 1]}`;
+}
+
+function joinAuthorNames(names: string[]): string {
+	if (names.length <= 1) return names[0] ?? '';
+	if (names.length === 2) return `${names[0]} and ${names[1]}`;
+	return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+/** Plain-text author string for completion detail. */
+function formatBibAuthorsPlain(raw: string): string {
+	return joinAuthorNames(parseBibAuthorNames(raw));
+}
+
+/** Markdown author string with first author bold, for hover. */
+function formatBibAuthors(raw: string): string {
+	const names = parseBibAuthorNames(raw);
+	if (names.length === 0) return raw;
+	names[0] = `**${names[0]}**`;
+	return joinAuthorNames(names);
 }
 
 function formatBibEntryHover(entry: BibtexEntry): string {
