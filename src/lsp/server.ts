@@ -505,22 +505,37 @@ function getEntryDocumentation(entry: BibtexEntry): string | undefined {
 	return entry.fields.get('title');
 }
 
+/** Reformat BibTeX author string ("Last, First and Last, First") to "First Last, First Last, ..., and First Last". First author is bold. */
+function formatBibAuthors(raw: string): string {
+	const authors = raw.split(/\s+and\s+/).map(a => {
+		const parts = a.split(',').map(p => p.trim());
+		return parts.length >= 2 ? `${parts[1]} ${parts[0]}` : a.trim();
+	});
+	if (authors.length === 0) return raw;
+	const first = `**${authors[0]}**`;
+	if (authors.length === 1) return first;
+	if (authors.length === 2) return `${first} and ${authors[1]}`;
+	return `${first}, ${authors.slice(1, -1).join(', ')}, and ${authors[authors.length - 1]}`;
+}
+
 function formatBibEntryHover(entry: BibtexEntry): string {
 	const lines: string[] = [];
 
 	const author = entry.fields.get('author');
 	const year = entry.fields.get('year');
-	if (author && year) {
-		lines.push(`**${author}** (${year})`);
-	} else if (author) {
-		lines.push(`**${author}**`);
+	const formattedAuthors = author ? formatBibAuthors(author) : undefined;
+	if (formattedAuthors && year) {
+		lines.push(`${formattedAuthors} (${year})`);
+	} else if (formattedAuthors) {
+		lines.push(formattedAuthors);
 	} else if (year) {
 		lines.push(`(${year})`);
 	}
 
 	const title = entry.fields.get('title');
 	if (title) {
-		lines.push(`*${title}*`);
+		const strippedTitle = title.replace(/[{}]/g, '');
+		lines.push(`**\u201C${strippedTitle}\u201D**`);
 	}
 
 	const venue = entry.fields.get('journal') ?? entry.fields.get('booktitle');
@@ -529,9 +544,7 @@ function formatBibEntryHover(entry: BibtexEntry): string {
 	}
 
 	if (lines.length === 0) {
-		lines.push(`\`@${entry.type}{${entry.key}}\``);
-	} else {
-		lines.push(`\`@${entry.type}\``);
+		lines.push(`\`${entry.key}\``);
 	}
 
 	return lines.join('\n\n');
