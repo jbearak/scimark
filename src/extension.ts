@@ -151,8 +151,10 @@ export function activate(context: vscode.ExtensionContext) {
 					uri = files[0];
 				}
 				const data = await vscode.workspace.fs.readFile(uri);
-				const format = vscode.workspace.getConfiguration('manuscriptMarkdown').get<CitationKeyFormat>('citationKeyFormat', 'authorYearTitle');
-				const result = await convertDocx(new Uint8Array(data), format);
+				const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
+				const format = config.get<CitationKeyFormat>('citationKeyFormat', 'authorYearTitle');
+				const tableIndentSpaces = config.get<number>('tableIndent', 2);
+				const result = await convertDocx(new Uint8Array(data), format, { tableIndent: ' '.repeat(tableIndentSpaces) });
 
 				const basePath = uri.fsPath.replace(/\.docx$/i, '');
 				let mdUri = vscode.Uri.file(basePath + '.md');
