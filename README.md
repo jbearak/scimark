@@ -62,6 +62,7 @@ manuscript-markdown paper.md      # Markdown → DOCX
 - [Specification Overview](docs/specification.md)
 - [CriticMarkup Syntax](docs/criticmarkup.md)
 - [Custom Extensions](docs/custom-extensions.md)
+- [Citekey Language Server](docs/citekey-language-server.md)
 - [DOCX Converter](docs/converter.md)
 - [Zotero Citation Roundtrip](docs/zotero-roundtrip.md)
 - [CLI Tool](docs/cli.md)
