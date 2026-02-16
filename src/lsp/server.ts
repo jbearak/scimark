@@ -48,8 +48,15 @@ interface ResolvedSymbol {
 	sourceUri: string;
 	bibPath?: string;
 }
+interface RecentReferenceQuery {
+	queryKey: string;
+	includeDeclaration: boolean;
+	usageFingerprint: string;
+	timestampMs: number;
+}
 
 const bibCache = new Map<string, CachedBibData>();
+let lastReferenceQuery: RecentReferenceQuery | undefined;
 
 connection.onInitialize((params: InitializeParams) => {
 	workspaceRootPaths = extractWorkspaceRoots(params);
@@ -157,20 +164,75 @@ connection.onReferences(async (params: ReferenceParams): Promise<Location[]> => 
 	if (!symbol) {
 		return [];
 	}
-
-	const locations = symbol.bibPath
+	const usageLocations = symbol.bibPath
 		? await findReferencesForKey(symbol.key, symbol.bibPath)
 		: await findReferencesInSingleDocument(symbol.key, symbol.sourceUri);
+	const dedupedUsages = dedupeLocations(usageLocations);
+	const declaration = params.context.includeDeclaration && symbol.bibPath
+		? await getDefinitionLocationForKey(symbol.key, symbol.bibPath)
+		: undefined;
+	const queryKey = getReferenceQueryKey(params, symbol);
+	const usageFingerprint = getUsageFingerprint(dedupedUsages);
+	const nowMs = Date.now();
 
-	if (params.context.includeDeclaration && symbol.bibPath) {
-		const declaration = await getDefinitionLocationForKey(symbol.key, symbol.bibPath);
-		if (declaration) {
-			locations.unshift(declaration);
-		}
+	if (
+		params.context.includeDeclaration &&
+		declaration &&
+		lastReferenceQuery &&
+		!lastReferenceQuery.includeDeclaration &&
+		lastReferenceQuery.queryKey === queryKey &&
+		lastReferenceQuery.usageFingerprint === usageFingerprint &&
+		nowMs - lastReferenceQuery.timestampMs <= 400
+	) {
+		lastReferenceQuery = {
+			queryKey,
+			includeDeclaration: true,
+			usageFingerprint,
+			timestampMs: nowMs,
+		};
+		return [declaration];
 	}
 
-	return dedupeLocations(locations);
+	const locations = [...dedupedUsages];
+	if (declaration) {
+		locations.unshift(declaration);
+	}
+	const dedupedLocations = dedupeLocations(locations);
+	lastReferenceQuery = {
+		queryKey,
+		includeDeclaration: params.context.includeDeclaration,
+		usageFingerprint,
+		timestampMs: nowMs,
+	};
+
+	return dedupedLocations;
 });
+function getReferenceQueryKey(params: ReferenceParams, symbol: ResolvedSymbol): string {
+	const uriPathKey = getLocationPathKey(params.textDocument.uri);
+	const bibPathKey = symbol.bibPath ? canonicalizeFsPath(symbol.bibPath) : '';
+	return [
+		uriPathKey,
+		params.position.line,
+		params.position.character,
+		symbol.key,
+		bibPathKey,
+	].join(':');
+}
+
+function getUsageFingerprint(locations: Location[]): string {
+	if (locations.length === 0) {
+		return '';
+	}
+	const ids = locations.map((location) => [
+		getLocationPathKey(location.uri),
+		location.range.start.line,
+		location.range.start.character,
+		location.range.end.line,
+		location.range.end.character,
+	].join(':'));
+	ids.sort();
+	return ids.join('|');
+}
 
 documents.listen(connection);
 connection.listen();
