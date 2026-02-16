@@ -348,7 +348,7 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         i = tableClose + 1;
         break;
       
-      case 'html_block':
+      case 'html_block': {
         const htmlTables = extractHtmlTables(token.content || '');
         for (const rows of htmlTables) {
           if (rows.length > 0) {
@@ -361,6 +361,7 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         }
         i++;
         break;
+      }
         
       case 'hr':
         result.push({
