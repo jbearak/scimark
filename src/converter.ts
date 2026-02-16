@@ -88,6 +88,8 @@ export interface TableRow {
 }
 export interface TableCell {
   paragraphs: ContentItem[][];
+  colspan?: number;
+  rowspan?: number;
 }
 
 export type CitationKeyFormat = 'authorYearTitle' | 'authorYear' | 'numeric';
@@ -769,6 +771,85 @@ function rowHasHeaderProp(trChildren: any[]): boolean {
   return val === '1' || val === 'true' || val === 'on';
 }
 
+/**
+ * Convert raw rows (with vMerge annotations) into clean TableRows with numeric rowspan.
+ * Continuation cells (vMerge without val="restart") are removed and the originating
+ * cell's rowspan is set to the total number of merged rows.
+ */
+export function computeRowspans(
+  rawRows: Array<{ isHeader: boolean; cells: Array<{ paragraphs: ContentItem[][]; colspan: number; vMergeType?: 'restart' | 'continue' }> }>
+): TableRow[] {
+  // Build a 2D grid: grid[rowIdx][gridCol] = reference to the raw cell
+  const numRows = rawRows.length;
+  // Determine total grid columns
+  let totalCols = 0;
+  for (const row of rawRows) {
+    let cols = 0;
+    for (const cell of row.cells) cols += cell.colspan;
+    if (cols > totalCols) totalCols = cols;
+  }
+
+  // Map (rowIdx, gridCol) -> cell reference
+  type CellRef = { rowIdx: number; cellIdx: number; cell: typeof rawRows[0]['cells'][0] };
+  const grid: (CellRef | undefined)[][] = [];
+  for (let r = 0; r < numRows; r++) {
+    const gridRow: (CellRef | undefined)[] = new Array(totalCols).fill(undefined);
+    let col = 0;
+    for (let ci = 0; ci < rawRows[r].cells.length; ci++) {
+      const cell = rawRows[r].cells[ci];
+      for (let s = 0; s < cell.colspan && col + s < totalCols; s++) {
+        gridRow[col + s] = { rowIdx: r, cellIdx: ci, cell };
+      }
+      col += cell.colspan;
+    }
+    grid.push(gridRow);
+  }
+
+  // For each column, scan downward: when "restart" found, count consecutive "continue" below
+  const rowspanMap = new Map<string, number>(); // "rowIdx,cellIdx" -> rowspan
+  const continuationCells = new Set<string>(); // "rowIdx,cellIdx" to remove
+
+  for (let col = 0; col < totalCols; col++) {
+    for (let r = 0; r < numRows; r++) {
+      const ref = grid[r][col];
+      if (!ref) continue;
+      if (ref.cell.vMergeType === 'restart') {
+        let span = 1;
+        for (let r2 = r + 1; r2 < numRows; r2++) {
+          const ref2 = grid[r2][col];
+          if (ref2 && ref2.cell.vMergeType === 'continue') {
+            span++;
+            continuationCells.add(r2 + ',' + ref2.cellIdx);
+          } else {
+            break;
+          }
+        }
+        if (span > 1) {
+          rowspanMap.set(r + ',' + ref.cellIdx, span);
+        }
+      }
+    }
+  }
+
+  // Build cleaned rows
+  const result: TableRow[] = [];
+  for (let r = 0; r < numRows; r++) {
+    const cells: TableCell[] = [];
+    for (let ci = 0; ci < rawRows[r].cells.length; ci++) {
+      if (continuationCells.has(r + ',' + ci)) continue;
+      const raw = rawRows[r].cells[ci];
+      const cell: TableCell = { paragraphs: raw.paragraphs };
+      if (raw.colspan > 1) cell.colspan = raw.colspan;
+      const rs = rowspanMap.get(r + ',' + ci);
+      if (rs && rs > 1) cell.rowspan = rs;
+      cells.push(cell);
+    }
+    result.push({ isHeader: rawRows[r].isHeader, cells });
+  }
+
+  return result;
+}
+
 export async function extractDocumentContent(
   data: Uint8Array | JSZip,
   zoteroCitations: ZoteroCitation[],
@@ -866,22 +947,40 @@ export async function extractDocumentContent(
           currentHref = prevHref;
         } else if (key === 'w:tbl' && !inTableCell) {
           const tblChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
-          const rows: TableRow[] = [];
+          const rawRows: Array<{ isHeader: boolean; cells: Array<{ paragraphs: ContentItem[][]; colspan: number; vMergeType?: 'restart' | 'continue' }> }> = [];
           const firstRowHeaderByLook = tableHasFirstRowHeader(tblChildren);
           for (const tr of tblChildren.filter((c: any) => c['w:tr'] !== undefined)) {
             const trChildren = Array.isArray(tr['w:tr']) ? tr['w:tr'] : [tr['w:tr']];
-            const cells: TableCell[] = [];
+            const cells: Array<{ paragraphs: ContentItem[][]; colspan: number; vMergeType?: 'restart' | 'continue' }> = [];
             for (const tc of trChildren.filter((c: any) => c['w:tc'] !== undefined)) {
               const tcChildren = Array.isArray(tc['w:tc']) ? tc['w:tc'] : [tc['w:tc']];
+              // Parse cell properties
+              let colspan = 1;
+              let vMergeType: 'restart' | 'continue' | undefined;
+              const tcPrNode = tcChildren.find((c: any) => c['w:tcPr'] !== undefined);
+              if (tcPrNode) {
+                const tcPrChildren = Array.isArray(tcPrNode['w:tcPr']) ? tcPrNode['w:tcPr'] : [tcPrNode['w:tcPr']];
+                const gridSpanNode = tcPrChildren.find((c: any) => c['w:gridSpan'] !== undefined);
+                if (gridSpanNode) {
+                  const val = parseInt(getAttr(gridSpanNode, 'val'), 10);
+                  if (val > 1) colspan = val;
+                }
+                const vMergeNode = tcPrChildren.find((c: any) => c['w:vMerge'] !== undefined);
+                if (vMergeNode) {
+                  const val = getAttr(vMergeNode, 'val');
+                  vMergeType = val === 'restart' ? 'restart' : 'continue';
+                }
+              }
               const cellItems: ContentItem[] = [];
               walk(tcChildren, currentFormatting, cellItems, true);
-              cells.push({ paragraphs: splitCellParagraphs(cellItems) });
+              cells.push({ paragraphs: splitCellParagraphs(cellItems), colspan, vMergeType });
             }
-            rows.push({ isHeader: rowHasHeaderProp(trChildren), cells });
+            rawRows.push({ isHeader: rowHasHeaderProp(trChildren), cells });
           }
-          if (firstRowHeaderByLook && rows.length > 0) {
-            rows[0].isHeader = true;
+          if (firstRowHeaderByLook && rawRows.length > 0) {
+            rawRows[0].isHeader = true;
           }
+          const rows = computeRowspans(rawRows);
           if (rows.length > 0) {
             target.push({ type: 'table', rows });
           }
@@ -1146,7 +1245,10 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
     lines.push('<tr>');
     for (const cell of row.cells) {
       const tag = row.isHeader ? 'th' : 'td';
-      lines.push('<' + tag + '>');
+      let attrs = '';
+      if (cell.colspan && cell.colspan > 1) attrs += ' colspan="' + cell.colspan + '"';
+      if (cell.rowspan && cell.rowspan > 1) attrs += ' rowspan="' + cell.rowspan + '"';
+      lines.push('<' + tag + attrs + '>');
       for (const para of cell.paragraphs) {
         lines.push('<p>' + renderInlineSegment(mergeConsecutiveRuns(para), comments) + '</p>');
       }

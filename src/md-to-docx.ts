@@ -17,8 +17,13 @@ export interface MdToken {
   language?: string;        // for code blocks
 }
 
+export interface MdTableCell {
+  runs: MdRun[];
+  colspan?: number;
+  rowspan?: number;
+}
 export interface MdTableRow {
-  cells: MdRun[][];         // each cell has runs
+  cells: MdTableCell[];     // each cell has runs + optional span info
   header: boolean;
 }
 
@@ -627,21 +632,21 @@ function extractTableData(tokens: any[]): MdTableRow[] {
   return rows;
 }
 
-function extractTableCells(tokens: any[]): MdRun[][] {
-  const cells: MdRun[][] = [];
+function extractTableCells(tokens: any[]): MdTableCell[] {
+  const cells: MdTableCell[] = [];
   let i = 0;
-  
+
   while (i < tokens.length) {
     if (tokens[i].type === 'td_open' || tokens[i].type === 'th_open') {
       const closeType = tokens[i].type.replace('_open', '_close');
       const closePos = findClosingToken(tokens, i, closeType);
-      cells.push(convertInlineTokens(tokens.slice(i + 1, closePos)));
+      cells.push({ runs: convertInlineTokens(tokens.slice(i + 1, closePos)) });
       i = closePos + 1;
     } else {
       i++;
     }
   }
-  
+
   return cells;
 }
 
@@ -667,7 +672,11 @@ function extractHtmlTableRows(tableHtml: string): MdTableRow[] {
     const cells = extractHtmlTableCells(rowMatch[1]);
     if (cells.length > 0) {
       rows.push({
-        cells: cells.map(cell => [{ type: 'text', text: cell.text }]),
+        cells: cells.map(cell => ({
+          runs: [{ type: 'text' as const, text: cell.text }],
+          ...(cell.colspan && cell.colspan > 1 ? { colspan: cell.colspan } : {}),
+          ...(cell.rowspan && cell.rowspan > 1 ? { rowspan: cell.rowspan } : {}),
+        })),
         header: cells.some(c => c.isHeader)
       });
     }
@@ -675,15 +684,25 @@ function extractHtmlTableRows(tableHtml: string): MdTableRow[] {
   return rows;
 }
 
-function extractHtmlTableCells(rowHtml: string): Array<{ text: string; isHeader: boolean }> {
-  const cells: Array<{ text: string; isHeader: boolean }> = [];
+function extractHtmlTableCells(rowHtml: string): Array<{ text: string; isHeader: boolean; colspan?: number; rowspan?: number }> {
+  const cells: Array<{ text: string; isHeader: boolean; colspan?: number; rowspan?: number }> = [];
   // Nested table-cell tags are not supported; this matches flat <th>/<td> content only.
-  const cellRegex = /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  const cellRegex = /<(th|td)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
   let cellMatch: RegExpExecArray | null;
   while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
     const isHeader = cellMatch[1].toLowerCase() === 'th';
-    const text = normalizeHtmlCellText(cellMatch[2]);
-    cells.push({ text, isHeader });
+    const attrs = cellMatch[2];
+    const text = normalizeHtmlCellText(cellMatch[3]);
+    const colspanMatch = attrs.match(/colspan\s*=\s*["']?(\d+)/i);
+    const rowspanMatch = attrs.match(/rowspan\s*=\s*["']?(\d+)/i);
+    const colspan = colspanMatch ? parseInt(colspanMatch[1], 10) : undefined;
+    const rowspan = rowspanMatch ? parseInt(rowspanMatch[1], 10) : undefined;
+    cells.push({
+      text,
+      isHeader,
+      ...(colspan && colspan > 1 ? { colspan } : {}),
+      ...(rowspan && rowspan > 1 ? { rowspan } : {}),
+    });
   }
   return cells;
 }
@@ -708,164 +727,6 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&');
-}
-
-export function prettyPrintMd(tokens: MdToken[]): string {
-  const lines: string[] = [];
-  
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    const nextToken = tokens[i + 1];
-    
-    switch (token.type) {
-      case 'heading':
-        const hashes = '#'.repeat(token.level || 1);
-        lines.push(hashes + ' ' + formatRuns(token.runs));
-        lines.push('');
-        break;
-        
-      case 'paragraph':
-        lines.push(formatRuns(token.runs));
-        lines.push('');
-        break;
-        
-      case 'list_item':
-        const indent = '  '.repeat((token.level || 1) - 1);
-        const marker = token.ordered ? '1. ' : '- ';
-        lines.push(indent + marker + formatRuns(token.runs));
-        // Add blank line if next token is not a list item
-        if (nextToken && nextToken.type !== 'list_item') {
-          lines.push('');
-        }
-        break;
-        
-      case 'blockquote':
-        const prefix = '>'.repeat(token.level || 1) + ' ';
-        lines.push(prefix + formatRuns(token.runs));
-        // Add blank line if next token is not a blockquote
-        if (nextToken && nextToken.type !== 'blockquote') {
-          lines.push('');
-        }
-        break;
-        
-      case 'code_block':
-        const lang = token.language || '';
-        lines.push('```' + lang);
-        const codeContent = token.runs[0]?.text || '';
-        // Don't add extra newline if content already ends with one
-        const trimmedContent = codeContent.endsWith('\n') ? codeContent.slice(0, -1) : codeContent;
-        lines.push(trimmedContent);
-        lines.push('```');
-        lines.push('');
-        break;
-        
-      case 'table':
-        if (token.rows) {
-          for (let j = 0; j < token.rows.length; j++) {
-            const row = token.rows[j];
-            const cellTexts = row.cells.map(cell => formatRuns(cell));
-            lines.push('| ' + cellTexts.join(' | ') + ' |');
-            
-            if (j === 0 && row.header) {
-              const separator = cellTexts.map(() => '---').join(' | ');
-              lines.push('| ' + separator + ' |');
-            }
-          }
-          lines.push('');
-        }
-        break;
-        
-      case 'hr':
-        lines.push('---');
-        lines.push('');
-        break;
-    }
-  }
-  
-  return lines.join('\n').replace(/\n+$/, '\n');
-}
-
-function mergeAdjacentRuns(runs: MdRun[]): MdRun[] {
-  const result: MdRun[] = [];
-  for (const run of runs) {
-    const prev = result[result.length - 1];
-    if (prev && prev.type === 'text' && run.type === 'text' &&
-        !!prev.bold === !!run.bold && !!prev.italic === !!run.italic &&
-        !!prev.underline === !!run.underline && !!prev.strikethrough === !!run.strikethrough &&
-        !!prev.code === !!run.code && !!prev.superscript === !!run.superscript &&
-        !!prev.subscript === !!run.subscript && prev.href === run.href) {
-      prev.text += run.text;
-    } else {
-      result.push({ ...run });
-    }
-  }
-  return result;
-}
-
-function formatRuns(runs: MdRun[]): string {
-  return mergeAdjacentRuns(runs).map(run => {
-    let text = run.text;
-    
-    switch (run.type) {
-      case 'critic_add':
-        return '{++' + text + '++}';
-      case 'critic_del':
-        return '{--' + text + '--}';
-      case 'critic_sub':
-        return '{~~' + text + '~>' + (run.newText || '') + '~~}';
-      case 'critic_highlight':
-        if (run.highlightColor) {
-          return '==' + text + '=={' + run.highlightColor + '}';
-        }
-        return '==' + text + '==';
-      case 'critic_comment':
-        if (run.author && run.date && run.commentText) {
-          return '{>>' + run.author + ' (' + run.date + '): ' + run.commentText + '<<}';
-        } else if (run.commentText) {
-          return '{>>' + run.commentText + '<<}';
-        } else if (run.author) {
-          return '{>>' + run.author + '<<}';
-        }
-        return '{>><<}';  // Empty comment
-      case 'citation':
-        if (run.keys && run.locators && run.locators.size > 0) {
-          const parts = run.keys.map(key => {
-            const locator = run.locators!.get(key);
-            return locator ? '@' + key + ', ' + locator : '@' + key;
-          });
-          return '[' + parts.join('; ') + ']';
-        } else if (run.keys) {
-          return '[' + run.keys.map(k => '@' + k).join('; ') + ']';
-        }
-        return '[@' + text + ']';
-      case 'math':
-        if (run.display) {
-          return '$$' + text + '$$';
-        }
-        return '$' + text + '$';
-      case 'softbreak':
-        return '\n';
-      default:
-        // Apply formatting
-        if (run.bold && run.italic) text = '***' + text + '***';
-        else if (run.bold) text = '**' + text + '**';
-        else if (run.italic) text = '*' + text + '*';
-        
-        if (run.strikethrough) text = '~~' + text + '~~';
-        if (run.underline) text = '<u>' + text + '</u>';
-        if (run.superscript) text = '<sup>' + text + '</sup>';
-        if (run.subscript) text = '<sub>' + text + '</sub>';
-        if (run.code) text = '`' + text + '`';
-        
-        if (run.href) {
-          const needsAngles = /[()[\]\s]/.test(run.href);
-          const url = needsAngles ? '<' + run.href + '>' : run.href;
-          text = '[' + text + '](' + url + ')';
-        }
-        
-        return text;
-    }
-  }).join('');
 }
 
 // OOXML Generation Layer
@@ -1354,15 +1215,115 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
 
 export function generateTable(token: MdToken): string {
   if (!token.rows) return '';
-  
+
+  // Compute total grid columns by simulating grid occupancy (accounts for
+  // columns implicitly occupied by rowspan cells from previous rows).
+  let totalCols = 0;
+  {
+    const simMerge = new Map<number, { remaining: number; colspan: number }>();
+    for (const row of token.rows) {
+      let gridCol = 0;
+      let ci = 0;
+      // Walk the grid for this row, skipping columns occupied by rowspan continuations
+      while (ci < row.cells.length) {
+        // Skip columns occupied by pending vertical merges
+        let pending = simMerge.get(gridCol);
+        while (pending && pending.remaining > 0) {
+          pending.remaining--;
+          if (pending.remaining === 0) simMerge.delete(gridCol);
+          gridCol += pending.colspan;
+          pending = simMerge.get(gridCol);
+        }
+        const cell = row.cells[ci++];
+        const cs = cell.colspan || 1;
+        const rs = cell.rowspan || 1;
+        if (rs > 1) {
+          simMerge.set(gridCol, { remaining: rs - 1, colspan: cs });
+        }
+        gridCol += cs;
+      }
+      // Skip any trailing columns still occupied by merges
+      let pending = simMerge.get(gridCol);
+      while (pending && pending.remaining > 0) {
+        pending.remaining--;
+        if (pending.remaining === 0) simMerge.delete(gridCol);
+        gridCol += pending.colspan;
+        pending = simMerge.get(gridCol);
+      }
+      if (gridCol > totalCols) totalCols = gridCol;
+    }
+  }
+  if (totalCols === 0) totalCols = 1;
+
+  // Check if any cell uses colspan or rowspan
+  const hasSpans = token.rows.some(row =>
+    row.cells.some(cell => (cell.colspan && cell.colspan > 1) || (cell.rowspan && cell.rowspan > 1))
+  );
+
   let xml = '<w:tbl>';
   xml += '<w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar><w:tblW w:w="0" w:type="auto"/></w:tblPr>';
-  
+
+  // Emit tblGrid if spans are present
+  if (hasSpans) {
+    xml += '<w:tblGrid>';
+    for (let c = 0; c < totalCols; c++) {
+      xml += '<w:gridCol/>';
+    }
+    xml += '</w:tblGrid>';
+  }
+
+  // Track pending vertical merges: gridCol -> { remaining: number; colspan: number }
+  const mergeMap = new Map<number, { remaining: number; colspan: number }>();
+
   for (const row of token.rows) {
     xml += '<w:tr>';
-    for (const cell of row.cells) {
-      xml += '<w:tc><w:p>';
-      for (const run of cell) {
+    let cellIdx = 0;
+    let gridCol = 0;
+
+    while (gridCol < totalCols) {
+      // Check for pending vertical merge continuation at this column
+      const pending = mergeMap.get(gridCol);
+      if (pending && pending.remaining > 0) {
+        let tcPr = '<w:tcPr>';
+        if (pending.colspan > 1) {
+          tcPr += '<w:gridSpan w:val="' + pending.colspan + '"/>';
+        }
+        tcPr += '<w:vMerge/></w:tcPr>';
+        xml += '<w:tc>' + tcPr + '<w:p/></w:tc>';
+        pending.remaining--;
+        if (pending.remaining === 0) mergeMap.delete(gridCol);
+        gridCol += pending.colspan;
+        continue;
+      }
+
+      // Emit real cell
+      if (cellIdx >= row.cells.length) {
+        // Pad with empty cells if row is short
+        xml += '<w:tc><w:p/></w:tc>';
+        gridCol++;
+        continue;
+      }
+
+      const cell = row.cells[cellIdx++];
+      const cs = cell.colspan || 1;
+      const rs = cell.rowspan || 1;
+
+      let tcPr = '';
+      if (cs > 1 || rs > 1) {
+        // ECMA-376 §17.4.66: tcPr children order is gridSpan then vMerge
+        const parts: string[] = [];
+        if (cs > 1) parts.push('<w:gridSpan w:val="' + cs + '"/>');
+        if (rs > 1) parts.push('<w:vMerge w:val="restart"/>');
+        tcPr = '<w:tcPr>' + parts.join('') + '</w:tcPr>';
+      }
+
+      // Register vertical merge for subsequent rows
+      if (rs > 1) {
+        mergeMap.set(gridCol, { remaining: rs - 1, colspan: cs });
+      }
+
+      xml += '<w:tc>' + tcPr + '<w:p>';
+      for (const run of cell.runs) {
         if (run.type === 'text') {
           let rPr = generateRPr(run);
           if (row.header && !run.bold) {
@@ -1372,10 +1333,11 @@ export function generateTable(token: MdToken): string {
         }
       }
       xml += '</w:p></w:tc>';
+      gridCol += cs;
     }
     xml += '</w:tr>';
   }
-  
+
   xml += '</w:tbl>';
   return xml;
 }

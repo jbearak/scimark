@@ -22,10 +22,12 @@ import {
   citationPandocKeys,
   ZoteroCitation,
 } from './converter';
+import { convertMdToDocx } from './md-to-docx';
 
 const fixturesDir = join(__dirname, '..', 'test', 'fixtures');
 const sampleData = new Uint8Array(readFileSync(join(fixturesDir, 'sample.docx')));
 const formattingSampleData = new Uint8Array(readFileSync(join(fixturesDir, 'formatting_sample.docx')));
+const tablesData = new Uint8Array(readFileSync(join(fixturesDir, 'tables.docx')));
 const expectedMd = readFileSync(join(fixturesDir, 'expected-output.md'), 'utf-8').trimEnd();
 const expectedBib = readFileSync(join(fixturesDir, 'expected-output.bib'), 'utf-8').trimEnd();
 
@@ -146,6 +148,78 @@ describe('DOCX table conversion', () => {
     expect(withoutHeaderMd).toContain('<td>');
   });
 
+  test('reads gridSpan as colspan', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>Span</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('<td colspan="2">');
+    expect(result.markdown).toContain('Span');
+  });
+
+  test('reads vMerge chain as rowspan', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Tall</w:t></w:r></w:p></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>R1</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '<w:tr>'
+      + '<w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>R2</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '<w:tr>'
+      + '<w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>R3</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('<td rowspan="3">');
+    expect(result.markdown).toContain('Tall');
+    expect(result.markdown).toContain('R1');
+    expect(result.markdown).toContain('R2');
+    expect(result.markdown).toContain('R3');
+    // Continuation cells should not appear in output
+    const tdCount = (result.markdown.match(/<td/g) || []).length;
+    // 1 (rowspan=3) + 3 (R1, R2, R3) = 4 td tags
+    expect(tdCount).toBe(4);
+  });
+
+  test('reads combined gridSpan and vMerge', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:tcPr><w:gridSpan w:val="2"/><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Big</w:t></w:r></w:p></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>C</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '<w:tr>'
+      + '<w:tc><w:tcPr><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr><w:p/></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>D</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('<td colspan="2" rowspan="2">');
+    expect(result.markdown).toContain('Big');
+    expect(result.markdown).toContain('C');
+    expect(result.markdown).toContain('D');
+  });
+
   test('keeps table-cell inline rendering semantically equivalent to body inline rendering', () => {
     const comments = new Map([
       ['1', { author: 'Reviewer', text: 'note', date: '2025-01-01T00:00:00Z' }]
@@ -186,6 +260,92 @@ describe('DOCX table conversion', () => {
     const paraMatch = tableMarkdown.match(/<p>([\s\S]*?)<\/p>/);
     expect(paraMatch).not.toBeNull();
     expect(paraMatch?.[1]).toBe(bodyMarkdown);
+  });
+});
+
+describe('colspan/rowspan roundtrip', () => {
+  test('MD (HTML table with colspan) → DOCX → MD preserves colspan', async () => {
+    const md = '<table><tr><td colspan="2">Span</td></tr><tr><td>A</td><td>B</td></tr></table>';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+
+    expect(result.markdown).toContain('<td colspan="2">');
+    expect(result.markdown).toContain('Span');
+    expect(result.markdown).toContain('A');
+    expect(result.markdown).toContain('B');
+  });
+
+  test('MD (HTML table with rowspan) → DOCX → MD preserves rowspan', async () => {
+    const md = '<table><tr><td rowspan="2">Tall</td><td>R1</td></tr><tr><td>R2</td></tr></table>';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+
+    expect(result.markdown).toContain('<td rowspan="2">');
+    expect(result.markdown).toContain('Tall');
+    expect(result.markdown).toContain('R1');
+    expect(result.markdown).toContain('R2');
+  });
+
+  test('MD (HTML table with colspan+rowspan) → DOCX → MD preserves both', async () => {
+    const md = '<table><tr><td colspan="2" rowspan="2">Big</td><td>C</td></tr><tr><td>D</td></tr><tr><td>E</td><td>F</td><td>G</td></tr></table>';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+
+    expect(result.markdown).toContain('colspan="2"');
+    expect(result.markdown).toContain('rowspan="2"');
+    expect(result.markdown).toContain('Big');
+  });
+});
+
+describe('Integration: tables.docx fixture', () => {
+  test('converts tables.docx and produces three tables', async () => {
+    const result = await convertDocx(tablesData);
+    const tables = result.markdown.match(/<table>/g) || [];
+    expect(tables.length).toBe(3);
+  });
+
+  test('simple table has header row and content cells', async () => {
+    const result = await convertDocx(tablesData);
+    // First table: simple 2x5, first row is header
+    expect(result.markdown).toContain('<th>');
+    expect(result.markdown).toContain('Row 1 Col 1');
+    expect(result.markdown).toContain('Row 2 Col 1');
+    expect(result.markdown).toContain('Row 2 Col 5');
+  });
+
+  test('spanned-header table has colspan=2 cells', async () => {
+    const result = await convertDocx(tablesData);
+    expect(result.markdown).toContain('Row 1 Cols 2-3');
+    expect(result.markdown).toContain('Row 1 Cols 4-5');
+    // These cells should have colspan="2"
+    expect(result.markdown).toContain('colspan="2"');
+  });
+
+  test('complex table has both colspan and rowspan', async () => {
+    const result = await convertDocx(tablesData);
+    // Table 3: Row 1 Cols 2-4 (colspan=3)
+    expect(result.markdown).toContain('Row 1 Cols 2-4');
+    expect(result.markdown).toContain('colspan="3"');
+    // Rows 3-4 Col 3 and Rows 3-4 Col 5 each have rowspan=2
+    expect(result.markdown).toContain('Rows 3-4 Col 3');
+    expect(result.markdown).toContain('Rows 3-4 Col 5');
+    expect(result.markdown).toContain('rowspan="2"');
+  });
+
+  test('complex table roundtrips: DOCX → MD → DOCX → MD preserves spans', async () => {
+    const firstPass = await convertDocx(tablesData);
+    const { docx } = await convertMdToDocx(firstPass.markdown);
+    const secondPass = await convertDocx(docx);
+
+    // colspan attributes preserved
+    expect(secondPass.markdown).toContain('colspan="3"');
+    expect(secondPass.markdown).toContain('colspan="2"');
+    // rowspan attributes preserved
+    expect(secondPass.markdown).toContain('rowspan="2"');
+    // Content preserved
+    expect(secondPass.markdown).toContain('Row 1 Cols 2-4');
+    expect(secondPass.markdown).toContain('Rows 3-4 Col 3');
+    expect(secondPass.markdown).toContain('Rows 3-4 Col 5');
   });
 });
 
