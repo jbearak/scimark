@@ -110,6 +110,26 @@ test('parseArgs throws on invalid citation key format', () => {
     .toThrow('Invalid citation key format "invalid". Use authorYearTitle, authorYear, or numeric');
 });
 
+test('parseArgs defaults tableIndent to 2 spaces', () => {
+  const result = parseArgs(['node', 'cli.js', 'test.docx']);
+  expect(result.tableIndent).toBe('  ');
+});
+
+test('parseArgs parses --table-indent', () => {
+  const result = parseArgs(['node', 'cli.js', 'test.docx', '--table-indent', '4']);
+  expect(result.tableIndent).toBe('    ');
+});
+
+test('parseArgs --table-indent 0 produces empty string', () => {
+  const result = parseArgs(['node', 'cli.js', 'test.docx', '--table-indent', '0']);
+  expect(result.tableIndent).toBe('');
+});
+
+test('parseArgs throws on invalid --table-indent', () => {
+  expect(() => parseArgs(['node', 'cli.js', 'test.docx', '--table-indent', 'abc']))
+    .toThrow('Invalid table indent "abc". Use a non-negative integer');
+});
+
 test('parseArgs throws on invalid mixed citation style', () => {
   expect(() => parseArgs(['node', 'cli.js', 'test.md', '--mixed-citation-style', 'invalid']))
     .toThrow('Invalid mixed citation style "invalid". Use separate or unified');
@@ -122,7 +142,8 @@ test('parseArgs throws when value-taking flags are missing values', () => {
     '--template',
     '--author',
     '--mixed-citation-style',
-    '--csl-cache-dir'
+    '--csl-cache-dir',
+    '--table-indent'
   ];
 
   for (const flag of valueFlags) {

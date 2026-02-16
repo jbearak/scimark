@@ -1238,23 +1238,26 @@ function renderInlineRange(
   return { text: out, nextIndex: i };
 }
 
-function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>): string {
+function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  '): string {
+  const i1 = indent;  // tr level
+  const i2 = indent + indent;  // td/th level
+  const i3 = indent + indent + indent;  // content level
   const lines: string[] = ['<table>'];
   for (let rowIdx = 0; rowIdx < table.rows.length; rowIdx++) {
     const row = table.rows[rowIdx];
-    lines.push('<tr>');
+    lines.push(i1 + '<tr>');
     for (const cell of row.cells) {
       const tag = row.isHeader ? 'th' : 'td';
       let attrs = '';
       if (cell.colspan && cell.colspan > 1) attrs += ' colspan="' + cell.colspan + '"';
       if (cell.rowspan && cell.rowspan > 1) attrs += ' rowspan="' + cell.rowspan + '"';
-      lines.push('<' + tag + attrs + '>');
+      lines.push(i2 + '<' + tag + attrs + '>');
       for (const para of cell.paragraphs) {
-        lines.push('<p>' + renderInlineSegment(mergeConsecutiveRuns(para), comments) + '</p>');
+        lines.push(i3 + '<p>' + renderInlineSegment(mergeConsecutiveRuns(para), comments) + '</p>');
       }
-      lines.push('</' + tag + '>');
+      lines.push(i2 + '</' + tag + '>');
     }
-    lines.push('</tr>');
+    lines.push(i1 + '</tr>');
   }
   lines.push('</table>');
   return lines.join('\n');
@@ -1263,6 +1266,7 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
+  options?: { tableIndent?: string },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
   const output: string[] = [];
@@ -1315,7 +1319,7 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      output.push(renderHtmlTable(item, comments));
+      output.push(renderHtmlTable(item, comments, options?.tableIndent));
       lastListType = undefined;
       i++;
       continue;
@@ -1453,7 +1457,8 @@ export async function extractAuthor(zip: JSZip): Promise<string | undefined> {
 
 export async function convertDocx(
   data: Uint8Array,
-  format: CitationKeyFormat = 'authorYearTitle'
+  format: CitationKeyFormat = 'authorYearTitle',
+  options?: { tableIndent?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
   const [comments, zoteroCitations, zoteroPrefs, author] = await Promise.all([
@@ -1469,7 +1474,7 @@ export async function convertDocx(
   // Extract consecutive Title-styled paragraphs from the beginning of the document
   const titleLines = extractTitleLines(docContent);
 
-  let markdown = buildMarkdown(docContent, comments);
+  let markdown = buildMarkdown(docContent, comments, { tableIndent: options?.tableIndent });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
   if (!zoteroBiblData) {

@@ -15,6 +15,7 @@ export interface CliOptions {
   authorName?: string;
   mixedCitationStyle: 'separate' | 'unified';
   cslCacheDir: string;
+  tableIndent: string;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -26,7 +27,8 @@ export function parseArgs(argv: string[]): CliOptions {
     force: false,
     citationKeyFormat: 'authorYearTitle',
     mixedCitationStyle: 'separate',
-    cslCacheDir: path.join(os.homedir(), '.manuscript-markdown', 'csl-cache')
+    cslCacheDir: path.join(os.homedir(), '.manuscript-markdown', 'csl-cache'),
+    tableIndent: '  ',
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -67,6 +69,13 @@ export function parseArgs(argv: string[]): CliOptions {
       options.mixedCitationStyle = style as any;
     } else if (arg === '--csl-cache-dir') {
       options.cslCacheDir = requireValue('--csl-cache-dir');
+    } else if (arg === '--table-indent') {
+      const val = requireValue('--table-indent');
+      const n = parseInt(val, 10);
+      if (isNaN(n) || n < 0) {
+        throw new Error(`Invalid table indent "${val}". Use a non-negative integer`);
+      }
+      options.tableIndent = ' '.repeat(n);
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown option "${arg}"`);
     } else if (!options.inputPath) {
@@ -104,7 +113,8 @@ Options:
   --template <path>               Template DOCX file (MD→DOCX)
   --author <name>                 Author name (MD→DOCX, default: OS username)
   --mixed-citation-style <style>  Mixed citation style: separate, unified (default: separate)
-  --csl-cache-dir <path>          CSL style cache directory`);
+  --csl-cache-dir <path>          CSL style cache directory
+  --table-indent <n>              Spaces per indent level in HTML tables (DOCX→MD, default: 2)`);
 }
 
 function showVersion() {
@@ -154,7 +164,7 @@ async function runDocxToMd(options: CliOptions) {
   // Check output conflicts up-front so dual conflicts are reported together.
   assertNoDocxToMdConflicts(mdPath, bibPath, options.force);
 
-  const result = await convertDocx(data, options.citationKeyFormat);
+  const result = await convertDocx(data, options.citationKeyFormat, { tableIndent: options.tableIndent });
   fs.writeFileSync(mdPath, result.markdown);
   console.log(mdPath);
 

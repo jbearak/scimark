@@ -148,6 +148,60 @@ describe('DOCX table conversion', () => {
     expect(withoutHeaderMd).toContain('<td>');
   });
 
+  test('indents table tags with default 2-space indent', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tblPr><w:tblLook w:firstRow="1"/></w:tblPr>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>H</w:t></w:r></w:p></w:tc></w:tr>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>D</w:t></w:r></w:p></w:tc></w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    const tableHtml = result.markdown.match(/<table>[\s\S]*?<\/table>/)?.[0] ?? '';
+    expect(tableHtml).toContain('\n  <tr>');
+    expect(tableHtml).toContain('\n    <th>');
+    expect(tableHtml).toContain('\n      <p>H</p>');
+    expect(tableHtml).toContain('\n    </th>');
+    expect(tableHtml).toContain('\n  </tr>');
+    expect(tableHtml).toContain('\n    <td>');
+    expect(tableHtml).toContain('\n      <p>D</p>');
+    expect(tableHtml).toContain('\n    </td>');
+  });
+
+  test('respects custom tableIndent option', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc></w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf, 'authorYearTitle', { tableIndent: '\t' });
+
+    const tableHtml = result.markdown.match(/<table>[\s\S]*?<\/table>/)?.[0] ?? '';
+    expect(tableHtml).toContain('\n\t<tr>');
+    expect(tableHtml).toContain('\n\t\t<td>');
+    expect(tableHtml).toContain('\n\t\t\t<p>A</p>');
+    expect(tableHtml).toContain('\n\t\t</td>');
+    expect(tableHtml).toContain('\n\t</tr>');
+  });
+
+  test('no indentation when tableIndent is empty string', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc></w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf, 'authorYearTitle', { tableIndent: '' });
+
+    const tableHtml = result.markdown.match(/<table>[\s\S]*?<\/table>/)?.[0] ?? '';
+    expect(tableHtml).toContain('\n<tr>');
+    expect(tableHtml).toContain('\n<td>');
+    expect(tableHtml).toContain('\n<p>A</p>');
+  });
+
   test('reads gridSpan as colspan', async () => {
     const xml = wrapDocumentXml(
       '<w:tbl>'
@@ -294,6 +348,30 @@ describe('colspan/rowspan roundtrip', () => {
     expect(result.markdown).toContain('colspan="2"');
     expect(result.markdown).toContain('rowspan="2"');
     expect(result.markdown).toContain('Big');
+  });
+
+  test('indented HTML table roundtrips through DOCX correctly', async () => {
+    const indentedMd = [
+      '<table>',
+      '  <tr>',
+      '    <th>',
+      '      <p>Header</p>',
+      '    </th>',
+      '  </tr>',
+      '  <tr>',
+      '    <td>',
+      '      <p>Data</p>',
+      '    </td>',
+      '  </tr>',
+      '</table>',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(indentedMd);
+    const result = await convertDocx(docx);
+
+    expect(result.markdown).toContain('<th>');
+    expect(result.markdown).toContain('Header');
+    expect(result.markdown).toContain('<td>');
+    expect(result.markdown).toContain('Data');
   });
 });
 

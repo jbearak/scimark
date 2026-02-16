@@ -620,6 +620,12 @@
           "default": "separate",
           "description": "How to render mixed Zotero/non-Zotero grouped citations. 'separate': each portion gets its own parentheses (clean Zotero refresh). 'unified': one set of parentheses wrapping everything (looks like one group but may desync on Zotero refresh)."
         },
+        "manuscriptMarkdown.tableIndent": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "description": "Number of spaces per indent level for HTML tables in DOCX to Markdown conversion"
+        },
         "manuscriptMarkdown.citationKeyFormat": {
           "type": "string",
           "enum": [
