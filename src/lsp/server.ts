@@ -39,6 +39,7 @@ let workspaceRootPaths: string[] = [];
 
 interface CachedBibData extends ParsedBibData {
 	mtimeMs: number;
+	size: number;
 }
 
 interface ResolvedSymbol {
@@ -235,12 +236,12 @@ async function getBibDataForPath(bibPath: string): Promise<ParsedBibData | undef
 	try {
 		const stat = await fsp.stat(bibPath);
 		const cached = bibCache.get(bibPath);
-		if (cached && cached.mtimeMs === stat.mtimeMs) {
+		if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
 			return cached;
 		}
 		const text = await fsp.readFile(bibPath, 'utf8');
 		const parsed = parseBibDataFromText(bibPath, text);
-		bibCache.set(bibPath, { ...parsed, mtimeMs: stat.mtimeMs });
+		bibCache.set(bibPath, { ...parsed, mtimeMs: stat.mtimeMs, size: stat.size });
 		return parsed;
 	} catch {
 		return undefined;

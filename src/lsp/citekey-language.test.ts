@@ -64,6 +64,14 @@ describe('getCompletionContextAtOffset', () => {
 		expect(ctx?.prefix).toBe('smi');
 	});
 
+	test('returns completion context when citation bracket is not closed yet', () => {
+		const text = 'Text [@smi';
+		const offset = text.length;
+		const ctx = getCompletionContextAtOffset(text, offset);
+		expect(ctx).toBeDefined();
+		expect(ctx?.prefix).toBe('smi');
+	});
+
 	test('does not return completion context outside citation lists', () => {
 		const text = 'email @smi';
 		const offset = text.length;
@@ -122,5 +130,11 @@ describe('parseBibDataFromText / findBibKeyAtOffset', () => {
 		const smithOffset = parsed.keyOffsets.get('smith2020');
 		expect(smithOffset).toBeDefined();
 		expect(findBibKeyAtOffset(parsed, (smithOffset ?? 0) + 2)).toBe('smith2020');
+	});
+
+	test('maps key offset after opening brace when key appears in entry type', () => {
+		const text = '@book{book,\n  title = {One},\n}\n';
+		const parsed = parseBibDataFromText('/tmp/test.bib', text);
+		expect(parsed.keyOffsets.get('book')).toBe(text.indexOf('{book') + 1);
 	});
 });

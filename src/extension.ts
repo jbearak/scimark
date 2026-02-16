@@ -475,6 +475,9 @@ function startCitekeyLanguageClient(context: vscode.ExtensionContext): void {
 		documentSelector: [
 			{ scheme: 'file', language: 'markdown' },
 			{ scheme: 'untitled', language: 'markdown' },
+			{ scheme: 'file', language: 'bibtex' },
+			{ scheme: 'untitled', language: 'bibtex' },
+			{ scheme: 'file', pattern: '**/*.bib' },
 		],
 		synchronize: {
 			fileEvents: [markdownWatcher, bibWatcher],

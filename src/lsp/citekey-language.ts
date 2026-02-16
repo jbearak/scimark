@@ -156,12 +156,13 @@ export function resolveBibliographyPath(
 export function parseBibDataFromText(filePath: string, text: string): ParsedBibData {
 	const entries = parseBibtex(text);
 	const keyOffsets = new Map<string, number>();
-	const entryStartRe = /@[\w-]+\s*\{\s*([^,\s]+)\s*,/g;
+	const entryStartRe = /@(\w+)\s*\{\s*([^,\s]+)\s*,/g;
 	let match: RegExpExecArray | null;
 	while ((match = entryStartRe.exec(text)) !== null) {
-		const key = match[1];
+		const key = match[2];
 		if (!keyOffsets.has(key)) {
-			const offsetInMatch = match[0].indexOf(key);
+			const bracePos = match[0].indexOf('{');
+			const offsetInMatch = bracePos >= 0 ? match[0].indexOf(key, bracePos + 1) : -1;
 			if (offsetInMatch >= 0) {
 				keyOffsets.set(key, match.index + offsetInMatch);
 			}
@@ -189,11 +190,16 @@ function isInsideCitationSegment(text: string, atOffset: number): boolean {
 	if (closedBefore > openBracket) {
 		return false;
 	}
+	const lineEnd = text.indexOf('\n', openBracket + 1);
 	const closeBracket = text.indexOf(']', openBracket + 1);
-	if (closeBracket === -1 || atOffset > closeBracket) {
+	if (lineEnd !== -1 && closeBracket !== -1 && lineEnd < closeBracket) {
 		return false;
 	}
-	const inside = text.slice(openBracket + 1, closeBracket);
+	const segmentEnd = closeBracket !== -1 ? closeBracket : (lineEnd !== -1 ? lineEnd : text.length);
+	if (atOffset > segmentEnd) {
+		return false;
+	}
+	const inside = text.slice(openBracket + 1, segmentEnd);
 	return inside.includes('@');
 }
 
