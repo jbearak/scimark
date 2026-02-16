@@ -17,8 +17,13 @@ export interface MdToken {
   language?: string;        // for code blocks
 }
 
+export interface MdTableCell {
+  runs: MdRun[];
+  colspan?: number;
+  rowspan?: number;
+}
 export interface MdTableRow {
-  cells: MdRun[][];         // each cell has runs
+  cells: MdTableCell[];     // each cell has runs + optional span info
   header: boolean;
 }
 
@@ -627,21 +632,21 @@ function extractTableData(tokens: any[]): MdTableRow[] {
   return rows;
 }
 
-function extractTableCells(tokens: any[]): MdRun[][] {
-  const cells: MdRun[][] = [];
+function extractTableCells(tokens: any[]): MdTableCell[] {
+  const cells: MdTableCell[] = [];
   let i = 0;
-  
+
   while (i < tokens.length) {
     if (tokens[i].type === 'td_open' || tokens[i].type === 'th_open') {
       const closeType = tokens[i].type.replace('_open', '_close');
       const closePos = findClosingToken(tokens, i, closeType);
-      cells.push(convertInlineTokens(tokens.slice(i + 1, closePos)));
+      cells.push({ runs: convertInlineTokens(tokens.slice(i + 1, closePos)) });
       i = closePos + 1;
     } else {
       i++;
     }
   }
-  
+
   return cells;
 }
 
@@ -667,7 +672,11 @@ function extractHtmlTableRows(tableHtml: string): MdTableRow[] {
     const cells = extractHtmlTableCells(rowMatch[1]);
     if (cells.length > 0) {
       rows.push({
-        cells: cells.map(cell => [{ type: 'text', text: cell.text }]),
+        cells: cells.map(cell => ({
+          runs: [{ type: 'text' as const, text: cell.text }],
+          ...(cell.colspan && cell.colspan > 1 ? { colspan: cell.colspan } : {}),
+          ...(cell.rowspan && cell.rowspan > 1 ? { rowspan: cell.rowspan } : {}),
+        })),
         header: cells.some(c => c.isHeader)
       });
     }
@@ -675,15 +684,25 @@ function extractHtmlTableRows(tableHtml: string): MdTableRow[] {
   return rows;
 }
 
-function extractHtmlTableCells(rowHtml: string): Array<{ text: string; isHeader: boolean }> {
-  const cells: Array<{ text: string; isHeader: boolean }> = [];
+function extractHtmlTableCells(rowHtml: string): Array<{ text: string; isHeader: boolean; colspan?: number; rowspan?: number }> {
+  const cells: Array<{ text: string; isHeader: boolean; colspan?: number; rowspan?: number }> = [];
   // Nested table-cell tags are not supported; this matches flat <th>/<td> content only.
-  const cellRegex = /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  const cellRegex = /<(th|td)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
   let cellMatch: RegExpExecArray | null;
   while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
     const isHeader = cellMatch[1].toLowerCase() === 'th';
-    const text = normalizeHtmlCellText(cellMatch[2]);
-    cells.push({ text, isHeader });
+    const attrs = cellMatch[2];
+    const text = normalizeHtmlCellText(cellMatch[3]);
+    const colspanMatch = attrs.match(/colspan\s*=\s*["']?(\d+)/i);
+    const rowspanMatch = attrs.match(/rowspan\s*=\s*["']?(\d+)/i);
+    const colspan = colspanMatch ? parseInt(colspanMatch[1], 10) : undefined;
+    const rowspan = rowspanMatch ? parseInt(rowspanMatch[1], 10) : undefined;
+    cells.push({
+      text,
+      isHeader,
+      ...(colspan && colspan > 1 ? { colspan } : {}),
+      ...(rowspan && rowspan > 1 ? { rowspan } : {}),
+    });
   }
   return cells;
 }
@@ -763,7 +782,7 @@ export function prettyPrintMd(tokens: MdToken[]): string {
         if (token.rows) {
           for (let j = 0; j < token.rows.length; j++) {
             const row = token.rows[j];
-            const cellTexts = row.cells.map(cell => formatRuns(cell));
+            const cellTexts = row.cells.map(cell => formatRuns(cell.runs));
             lines.push('| ' + cellTexts.join(' | ') + ' |');
             
             if (j === 0 && row.header) {
@@ -1354,15 +1373,86 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
 
 export function generateTable(token: MdToken): string {
   if (!token.rows) return '';
-  
+
+  // Compute total grid columns
+  let totalCols = 0;
+  for (const row of token.rows) {
+    let rowCols = 0;
+    for (const cell of row.cells) {
+      rowCols += cell.colspan || 1;
+    }
+    if (rowCols > totalCols) totalCols = rowCols;
+  }
+  if (totalCols === 0) totalCols = 1;
+
+  // Check if any cell uses colspan or rowspan
+  const hasSpans = token.rows.some(row =>
+    row.cells.some(cell => (cell.colspan && cell.colspan > 1) || (cell.rowspan && cell.rowspan > 1))
+  );
+
   let xml = '<w:tbl>';
   xml += '<w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar><w:tblW w:w="0" w:type="auto"/></w:tblPr>';
-  
+
+  // Emit tblGrid if spans are present
+  if (hasSpans) {
+    xml += '<w:tblGrid>';
+    for (let c = 0; c < totalCols; c++) {
+      xml += '<w:gridCol/>';
+    }
+    xml += '</w:tblGrid>';
+  }
+
+  // Track pending vertical merges: gridCol -> { remaining: number; colspan: number }
+  const mergeMap = new Map<number, { remaining: number; colspan: number }>();
+
   for (const row of token.rows) {
     xml += '<w:tr>';
-    for (const cell of row.cells) {
-      xml += '<w:tc><w:p>';
-      for (const run of cell) {
+    let cellIdx = 0;
+    let gridCol = 0;
+
+    while (gridCol < totalCols) {
+      // Check for pending vertical merge continuation at this column
+      const pending = mergeMap.get(gridCol);
+      if (pending && pending.remaining > 0) {
+        let tcPr = '<w:tcPr><w:vMerge/>';
+        if (pending.colspan > 1) {
+          tcPr += '<w:gridSpan w:val="' + pending.colspan + '"/>';
+        }
+        tcPr += '</w:tcPr>';
+        xml += '<w:tc>' + tcPr + '<w:p/></w:tc>';
+        pending.remaining--;
+        if (pending.remaining === 0) mergeMap.delete(gridCol);
+        gridCol += pending.colspan;
+        continue;
+      }
+
+      // Emit real cell
+      if (cellIdx >= row.cells.length) {
+        // Pad with empty cells if row is short
+        xml += '<w:tc><w:p/></w:tc>';
+        gridCol++;
+        continue;
+      }
+
+      const cell = row.cells[cellIdx++];
+      const cs = cell.colspan || 1;
+      const rs = cell.rowspan || 1;
+
+      let tcPr = '';
+      if (cs > 1 || rs > 1) {
+        const parts: string[] = [];
+        if (rs > 1) parts.push('<w:vMerge w:val="restart"/>');
+        if (cs > 1) parts.push('<w:gridSpan w:val="' + cs + '"/>');
+        tcPr = '<w:tcPr>' + parts.join('') + '</w:tcPr>';
+      }
+
+      // Register vertical merge for subsequent rows
+      if (rs > 1) {
+        mergeMap.set(gridCol, { remaining: rs - 1, colspan: cs });
+      }
+
+      xml += '<w:tc>' + tcPr + '<w:p>';
+      for (const run of cell.runs) {
         if (run.type === 'text') {
           let rPr = generateRPr(run);
           if (row.header && !run.bold) {
@@ -1372,10 +1462,11 @@ export function generateTable(token: MdToken): string {
         }
       }
       xml += '</w:p></w:tc>';
+      gridCol += cs;
     }
     xml += '</w:tr>';
   }
-  
+
   xml += '</w:tbl>';
   return xml;
 }

@@ -156,8 +156,8 @@ describe('OOXML Generation Properties', () => {
 
     fc.assert(fc.property(tableGen, ({ headers, rows }) => {
       const tableRows = [
-        { cells: headers.map(h => [{ type: 'text' as const, text: h }]), header: true },
-        ...rows.map(row => ({ cells: row.map(c => [{ type: 'text' as const, text: c }]), header: false }))
+        { cells: headers.map(h => ({ runs: [{ type: 'text' as const, text: h }] })), header: true },
+        ...rows.map(row => ({ cells: row.map(c => ({ runs: [{ type: 'text' as const, text: c }] })), header: false }))
       ];
       const token: MdToken = { type: 'table', runs: [], rows: tableRows };
       const table = generateTable(token);

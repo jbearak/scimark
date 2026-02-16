@@ -94,15 +94,15 @@ describe('parseMd HTML tables', () => {
     expect(table).toBeDefined();
     expect(table?.rows).toHaveLength(2);
     expect(table?.rows?.[0].header).toBe(true);
-    expect(table?.rows?.[0].cells[0][0].text).toBe('H1');
-    expect(table?.rows?.[1].cells[1][0].text).toBe('B');
+    expect(table?.rows?.[0].cells[0].runs[0].text).toBe('H1');
+    expect(table?.rows?.[1].cells[1].runs[0].text).toBe('B');
   });
 
   it('decodes entities and strips nested tags inside HTML table cells', () => {
     const markdown = '<table><tr><td><strong>A &amp; B</strong><br/>line</td></tr></table>';
     const tokens = parseMd(markdown);
     const table = tokens.find(t => t.type === 'table');
-    const text = table?.rows?.[0].cells[0][0].text;
+    const text = table?.rows?.[0].cells[0].runs[0].text;
 
     expect(text).toBe('A & B line');
   });
@@ -111,7 +111,7 @@ describe('parseMd HTML tables', () => {
     const markdown = '<table><tr><td>&amp;lt;tag&amp;gt;</td></tr></table>';
     const tokens = parseMd(markdown);
     const table = tokens.find(t => t.type === 'table');
-    const text = table?.rows?.[0].cells[0][0].text;
+    const text = table?.rows?.[0].cells[0].runs[0].text;
 
     expect(text).toBe('&lt;tag&gt;');
   });
@@ -120,9 +120,43 @@ describe('parseMd HTML tables', () => {
     const markdown = '<table><tr><td>&#128512; &#x1F600;</td></tr></table>';
     const tokens = parseMd(markdown);
     const table = tokens.find(t => t.type === 'table');
-    const text = table?.rows?.[0].cells[0][0].text;
+    const text = table?.rows?.[0].cells[0].runs[0].text;
 
     expect(text).toBe('😀 😀');
+  });
+
+  it('parses colspan from HTML table cells', () => {
+    const markdown = '<table><tr><td colspan="2">Span</td></tr><tr><td>A</td><td>B</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+    expect(table?.rows?.[0].cells[0].colspan).toBe(2);
+    expect(table?.rows?.[0].cells[0].runs[0].text).toBe('Span');
+    expect(table?.rows?.[1].cells[0].colspan).toBeUndefined();
+  });
+
+  it('parses rowspan from HTML table cells', () => {
+    const markdown = '<table><tr><td rowspan="3">Tall</td><td>R1</td></tr><tr><td>R2</td></tr><tr><td>R3</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+    expect(table?.rows?.[0].cells[0].rowspan).toBe(3);
+    expect(table?.rows?.[0].cells[0].runs[0].text).toBe('Tall');
+    expect(table?.rows?.[0].cells[1].rowspan).toBeUndefined();
+  });
+
+  it('parses combined colspan and rowspan', () => {
+    const markdown = '<table><tr><td colspan="2" rowspan="2">Big</td><td>C</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+    expect(table?.rows?.[0].cells[0].colspan).toBe(2);
+    expect(table?.rows?.[0].cells[0].rowspan).toBe(2);
+  });
+
+  it('ignores colspan=1 and rowspan=1', () => {
+    const markdown = '<table><tr><td colspan="1" rowspan="1">Normal</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+    expect(table?.rows?.[0].cells[0].colspan).toBeUndefined();
+    expect(table?.rows?.[0].cells[0].rowspan).toBeUndefined();
   });
 });
 
@@ -286,15 +320,15 @@ describe('generateTable', () => {
       {
         header: true,
         cells: [
-          [{ type: 'text', text: 'Header 1' }],
-          [{ type: 'text', text: 'Header 2' }]
+          { runs: [{ type: 'text', text: 'Header 1' }] },
+          { runs: [{ type: 'text', text: 'Header 2' }] }
         ]
       },
       {
         header: false,
         cells: [
-          [{ type: 'text', text: 'Cell 1' }],
-          [{ type: 'text', text: 'Cell 2' }]
+          { runs: [{ type: 'text', text: 'Cell 1' }] },
+          { runs: [{ type: 'text', text: 'Cell 2' }] }
         ]
       }
     ];
@@ -323,7 +357,7 @@ describe('generateTable', () => {
       {
         header: true,
         cells: [
-          [{ type: 'text', text: 'Header' }]
+          { runs: [{ type: 'text', text: 'Header' }] }
         ]
       }
     ];
@@ -344,7 +378,7 @@ describe('generateTable', () => {
       {
         header: true,
         cells: [
-          [{ type: 'text', text: 'Bold Header', bold: true }]
+          { runs: [{ type: 'text', text: 'Bold Header', bold: true }] }
         ]
       }
     ];
@@ -360,6 +394,103 @@ describe('generateTable', () => {
     // Should only have one <w:b/> tag
     const boldMatches = result.match(/<w:b\/>/g);
     expect(boldMatches?.length).toBe(1);
+  });
+
+  it('generates gridSpan for colspan', () => {
+    const rows: MdTableRow[] = [
+      {
+        header: false,
+        cells: [
+          { runs: [{ type: 'text', text: 'Span' }], colspan: 2 },
+        ]
+      },
+      {
+        header: false,
+        cells: [
+          { runs: [{ type: 'text', text: 'A' }] },
+          { runs: [{ type: 'text', text: 'B' }] },
+        ]
+      }
+    ];
+    const token: MdToken = { type: 'table', runs: [], rows };
+    const result = generateTable(token);
+
+    expect(result).toContain('<w:gridSpan w:val="2"/>');
+    expect(result).toContain('<w:tblGrid>');
+    expect(result).toContain('<w:gridCol/>');
+    expect(result).toContain('Span');
+  });
+
+  it('generates vMerge for rowspan', () => {
+    const rows: MdTableRow[] = [
+      {
+        header: false,
+        cells: [
+          { runs: [{ type: 'text', text: 'Tall' }], rowspan: 2 },
+          { runs: [{ type: 'text', text: 'R1' }] },
+        ]
+      },
+      {
+        header: false,
+        cells: [
+          { runs: [{ type: 'text', text: 'R2' }] },
+        ]
+      }
+    ];
+    const token: MdToken = { type: 'table', runs: [], rows };
+    const result = generateTable(token);
+
+    expect(result).toContain('<w:vMerge w:val="restart"/>');
+    expect(result).toContain('<w:vMerge/>');
+    expect(result).toContain('Tall');
+    expect(result).toContain('R1');
+    expect(result).toContain('R2');
+  });
+
+  it('generates combined colspan+rowspan', () => {
+    const rows: MdTableRow[] = [
+      {
+        header: false,
+        cells: [
+          { runs: [{ type: 'text', text: 'Big' }], colspan: 2, rowspan: 2 },
+          { runs: [{ type: 'text', text: 'C' }] },
+        ]
+      },
+      {
+        header: false,
+        cells: [
+          { runs: [{ type: 'text', text: 'D' }] },
+        ]
+      }
+    ];
+    const token: MdToken = { type: 'table', runs: [], rows };
+    const result = generateTable(token);
+
+    expect(result).toContain('<w:vMerge w:val="restart"/>');
+    expect(result).toContain('<w:gridSpan w:val="2"/>');
+    // Continuation row should have vMerge + gridSpan for the 2-col continuation
+    expect(result).toContain('<w:vMerge/><w:gridSpan w:val="2"/>');
+    expect(result).toContain('Big');
+    expect(result).toContain('C');
+    expect(result).toContain('D');
+  });
+
+  it('does not emit tblGrid when no spans are present', () => {
+    const rows: MdTableRow[] = [
+      {
+        header: false,
+        cells: [
+          { runs: [{ type: 'text', text: 'A' }] },
+          { runs: [{ type: 'text', text: 'B' }] },
+        ]
+      }
+    ];
+    const token: MdToken = { type: 'table', runs: [], rows };
+    const result = generateTable(token);
+
+    expect(result).not.toContain('<w:tblGrid>');
+    expect(result).not.toContain('<w:gridSpan');
+    expect(result).not.toContain('<w:vMerge');
   });
 });
 
@@ -522,8 +653,8 @@ console.log('code');
     expect(document).toContain('Val');
   });
 
-  it('exports HTML tables with colspan/rowspan without failing', async () => {
-    const markdown = '<table><tr><td colspan=\"2\">Span</td></tr><tr><td rowspan=\"2\">Left</td><td>Right</td></tr></table>';
+  it('exports HTML tables with colspan/rowspan to correct OOXML', async () => {
+    const markdown = '<table><tr><td colspan="2">Span</td></tr><tr><td rowspan="2">Left</td><td>Right</td></tr><tr><td>Bottom</td></tr></table>';
     const result = await convertMdToDocx(markdown);
 
     const JSZip = (await import('jszip')).default;
@@ -531,9 +662,14 @@ console.log('code');
     const document = await zip.files['word/document.xml'].async('string');
 
     expect(document).toContain('<w:tbl>');
+    expect(document).toContain('<w:tblGrid>');
+    expect(document).toContain('<w:gridSpan w:val="2"/>');
+    expect(document).toContain('<w:vMerge w:val="restart"/>');
+    expect(document).toContain('<w:vMerge/>');
     expect(document).toContain('Span');
     expect(document).toContain('Left');
     expect(document).toContain('Right');
+    expect(document).toContain('Bottom');
   });
 });
 
