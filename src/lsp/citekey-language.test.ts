@@ -3,11 +3,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+	canonicalizeFsPath,
 	findBibKeyAtOffset,
 	findCitekeyAtOffset,
 	fsPathToUri,
 	getCompletionContextAtOffset,
 	parseBibDataFromText,
+	pathsEqual,
 	resolveBibliographyPath,
 	scanCitationUsages,
 } from './citekey-language';
@@ -17,6 +19,29 @@ describe('scanCitationUsages', () => {
 		const text = 'See [@smith2020, p. 12; @jones2019] for details.';
 		const usages = scanCitationUsages(text);
 		expect(usages.map((u) => u.key)).toEqual(['smith2020', 'jones2019']);
+	});
+});
+
+describe('path canonicalization', () => {
+	test('pathsEqual treats symlink and real path as equal', () => {
+		if (process.platform === 'win32') {
+			return;
+		}
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-lsp-paths-'));
+		try {
+			const realDir = path.join(tmpDir, 'real');
+			const aliasDir = path.join(tmpDir, 'alias');
+			fs.mkdirSync(realDir, { recursive: true });
+			fs.symlinkSync(realDir, aliasDir, 'dir');
+			const realBib = path.join(realDir, 'paper.bib');
+			const aliasBib = path.join(aliasDir, 'paper.bib');
+			fs.writeFileSync(realBib, '@article{smith2020, title={A}}');
+
+			expect(pathsEqual(realBib, aliasBib)).toBe(true);
+			expect(canonicalizeFsPath(realBib)).toBe(canonicalizeFsPath(aliasBib));
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		}
 	});
 });
 

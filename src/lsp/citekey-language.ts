@@ -40,16 +40,22 @@ export function uriToFsPath(uri: string): string | undefined {
 export function fsPathToUri(fsPath: string): string {
 	return pathToFileURL(fsPath).toString();
 }
+export function canonicalizeFsPath(fsPath: string): string {
+	let value = path.resolve(fsPath);
+	try {
+		value = fs.realpathSync.native(value);
+	} catch {
+		// keep resolved path when realpath cannot be resolved
+	}
+	value = path.normalize(value);
+	if (process.platform === 'win32' || process.platform === 'darwin') {
+		value = value.toLowerCase();
+	}
+	return value;
+}
 
 export function pathsEqual(a: string, b: string): boolean {
-	const normalize = (p: string) => {
-		let value = path.normalize(path.resolve(p));
-		if (process.platform === 'win32' || process.platform === 'darwin') {
-			value = value.toLowerCase();
-		}
-		return value;
-	};
-	return normalize(a) === normalize(b);
+	return canonicalizeFsPath(a) === canonicalizeFsPath(b);
 }
 
 export function scanCitationUsages(text: string): CitekeyUsage[] {

@@ -19,6 +19,7 @@ import {
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { BibtexEntry } from '../bibtex-parser';
 import {
+	canonicalizeFsPath,
 	ParsedBibData,
 	findBibKeyAtOffset,
 	findCitekeyAtOffset,
@@ -358,22 +359,28 @@ async function findReferencesInSingleDocument(key: string, uri: string): Promise
 }
 
 async function collectWorkspaceMarkdownUris(): Promise<string[]> {
-	const uris = new Set<string>();
+	const urisByCanonicalPath = new Map<string, string>();
 
 	for (const doc of documents.all()) {
 		if (doc.languageId === 'markdown') {
-			uris.add(doc.uri);
+			const fsPath = uriToFsPath(doc.uri);
+			if (fsPath) {
+				const canonical = canonicalizeFsPath(fsPath);
+				if (!urisByCanonicalPath.has(canonical)) {
+					urisByCanonicalPath.set(canonical, doc.uri);
+				}
+			}
 		}
 	}
 
 	for (const root of workspaceRootPaths) {
-		await walkMarkdownFiles(root, uris);
+		await walkMarkdownFiles(root, urisByCanonicalPath);
 	}
 
-	return [...uris];
+	return [...urisByCanonicalPath.values()];
 }
 
-async function walkMarkdownFiles(rootDir: string, uris: Set<string>): Promise<void> {
+async function walkMarkdownFiles(rootDir: string, urisByCanonicalPath: Map<string, string>): Promise<void> {
 	let entries: any[];
 	try {
 		entries = await fsp.readdir(rootDir, { withFileTypes: true, encoding: 'utf8' });
@@ -388,11 +395,14 @@ async function walkMarkdownFiles(rootDir: string, uris: Set<string>): Promise<vo
 			if (IGNORED_DIRS.has(entryName)) {
 				continue;
 			}
-			await walkMarkdownFiles(fullPath, uris);
+			await walkMarkdownFiles(fullPath, urisByCanonicalPath);
 			continue;
 		}
 		if (entry.isFile() && entryName.toLowerCase().endsWith('.md')) {
-			uris.add(fsPathToUri(fullPath));
+			const canonical = canonicalizeFsPath(fullPath);
+			if (!urisByCanonicalPath.has(canonical)) {
+				urisByCanonicalPath.set(canonical, fsPathToUri(fullPath));
+			}
 		}
 	}
 }
@@ -401,8 +411,9 @@ function dedupeLocations(locations: Location[]): Location[] {
 	const seen = new Set<string>();
 	const deduped: Location[] = [];
 	for (const location of locations) {
+		const locationPathKey = getLocationPathKey(location.uri);
 		const key = [
-			location.uri,
+			locationPathKey,
 			location.range.start.line,
 			location.range.start.character,
 			location.range.end.line,
@@ -414,6 +425,13 @@ function dedupeLocations(locations: Location[]): Location[] {
 		}
 	}
 	return deduped;
+}
+function getLocationPathKey(uri: string): string {
+	const fsPath = uriToFsPath(uri);
+	if (!fsPath) {
+		return uri;
+	}
+	return canonicalizeFsPath(fsPath);
 }
 
 function getEntryDetail(entry: BibtexEntry): string | undefined {
