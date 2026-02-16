@@ -48,15 +48,8 @@ interface ResolvedSymbol {
 	sourceUri: string;
 	bibPath?: string;
 }
-interface RecentReferenceQuery {
-	queryKey: string;
-	includeDeclaration: boolean;
-	usageFingerprint: string;
-	timestampMs: number;
-}
 
 const bibCache = new Map<string, CachedBibData>();
-let lastReferenceQuery: RecentReferenceQuery | undefined;
 
 connection.onInitialize((params: InitializeParams) => {
 	workspaceRootPaths = extractWorkspaceRoots(params);
@@ -161,78 +154,29 @@ connection.onDefinition(async (params: DefinitionParams): Promise<Location | nul
 
 connection.onReferences(async (params: ReferenceParams): Promise<Location[]> => {
 	const symbol = await resolveSymbolAtPosition(params.textDocument.uri, params.position);
-	if (!symbol) {
+	if (!symbol || !symbol.bibPath) {
 		return [];
 	}
-	const usageLocations = symbol.bibPath
-		? await findReferencesForKey(symbol.key, symbol.bibPath)
-		: await findReferencesInSingleDocument(symbol.key, symbol.sourceUri);
-	const dedupedUsages = dedupeLocations(usageLocations);
-	const declaration = params.context.includeDeclaration && symbol.bibPath
-		? await getDefinitionLocationForKey(symbol.key, symbol.bibPath)
-		: undefined;
-	const queryKey = getReferenceQueryKey(params, symbol);
-	const usageFingerprint = getUsageFingerprint(dedupedUsages);
-	const nowMs = Date.now();
 
-	if (
-		params.context.includeDeclaration &&
-		declaration &&
-		lastReferenceQuery &&
-		!lastReferenceQuery.includeDeclaration &&
-		lastReferenceQuery.queryKey === queryKey &&
-		lastReferenceQuery.usageFingerprint === usageFingerprint &&
-		nowMs - lastReferenceQuery.timestampMs <= 400
-	) {
-		lastReferenceQuery = {
-			queryKey,
-			includeDeclaration: true,
-			usageFingerprint,
-			timestampMs: nowMs,
-		};
-		return [declaration];
+	if (symbol.source === 'markdown') {
+		// From markdown: only provide the .bib declaration location.
+		// The built-in Markdown Language Features extension handles
+		// markdown→markdown references, so we avoid duplicating those.
+		const declaration = await getDefinitionLocationForKey(symbol.key, symbol.bibPath);
+		return declaration ? [declaration] : [];
 	}
 
-	const locations = [...dedupedUsages];
-	if (declaration) {
-		locations.unshift(declaration);
+	// From .bib: find paired markdown files and return citation usages
+	const usages = await findReferencesForKey(symbol.key, symbol.bibPath);
+	const locations = dedupeLocations(usages);
+	if (params.context.includeDeclaration) {
+		const declaration = await getDefinitionLocationForKey(symbol.key, symbol.bibPath);
+		if (declaration) {
+			locations.unshift(declaration);
+		}
 	}
-	const dedupedLocations = dedupeLocations(locations);
-	lastReferenceQuery = {
-		queryKey,
-		includeDeclaration: params.context.includeDeclaration,
-		usageFingerprint,
-		timestampMs: nowMs,
-	};
-
-	return dedupedLocations;
+	return dedupeLocations(locations);
 });
-function getReferenceQueryKey(params: ReferenceParams, symbol: ResolvedSymbol): string {
-	const uriPathKey = getLocationPathKey(params.textDocument.uri);
-	const bibPathKey = symbol.bibPath ? canonicalizeFsPath(symbol.bibPath) : '';
-	return [
-		uriPathKey,
-		params.position.line,
-		params.position.character,
-		symbol.key,
-		bibPathKey,
-	].join(':');
-}
-
-function getUsageFingerprint(locations: Location[]): string {
-	if (locations.length === 0) {
-		return '';
-	}
-	const ids = locations.map((location) => [
-		getLocationPathKey(location.uri),
-		location.range.start.line,
-		location.range.start.character,
-		location.range.end.line,
-		location.range.end.character,
-	].join(':'));
-	ids.sort();
-	return ids.join('|');
-}
 
 documents.listen(connection);
 connection.listen();
@@ -371,8 +315,43 @@ async function getDefinitionLocationForKey(key: string, bibPath: string): Promis
 	return Location.create(bibUri, Range.create(start, end));
 }
 
+async function findPairedMarkdownUris(bibPath: string): Promise<string[]> {
+	const urisByCanonicalPath = new Map<string, string>();
+
+	// 1. Same-basename: paper.bib → paper.md
+	const dir = path.dirname(bibPath);
+	const base = path.basename(bibPath, path.extname(bibPath));
+	const sameBaseMd = path.join(dir, base + '.md');
+	try {
+		await fsp.stat(sameBaseMd);
+		const canonical = canonicalizeFsPath(sameBaseMd);
+		urisByCanonicalPath.set(canonical, fsPathToUri(sameBaseMd));
+	} catch {
+		// file doesn't exist
+	}
+
+	// 2. Open docs whose frontmatter bibliography resolves to this bib
+	for (const doc of documents.all()) {
+		if (doc.languageId !== 'markdown') {
+			continue;
+		}
+		const resolved = resolveBibliographyPath(doc.uri, doc.getText(), workspaceRootPaths);
+		if (resolved && pathsEqual(resolved, bibPath)) {
+			const fsPath = uriToFsPath(doc.uri);
+			if (fsPath) {
+				const canonical = canonicalizeFsPath(fsPath);
+				if (!urisByCanonicalPath.has(canonical)) {
+					urisByCanonicalPath.set(canonical, doc.uri);
+				}
+			}
+		}
+	}
+
+	return [...urisByCanonicalPath.values()];
+}
+
 async function findReferencesForKey(key: string, targetBibPath: string): Promise<Location[]> {
-	const markdownUris = await collectWorkspaceMarkdownUris();
+	const markdownUris = await findPairedMarkdownUris(targetBibPath);
 	const locations: Location[] = [];
 
 	for (const uri of markdownUris) {
@@ -381,10 +360,6 @@ async function findReferencesForKey(key: string, targetBibPath: string): Promise
 			continue;
 		}
 		const text = doc.getText();
-		const resolvedBibPath = resolveBibliographyPath(uri, text, workspaceRootPaths);
-		if (!resolvedBibPath || !pathsEqual(resolvedBibPath, targetBibPath)) {
-			continue;
-		}
 
 		for (const usage of scanCitationUsages(text)) {
 			if (usage.key === key) {
@@ -399,75 +374,6 @@ async function findReferencesForKey(key: string, targetBibPath: string): Promise
 	}
 
 	return locations;
-}
-
-async function findReferencesInSingleDocument(key: string, uri: string): Promise<Location[]> {
-	const doc = await getTextDocument(uri, 'markdown');
-	if (!doc) {
-		return [];
-	}
-	const locations: Location[] = [];
-	const text = doc.getText();
-	for (const usage of scanCitationUsages(text)) {
-		if (usage.key === key) {
-			locations.push(
-				Location.create(
-					uri,
-					Range.create(doc.positionAt(usage.keyStart), doc.positionAt(usage.keyEnd))
-				)
-			);
-		}
-	}
-	return locations;
-}
-
-async function collectWorkspaceMarkdownUris(): Promise<string[]> {
-	const urisByCanonicalPath = new Map<string, string>();
-
-	for (const doc of documents.all()) {
-		if (doc.languageId === 'markdown') {
-			const fsPath = uriToFsPath(doc.uri);
-			if (fsPath) {
-				const canonical = canonicalizeFsPath(fsPath);
-				if (!urisByCanonicalPath.has(canonical)) {
-					urisByCanonicalPath.set(canonical, doc.uri);
-				}
-			}
-		}
-	}
-
-	for (const root of workspaceRootPaths) {
-		await walkMarkdownFiles(root, urisByCanonicalPath);
-	}
-
-	return [...urisByCanonicalPath.values()];
-}
-
-async function walkMarkdownFiles(rootDir: string, urisByCanonicalPath: Map<string, string>): Promise<void> {
-	let entries: any[];
-	try {
-		entries = await fsp.readdir(rootDir, { withFileTypes: true, encoding: 'utf8' });
-	} catch {
-		return;
-	}
-
-	for (const entry of entries) {
-		const entryName = typeof entry.name === 'string' ? entry.name : entry.name.toString();
-		const fullPath = path.join(rootDir, entryName);
-		if (entry.isDirectory()) {
-			if (IGNORED_DIRS.has(entryName)) {
-				continue;
-			}
-			await walkMarkdownFiles(fullPath, urisByCanonicalPath);
-			continue;
-		}
-		if (entry.isFile() && entryName.toLowerCase().endsWith('.md')) {
-			const canonical = canonicalizeFsPath(fullPath);
-			if (!urisByCanonicalPath.has(canonical)) {
-				urisByCanonicalPath.set(canonical, fsPathToUri(fullPath));
-			}
-		}
-	}
 }
 
 function dedupeLocations(locations: Location[]): Location[] {
@@ -515,15 +421,3 @@ function getEntryDetail(entry: BibtexEntry): string | undefined {
 function getEntryDocumentation(entry: BibtexEntry): string | undefined {
 	return entry.fields.get('title');
 }
-
-const IGNORED_DIRS = new Set([
-	'.git',
-	'.svn',
-	'.hg',
-	'.idea',
-	'.vscode',
-	'node_modules',
-	'out',
-	'dist',
-	'coverage',
-]);

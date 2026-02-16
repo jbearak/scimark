@@ -20,6 +20,30 @@ describe('scanCitationUsages', () => {
 		const usages = scanCitationUsages(text);
 		expect(usages.map((u) => u.key)).toEqual(['smith2020', 'jones2019']);
 	});
+
+	test('returns unique offsets for the same key cited in separate brackets', () => {
+		const text = 'See [@smith2020] and later [@smith2020].';
+		const usages = scanCitationUsages(text);
+		expect(usages.map((u) => u.key)).toEqual(['smith2020', 'smith2020']);
+		// Offsets must differ – each usage is a distinct location
+		const offsets = usages.map((u) => u.keyStart);
+		expect(new Set(offsets).size).toBe(offsets.length);
+	});
+
+	test('does not produce duplicates within a single bracket group', () => {
+		const text = 'Reference [@smith2020; @jones2019].';
+		const usages = scanCitationUsages(text);
+		expect(usages).toHaveLength(2);
+		expect(usages.map((u) => u.key)).toEqual(['smith2020', 'jones2019']);
+	});
+
+	test('handles same key repeated with locator variants', () => {
+		const text = '[@smith2020, p. 1] and [@smith2020, ch. 3] and [@smith2020].';
+		const usages = scanCitationUsages(text);
+		expect(usages.map((u) => u.key)).toEqual(['smith2020', 'smith2020', 'smith2020']);
+		const offsets = usages.map((u) => u.keyStart);
+		expect(new Set(offsets).size).toBe(3);
+	});
 });
 
 describe('path canonicalization', () => {
