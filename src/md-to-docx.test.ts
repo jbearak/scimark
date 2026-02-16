@@ -729,6 +729,18 @@ describe('parseMd multi-paragraph CriticMarkup', () => {
     expect(commentRuns.length).toBe(1);
   });
 
+  it('does not treat adjacent Critic deletion as a highlight color suffix', () => {
+    const tokens = parseMd('==a=={--a--}');
+    const allRuns = tokens.flatMap(t => t.runs);
+    const highlightRuns = allRuns.filter(r => r.type === 'critic_highlight');
+    const deletionRuns = allRuns.filter(r => r.type === 'critic_del');
+    expect(highlightRuns.length).toBe(1);
+    expect(highlightRuns[0].text).toBe('a');
+    expect(highlightRuns[0].highlightColor).toBeUndefined();
+    expect(deletionRuns.length).toBe(1);
+    expect(deletionRuns[0].text).toBe('a');
+  });
+
   it('parses multi-paragraph addition', () => {
     const tokens = parseMd('{++added\n\nmore++}');
     const addRuns = tokens.flatMap(t => t.runs).filter(r => r.type === 'critic_add');

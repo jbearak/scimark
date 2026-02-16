@@ -138,7 +138,9 @@ function coloredHighlightRule(state: any, silent: boolean): boolean {
     const colorEnd = state.src.indexOf('}', afterEnd + 1);
     if (colorEnd !== -1) {
       const color = state.src.slice(afterEnd + 1, colorEnd);
-      if (/^[a-z0-9-]+$/.test(color)) {
+      // Require identifier-like colors that do not start or end with '-'
+      // so adjacent CriticMarkup like {--deleted--} is not misparsed as a color suffix.
+      if (/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(color)) {
         if (!silent) {
           const content = state.src.slice(start + 2, endPos);
           const token = state.push('colored_highlight', '', 0);
