@@ -468,11 +468,44 @@ describe('generateTable', () => {
 
     expect(result).toContain('<w:vMerge w:val="restart"/>');
     expect(result).toContain('<w:gridSpan w:val="2"/>');
-    // Continuation row should have vMerge + gridSpan for the 2-col continuation
-    expect(result).toContain('<w:vMerge/><w:gridSpan w:val="2"/>');
+    // Continuation row should have gridSpan + vMerge (ECMA-376 element order)
+    expect(result).toContain('<w:gridSpan w:val="2"/><w:vMerge/>');
     expect(result).toContain('Big');
     expect(result).toContain('C');
     expect(result).toContain('D');
+  });
+
+  it('accounts for rowspan-occupied columns when computing grid width', () => {
+    // Row 1 has 2 explicit cells, but row 0's rowspan occupies col 0 in row 1,
+    // so the true grid has 3 columns.
+    const rows: MdTableRow[] = [
+      {
+        header: false,
+        cells: [
+          { runs: [{ type: 'text', text: 'A' }], rowspan: 2 },
+          { runs: [{ type: 'text', text: 'B' }] },
+        ]
+      },
+      {
+        header: false,
+        cells: [
+          { runs: [{ type: 'text', text: 'C' }] },
+          { runs: [{ type: 'text', text: 'D' }] },
+        ]
+      }
+    ];
+    const token: MdToken = { type: 'table', runs: [], rows };
+    const result = generateTable(token);
+
+    // All four cells must be present
+    expect(result).toContain('A');
+    expect(result).toContain('B');
+    expect(result).toContain('C');
+    expect(result).toContain('D');
+    // Grid should have 3 columns
+    expect((result.match(/<w:gridCol\/>/g) || []).length).toBe(3);
+    // 3 w:tr rows (2 explicit + vMerge continuation is implicit within the 2 rows)
+    expect((result.match(/<w:tr>/g) || []).length).toBe(2);
   });
 
   it('does not emit tblGrid when no spans are present', () => {

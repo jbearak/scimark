@@ -1374,14 +1374,42 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
 export function generateTable(token: MdToken): string {
   if (!token.rows) return '';
 
-  // Compute total grid columns
+  // Compute total grid columns by simulating grid occupancy (accounts for
+  // columns implicitly occupied by rowspan cells from previous rows).
   let totalCols = 0;
-  for (const row of token.rows) {
-    let rowCols = 0;
-    for (const cell of row.cells) {
-      rowCols += cell.colspan || 1;
+  {
+    const simMerge = new Map<number, { remaining: number; colspan: number }>();
+    for (const row of token.rows) {
+      let gridCol = 0;
+      let ci = 0;
+      // Walk the grid for this row, skipping columns occupied by rowspan continuations
+      while (ci < row.cells.length) {
+        // Skip columns occupied by pending vertical merges
+        let pending = simMerge.get(gridCol);
+        while (pending && pending.remaining > 0) {
+          pending.remaining--;
+          if (pending.remaining === 0) simMerge.delete(gridCol);
+          gridCol += pending.colspan;
+          pending = simMerge.get(gridCol);
+        }
+        const cell = row.cells[ci++];
+        const cs = cell.colspan || 1;
+        const rs = cell.rowspan || 1;
+        if (rs > 1) {
+          simMerge.set(gridCol, { remaining: rs - 1, colspan: cs });
+        }
+        gridCol += cs;
+      }
+      // Skip any trailing columns still occupied by merges
+      let pending = simMerge.get(gridCol);
+      while (pending && pending.remaining > 0) {
+        pending.remaining--;
+        if (pending.remaining === 0) simMerge.delete(gridCol);
+        gridCol += pending.colspan;
+        pending = simMerge.get(gridCol);
+      }
+      if (gridCol > totalCols) totalCols = gridCol;
     }
-    if (rowCols > totalCols) totalCols = rowCols;
   }
   if (totalCols === 0) totalCols = 1;
 
@@ -1414,11 +1442,11 @@ export function generateTable(token: MdToken): string {
       // Check for pending vertical merge continuation at this column
       const pending = mergeMap.get(gridCol);
       if (pending && pending.remaining > 0) {
-        let tcPr = '<w:tcPr><w:vMerge/>';
+        let tcPr = '<w:tcPr>';
         if (pending.colspan > 1) {
           tcPr += '<w:gridSpan w:val="' + pending.colspan + '"/>';
         }
-        tcPr += '</w:tcPr>';
+        tcPr += '<w:vMerge/></w:tcPr>';
         xml += '<w:tc>' + tcPr + '<w:p/></w:tc>';
         pending.remaining--;
         if (pending.remaining === 0) mergeMap.delete(gridCol);
@@ -1440,9 +1468,10 @@ export function generateTable(token: MdToken): string {
 
       let tcPr = '';
       if (cs > 1 || rs > 1) {
+        // ECMA-376 §17.4.66: tcPr children order is gridSpan then vMerge
         const parts: string[] = [];
-        if (rs > 1) parts.push('<w:vMerge w:val="restart"/>');
         if (cs > 1) parts.push('<w:gridSpan w:val="' + cs + '"/>');
+        if (rs > 1) parts.push('<w:vMerge w:val="restart"/>');
         tcPr = '<w:tcPr>' + parts.join('') + '</w:tcPr>';
       }
 
