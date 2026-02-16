@@ -940,7 +940,7 @@ export async function extractDocumentContent(
                 target.push({ type: 'math', latex, display: true });
               }
             } catch {
-              target.push({ type: 'math', latex: '\\\\text{[EQUATION ERROR]}', display: true });
+              target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true });
             }
           }
         } else if (key === 'm:oMath') {
@@ -952,7 +952,7 @@ export async function extractDocumentContent(
               target.push({ type: 'math', latex, display: false });
             }
           } catch {
-            target.push({ type: 'math', latex: '\\\\text{[EQUATION ERROR]}', display: false });
+            target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false });
           }
         } else if (Array.isArray(node[key])) {
           walk(node[key], currentFormatting, target, inTableCell);
