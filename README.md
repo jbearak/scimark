@@ -64,6 +64,7 @@ manuscript-markdown paper.md      # Markdown → DOCX
 - [Custom Extensions](docs/custom-extensions.md)
 - [DOCX Converter](docs/converter.md)
 - [Zotero Citation Roundtrip](docs/zotero-roundtrip.md)
+- [Configuration](docs/configuration.md)
 - [CLI Tool](docs/cli.md)
 - [Development Guide](docs/development.md)
 
