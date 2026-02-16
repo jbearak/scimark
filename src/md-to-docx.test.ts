@@ -85,6 +85,29 @@ describe('generateRPr', () => {
   });
 });
 
+describe('parseMd HTML tables', () => {
+  it('parses HTML table blocks into table tokens', () => {
+    const markdown = '<table><tr><th>H1</th><th>H2</th></tr><tr><td>A</td><td>B</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+
+    expect(table).toBeDefined();
+    expect(table?.rows).toHaveLength(2);
+    expect(table?.rows?.[0].header).toBe(true);
+    expect(table?.rows?.[0].cells[0][0].text).toBe('H1');
+    expect(table?.rows?.[1].cells[1][0].text).toBe('B');
+  });
+
+  it('decodes entities and strips nested tags inside HTML table cells', () => {
+    const markdown = '<table><tr><td><strong>A &amp; B</strong><br/>line</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+    const text = table?.rows?.[0].cells[0][0].text;
+
+    expect(text).toBe('A & B line');
+  });
+});
+
 describe('generateRun', () => {
   it('generates basic run', () => {
     const result = generateRun('hello', '');
@@ -451,6 +474,48 @@ console.log('code');
     
     // JSZip includes directory entries, so we expect more than just the 6 files
     expect(fileNames.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('exports HTML table blocks to DOCX tables', async () => {
+    const markdown = '<table><tr><th>H1</th><th>H2</th></tr><tr><td>A</td><td>B</td></tr></table>';
+    const result = await convertMdToDocx(markdown);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const document = await zip.files['word/document.xml'].async('string');
+
+    expect(document).toContain('<w:tbl>');
+    expect(document).toContain('H1');
+    expect(document).toContain('H2');
+    expect(document).toContain('A');
+    expect(document).toContain('B');
+  });
+
+  it('exports HTML tables with thead/tbody structure', async () => {
+    const markdown = '<table><thead><tr><th>Col</th></tr></thead><tbody><tr><td>Val</td></tr></tbody></table>';
+    const result = await convertMdToDocx(markdown);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const document = await zip.files['word/document.xml'].async('string');
+
+    expect(document).toContain('<w:tbl>');
+    expect(document).toContain('Col');
+    expect(document).toContain('Val');
+  });
+
+  it('exports HTML tables with colspan/rowspan without failing', async () => {
+    const markdown = '<table><tr><td colspan=\"2\">Span</td></tr><tr><td rowspan=\"2\">Left</td><td>Right</td></tr></table>';
+    const result = await convertMdToDocx(markdown);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const document = await zip.files['word/document.xml'].async('string');
+
+    expect(document).toContain('<w:tbl>');
+    expect(document).toContain('Span');
+    expect(document).toContain('Left');
+    expect(document).toContain('Right');
   });
 });
 

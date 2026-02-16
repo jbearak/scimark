@@ -347,6 +347,20 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         });
         i = tableClose + 1;
         break;
+      
+      case 'html_block':
+        const htmlTables = extractHtmlTables(token.content || '');
+        for (const rows of htmlTables) {
+          if (rows.length > 0) {
+            result.push({
+              type: 'table',
+              runs: [],
+              rows
+            });
+          }
+        }
+        i++;
+        break;
         
       case 'hr':
         result.push({
@@ -626,6 +640,67 @@ function extractTableCells(tokens: any[]): MdRun[][] {
   }
   
   return cells;
+}
+
+function extractHtmlTables(html: string): MdTableRow[][] {
+  const tables: MdTableRow[][] = [];
+  const tableRegex = /<table\b[^>]*>([\s\S]*?)<\/table>/gi;
+  let tableMatch: RegExpExecArray | null;
+  while ((tableMatch = tableRegex.exec(html)) !== null) {
+    const rows = extractHtmlTableRows(tableMatch[1]);
+    if (rows.length > 0) tables.push(rows);
+  }
+  return tables;
+}
+
+function extractHtmlTableRows(tableHtml: string): MdTableRow[] {
+  const rows: MdTableRow[] = [];
+  const rowRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch: RegExpExecArray | null;
+  while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+    const cells = extractHtmlTableCells(rowMatch[1]);
+    if (cells.length > 0) {
+      rows.push({
+        cells: cells.map(cell => [{ type: 'text', text: cell.text }]),
+        header: cells.some(c => c.isHeader)
+      });
+    }
+  }
+  return rows;
+}
+
+function extractHtmlTableCells(rowHtml: string): Array<{ text: string; isHeader: boolean }> {
+  const cells: Array<{ text: string; isHeader: boolean }> = [];
+  const cellRegex = /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let cellMatch: RegExpExecArray | null;
+  while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
+    const isHeader = cellMatch[1].toLowerCase() === 'th';
+    const text = normalizeHtmlCellText(cellMatch[2]);
+    cells.push({ text, isHeader });
+  }
+  return cells;
+}
+
+function normalizeHtmlCellText(cellHtml: string): string {
+  // Convert line-break-like tags to spaces before stripping remaining tags.
+  let text = cellHtml.replace(/<br\s*\/?>/gi, ' ');
+  text = text.replace(/<\/p>/gi, ' ');
+  text = text.replace(/<[^>]+>/g, '');
+  text = decodeHtmlEntities(text);
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
 }
 
 export function prettyPrintMd(tokens: MdToken[]): string {

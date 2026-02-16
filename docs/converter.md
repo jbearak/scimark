@@ -97,7 +97,7 @@ If a style is not bundled, you will be prompted to download it from the [CSL sty
 - **Blockquotes**: indented paragraphs with Quote style
 - **Code**: inline code with monospace character style, fenced code blocks with shaded paragraph style
 - **Hyperlinks**: preserved with proper relationship entries
-- **Tables**: pipe-delimited tables with header formatting and borders
+- **Tables**: pipe-delimited tables and HTML tables (`<table>/<tr>/<th>/<td>`) with header formatting and borders (`colspan`/`rowspan` not supported)
 - **Track changes**: CriticMarkup additions/deletions/substitutions mapped to Word revisions (`w:ins`/`w:del`)
 - **Comments**: CriticMarkup comments mapped to Word comments with author and date
 - **Citations**: Pandoc `[@key]` citations reconstructed as Zotero field codes when BibTeX contains `zotero-key` and `zotero-uri` fields; visible text formatted by the CSL style if `csl` frontmatter is present. Mixed Zotero/non-Zotero grouped citations are split — Zotero entries become a field code and non-Zotero entries become plain text (configurable via `mixedCitationStyle`). Missing keys appear inline as `@citekey` with a post-bibliography note.
