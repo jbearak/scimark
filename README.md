@@ -63,6 +63,7 @@ manuscript-markdown paper.md      # Markdown → DOCX
 - [CriticMarkup Syntax](docs/criticmarkup.md)
 - [DOCX Converter](docs/converter.md)
 - [Zotero Citation Roundtrip](docs/zotero-roundtrip.md)
+- [Configuration](docs/configuration.md)
 - [CLI Tool](docs/cli.md)
 - [Development Guide](docs/development.md)
 
