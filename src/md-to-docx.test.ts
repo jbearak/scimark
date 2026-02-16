@@ -85,6 +85,47 @@ describe('generateRPr', () => {
   });
 });
 
+describe('parseMd HTML tables', () => {
+  it('parses HTML table blocks into table tokens', () => {
+    const markdown = '<table><tr><th>H1</th><th>H2</th></tr><tr><td>A</td><td>B</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+
+    expect(table).toBeDefined();
+    expect(table?.rows).toHaveLength(2);
+    expect(table?.rows?.[0].header).toBe(true);
+    expect(table?.rows?.[0].cells[0][0].text).toBe('H1');
+    expect(table?.rows?.[1].cells[1][0].text).toBe('B');
+  });
+
+  it('decodes entities and strips nested tags inside HTML table cells', () => {
+    const markdown = '<table><tr><td><strong>A &amp; B</strong><br/>line</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+    const text = table?.rows?.[0].cells[0][0].text;
+
+    expect(text).toBe('A & B line');
+  });
+
+  it('does not over-decode double-encoded entities inside HTML table cells', () => {
+    const markdown = '<table><tr><td>&amp;lt;tag&amp;gt;</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+    const text = table?.rows?.[0].cells[0][0].text;
+
+    expect(text).toBe('&lt;tag&gt;');
+  });
+
+  it('decodes decimal and hex numeric entities beyond U+FFFF in HTML table cells', () => {
+    const markdown = '<table><tr><td>&#128512; &#x1F600;</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+    const text = table?.rows?.[0].cells[0][0].text;
+
+    expect(text).toBe('😀 😀');
+  });
+});
+
 describe('generateRun', () => {
   it('generates basic run', () => {
     const result = generateRun('hello', '');
@@ -452,6 +493,48 @@ console.log('code');
     // JSZip includes directory entries, so we expect more than just the 6 files
     expect(fileNames.length).toBeGreaterThanOrEqual(6);
   });
+
+  it('exports HTML table blocks to DOCX tables', async () => {
+    const markdown = '<table><tr><th>H1</th><th>H2</th></tr><tr><td>A</td><td>B</td></tr></table>';
+    const result = await convertMdToDocx(markdown);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const document = await zip.files['word/document.xml'].async('string');
+
+    expect(document).toContain('<w:tbl>');
+    expect(document).toContain('H1');
+    expect(document).toContain('H2');
+    expect(document).toContain('A');
+    expect(document).toContain('B');
+  });
+
+  it('exports HTML tables with thead/tbody structure', async () => {
+    const markdown = '<table><thead><tr><th>Col</th></tr></thead><tbody><tr><td>Val</td></tr></tbody></table>';
+    const result = await convertMdToDocx(markdown);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const document = await zip.files['word/document.xml'].async('string');
+
+    expect(document).toContain('<w:tbl>');
+    expect(document).toContain('Col');
+    expect(document).toContain('Val');
+  });
+
+  it('exports HTML tables with colspan/rowspan without failing', async () => {
+    const markdown = '<table><tr><td colspan=\"2\">Span</td></tr><tr><td rowspan=\"2\">Left</td><td>Right</td></tr></table>';
+    const result = await convertMdToDocx(markdown);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const document = await zip.files['word/document.xml'].async('string');
+
+    expect(document).toContain('<w:tbl>');
+    expect(document).toContain('Span');
+    expect(document).toContain('Left');
+    expect(document).toContain('Right');
+  });
 });
 
 describe('CriticMarkup OOXML generation', () => {
@@ -653,6 +736,18 @@ describe('parseMd multi-paragraph CriticMarkup', () => {
     const commentRuns = allRuns.filter(r => r.type === 'critic_comment');
     expect(highlightRuns.length).toBe(1);
     expect(commentRuns.length).toBe(1);
+  });
+
+  it('does not treat adjacent Critic deletion as a highlight color suffix', () => {
+    const tokens = parseMd('==a=={--a--}');
+    const allRuns = tokens.flatMap(t => t.runs);
+    const highlightRuns = allRuns.filter(r => r.type === 'critic_highlight');
+    const deletionRuns = allRuns.filter(r => r.type === 'critic_del');
+    expect(highlightRuns.length).toBe(1);
+    expect(highlightRuns[0].text).toBe('a');
+    expect(highlightRuns[0].highlightColor).toBeUndefined();
+    expect(deletionRuns.length).toBe(1);
+    expect(deletionRuns[0].text).toBe('a');
   });
 
   it('parses multi-paragraph addition', () => {
