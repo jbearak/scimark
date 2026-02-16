@@ -106,6 +106,15 @@ describe('parseMd HTML tables', () => {
 
     expect(text).toBe('A & B line');
   });
+
+  it('does not over-decode double-encoded entities inside HTML table cells', () => {
+    const markdown = '<table><tr><td>&amp;lt;tag&amp;gt;</td></tr></table>';
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+    const text = table?.rows?.[0].cells[0][0].text;
+
+    expect(text).toBe('&lt;tag&gt;');
+  });
 });
 
 describe('generateRun', () => {
