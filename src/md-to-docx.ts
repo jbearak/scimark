@@ -799,8 +799,10 @@ function parseHtmlCellRuns(cellHtml: string): MdRun[] {
   // Trim leading/trailing whitespace from the run sequence
   if (runs.length > 0) {
     const first = runs[0];
-    if (first.type === 'text') first.text = first.text.replace(/^\s+/, '');
-    if (first.type === 'text' && !first.text) runs.shift();
+    if (first.type === 'text') {
+      first.text = first.text.replace(/^\s+/, '');
+      if (!first.text) runs.shift();
+    }
   }
   if (runs.length > 0) {
     const last = runs[runs.length - 1];
