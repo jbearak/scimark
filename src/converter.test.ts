@@ -46,6 +46,7 @@ describe('DOCX table conversion', () => {
   test('renders DOCX table as HTML table with paragraph boundaries', async () => {
     const xml = wrapDocumentXml(
       '<w:tbl>'
+      + '<w:tblPr><w:tblLook w:firstRow=\"1\"/></w:tblPr>'
       + '<w:tr>'
       + '<w:tc><w:p><w:r><w:t>H1</w:t></w:r></w:p></w:tc>'
       + '<w:tc><w:p><w:r><w:t>H2</w:t></w:r></w:p></w:tc>'
@@ -85,11 +86,9 @@ describe('DOCX table conversion', () => {
       properties: { plainCitation: '(Smith 2020)' }
     });
 
-    const xml = '<?xml version="1.0"?>'
-      + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
-      + ' xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">'
-      + '<w:body>'
-      + '<w:tbl>'
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tblPr><w:tblLook w:firstRow=\"1\"/></w:tblPr>'
       + '<w:tr><w:tc><w:p><w:r><w:t>Header</w:t></w:r></w:p></w:tc></w:tr>'
       + '<w:tr><w:tc><w:p>'
       + '<w:commentRangeStart w:id="1"/>'
@@ -103,8 +102,7 @@ describe('DOCX table conversion', () => {
       + '<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>'
       + '</w:p></w:tc></w:tr>'
       + '</w:tbl>'
-      + '</w:body>'
-      + '</w:document>';
+    );
 
     const JSZip = (await import('jszip')).default;
     const zip = new JSZip();
@@ -123,6 +121,29 @@ describe('DOCX table conversion', () => {
     expect(result.markdown).toContain('@smith2020cell, p. 20');
     expect(result.markdown).toContain('$x$');
     expect(result.markdown).toContain('<table>');
+  });
+
+  test('uses OOXML header flags and defaults to td when no header signal exists', async () => {
+    const withHeader = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tblPr><w:tblLook w:firstRow=\"1\"/></w:tblPr>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>H</w:t></w:r></w:p></w:tc></w:tr>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>D</w:t></w:r></w:p></w:tc></w:tr>'
+      + '</w:tbl>'
+    );
+    const withoutHeader = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>H</w:t></w:r></w:p></w:tc></w:tr>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>D</w:t></w:r></w:p></w:tc></w:tr>'
+      + '</w:tbl>'
+    );
+
+    const withHeaderMd = (await convertDocx(await buildSyntheticDocx(withHeader))).markdown;
+    const withoutHeaderMd = (await convertDocx(await buildSyntheticDocx(withoutHeader))).markdown;
+
+    expect(withHeaderMd).toContain('<th>');
+    expect(withoutHeaderMd).not.toContain('<th>');
+    expect(withoutHeaderMd).toContain('<td>');
   });
 });
 

@@ -83,6 +83,7 @@ export type ContentItem =
     }
   | { type: 'math'; latex: string; display: boolean };
 export interface TableRow {
+  isHeader: boolean;
   cells: TableCell[];
 }
 export interface TableCell {
@@ -747,6 +748,27 @@ function splitCellParagraphs(cellContent: ContentItem[]): ContentItem[][] {
   return paragraphs;
 }
 
+function tableHasFirstRowHeader(tblChildren: any[]): boolean {
+  const tblPrNode = tblChildren.find((c: any) => c['w:tblPr'] !== undefined);
+  if (!tblPrNode) return false;
+  const tblPrChildren = Array.isArray(tblPrNode['w:tblPr']) ? tblPrNode['w:tblPr'] : [tblPrNode['w:tblPr']];
+  const tblLookNode = tblPrChildren.find((c: any) => c['w:tblLook'] !== undefined);
+  if (!tblLookNode) return false;
+  const firstRow = getAttr(tblLookNode, 'firstRow');
+  return firstRow === '1' || firstRow === 'true' || firstRow === 'on';
+}
+
+function rowHasHeaderProp(trChildren: any[]): boolean {
+  const trPrNode = trChildren.find((c: any) => c['w:trPr'] !== undefined);
+  if (!trPrNode) return false;
+  const trPrChildren = Array.isArray(trPrNode['w:trPr']) ? trPrNode['w:trPr'] : [trPrNode['w:trPr']];
+  const tblHeaderNode = trPrChildren.find((c: any) => c['w:tblHeader'] !== undefined);
+  if (!tblHeaderNode) return false;
+  const val = getAttr(tblHeaderNode, 'val');
+  if (!val) return true;
+  return val === '1' || val === 'true' || val === 'on';
+}
+
 export async function extractDocumentContent(
   data: Uint8Array | JSZip,
   zoteroCitations: ZoteroCitation[],
@@ -845,6 +867,7 @@ export async function extractDocumentContent(
         } else if (key === 'w:tbl' && !inTableCell) {
           const tblChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
           const rows: TableRow[] = [];
+          const firstRowHeaderByLook = tableHasFirstRowHeader(tblChildren);
           for (const tr of tblChildren.filter((c: any) => c['w:tr'] !== undefined)) {
             const trChildren = Array.isArray(tr['w:tr']) ? tr['w:tr'] : [tr['w:tr']];
             const cells: TableCell[] = [];
@@ -854,7 +877,10 @@ export async function extractDocumentContent(
               walk(tcChildren, currentFormatting, cellItems, true);
               cells.push({ paragraphs: splitCellParagraphs(cellItems) });
             }
-            rows.push({ cells });
+            rows.push({ isHeader: rowHasHeaderProp(trChildren), cells });
+          }
+          if (firstRowHeaderByLook && rows.length > 0) {
+            rows[0].isHeader = true;
           }
           if (rows.length > 0) {
             target.push({ type: 'table', rows });
@@ -1105,7 +1131,7 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
     const row = table.rows[rowIdx];
     lines.push('<tr>');
     for (const cell of row.cells) {
-      const tag = rowIdx === 0 ? 'th' : 'td';
+      const tag = row.isHeader ? 'th' : 'td';
       lines.push('<' + tag + '>');
       for (const para of cell.paragraphs) {
         lines.push('<p>' + renderInlineSegment(mergeConsecutiveRuns(para), comments) + '</p>');
