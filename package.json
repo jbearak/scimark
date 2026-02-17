@@ -559,6 +559,10 @@
         "path": "./snippets.json"
       }
     ],
+    "languages": [{
+      "id": "markdown",
+      "configuration": "./language-configuration.json"
+    }],
     "grammars": [
       {
         "path": "./syntaxes/manuscript-markdown.json",

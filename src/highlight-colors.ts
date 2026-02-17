@@ -150,9 +150,9 @@ export function extractCriticDelimiterRanges(text: string): Array<{ start: numbe
   // 3-char opening/closing delimiters
   const threeCharRe = /\{==|==\}|\{>>|<<\}|\{\+\+|\+\+\}|\{--|--\}|\{~~|~~\}/g;
   while ((m = threeCharRe.exec(text)) !== null) {
-    // Preserve TextMate delimiter coloring for comment delimiters ({>> ... <<}),
+    // Preserve TextMate delimiter coloring for comment and highlight delimiters,
     // including comment-with-ID closers in {#id>>...<<}.
-    if (m[0] === '{>>' || m[0] === '<<}') {
+    if (m[0] === '{>>' || m[0] === '<<}' || m[0] === '{==' || m[0] === '==}') {
       continue;
     }
     ranges.push({ start: m.index, end: m.index + 3 });

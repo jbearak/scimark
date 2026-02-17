@@ -109,6 +109,13 @@ describe('Delimiter extraction for editor decorations', () => {
     expect(delimiters).not.toContain('<<}');
   });
 
+  it('skips highlight delimiters so grammar tag scopes color them', () => {
+    const text = '{==highlighted==}';
+    const delimiters = extractCriticDelimiterRanges(text).map(r => text.slice(r.start, r.end));
+    expect(delimiters).not.toContain('{==');
+    expect(delimiters).not.toContain('==}');
+  });
+
   it('still extracts non-comment Critic delimiters for muted decoration', () => {
     const text = '{++add++}';
     const delimiters = extractCriticDelimiterRanges(text).map(r => text.slice(r.start, r.end));

@@ -301,6 +301,8 @@ describe('Syntax grammar invariants', () => {
     expect(commentRule.beginCaptures?.['2']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
     expect(commentRule.endCaptures?.['1']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
     expect(commentRule.endCaptures?.['2']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
+    expect(commentRule.name).toBe('meta.comment.manuscript-markdown');
+    expect(commentRule.contentName).toBe('meta.comment');
     expect(commentRule.match).toBeUndefined();
   });
 
@@ -315,7 +317,23 @@ describe('Syntax grammar invariants', () => {
     expect(commentWithIdRule.beginCaptures?.['1']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
     expect(commentWithIdRule.beginCaptures?.['3']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
     expect(commentWithIdRule.endCaptures?.['0']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
+    expect(commentWithIdRule.contentName).toBe('meta.comment.manuscript-markdown');
     expect(commentWithIdRule.match).toBeUndefined();
+  });
+
+  it('uses begin/end captures for highlight rule with tag punctuation scopes', () => {
+    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'manuscript-markdown.json');
+    const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf-8'));
+    const highlightRule = grammar?.repository?.highlight;
+
+    expect(highlightRule).toBeDefined();
+    expect(highlightRule.begin).toBe('(\\{)(==)');
+    expect(highlightRule.end).toBe('(==)(\\})');
+    expect(highlightRule.beginCaptures?.['1']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
+    expect(highlightRule.beginCaptures?.['2']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
+    expect(highlightRule.endCaptures?.['1']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
+    expect(highlightRule.endCaptures?.['2']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
+    expect(highlightRule.match).toBeUndefined();
   });
 });
 
