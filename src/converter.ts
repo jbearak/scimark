@@ -1529,6 +1529,54 @@ export function buildMarkdown(
   }
   collectCommentMetadata(mergedContent);
 
+  // Global overlap detection: mark comments that overlap anywhere in the document
+  function detectGlobalOverlaps(items: ContentItem[]): void {
+    const starts = new Map<string, number>();
+    const ends = new Map<string, number>();
+    let pos = 0;
+    let prevIds = new Set<string>();
+
+    function scan(itemList: ContentItem[]): void {
+      for (const item of itemList) {
+        if (item.type === 'text' || item.type === 'citation') {
+          const ids = item.commentIds;
+          for (const id of ids) {
+            if (!prevIds.has(id)) starts.set(id, Math.min(starts.get(id) ?? pos, pos));
+          }
+          for (const id of prevIds) {
+            if (!ids.has(id)) ends.set(id, Math.max(ends.get(id) ?? pos, pos));
+          }
+          prevIds = ids;
+          pos++;
+        } else if (item.type === 'table') {
+          for (const row of item.rows) {
+            for (const cell of row.cells) {
+              for (const para of cell.paragraphs) {
+                scan(para);
+              }
+            }
+          }
+        }
+      }
+    }
+    scan(items);
+    for (const id of prevIds) {
+      if (!ends.has(id)) ends.set(id, pos);
+    }
+
+    const allIds = [...commentIdRemap.keys()];
+    const ranges = allIds.map(id => ({ id, start: starts.get(id) ?? 0, end: ends.get(id) ?? 0 }));
+    for (let a = 0; a < ranges.length; a++) {
+      for (let b = a + 1; b < ranges.length; b++) {
+        if (ranges[a].start < ranges[b].end && ranges[b].start < ranges[a].end) {
+          forceIdCommentIds.add(ranges[a].id);
+          forceIdCommentIds.add(ranges[b].id);
+        }
+      }
+    }
+  }
+  detectGlobalOverlaps(mergedContent);
+
   const renderOpts = {
     alwaysUseCommentIds: options?.alwaysUseCommentIds,
     commentIdRemap,
