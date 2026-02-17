@@ -1208,24 +1208,34 @@ function hasOverlappingComments(segment: ContentItem[]): boolean {
   return false;
 }
 
+function formatDateSuffix(date: string | undefined): string {
+  if (!date) return '';
+  try {
+    return ` (${formatLocalIsoMinute(date)})`;
+  } catch { return ` (${date})`; }
+}
+
 function formatCommentBody(_cid: string, c: Comment): string {
-  let dateStr = '';
-  if (c.date) {
-    try {
-      dateStr = ` (${formatLocalIsoMinute(c.date)})`;
-    } catch { dateStr = ` (${c.date})`; }
-  }
-  return `{>>${c.author}${dateStr}: ${c.text}<<}`;
+  return `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
 }
 
 function formatCommentBodyWithId(cid: string, c: Comment): string {
-  let dateStr = '';
-  if (c.date) {
-    try {
-      dateStr = ` (${formatLocalIsoMinute(c.date)})`;
-    } catch { dateStr = ` (${c.date})`; }
+  return `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+}
+
+function computeSegmentEnd(
+  segment: ContentItem[],
+  startIndex: number,
+  opts?: { stopBeforeDisplayMath?: boolean }
+): number {
+  let idx = startIndex;
+  while (idx < segment.length) {
+    const item = segment[idx];
+    if (item.type === 'para' || item.type === 'table') break;
+    if (opts?.stopBeforeDisplayMath && item.type === 'math' && item.display) break;
+    idx++;
   }
-  return `{#${cid}>>${c.author}${dateStr}: ${c.text}<<}`;
+  return idx;
 }
 
 function renderInlineRange(
@@ -1239,16 +1249,7 @@ function renderInlineRange(
   let i = startIndex;
 
   // Determine if we should use ID-based syntax for this inline segment only
-  const segmentEnd = (() => {
-    let idx = startIndex;
-    while (idx < segment.length) {
-      const item = segment[idx];
-      if (item.type === 'para' || item.type === 'table') break;
-      if (opts?.stopBeforeDisplayMath && item.type === 'math' && item.display) break;
-      idx++;
-    }
-    return idx;
-  })();
+  const segmentEnd = computeSegmentEnd(segment, startIndex, opts);
   const useIds = renderOpts?.alwaysUseCommentIds || hasOverlappingComments(segment.slice(startIndex, segmentEnd));
 
   if (useIds) {
@@ -1257,12 +1258,7 @@ function renderInlineRange(
 
   while (i < segment.length) {
     const item = segment[i];
-    if (item.type === 'para' || item.type === 'table') {
-      break;
-    }
-    if (opts?.stopBeforeDisplayMath && item.type === 'math' && item.display) {
-      break;
-    }
+    if (i >= segmentEnd) break;
 
     if (item.type === 'citation') {
       if (item.pandocKeys.length > 0) {
@@ -1337,15 +1333,11 @@ function renderInlineRangeWithIds(
   let prevCommentIds = new Set<string>();
   // Track which comment IDs have had their bodies emitted
   const emittedBodies = new Set<string>();
+  const segmentEnd = computeSegmentEnd(segment, startIndex, opts);
 
   while (i < segment.length) {
     const item = segment[i];
-    if (item.type === 'para' || item.type === 'table') {
-      break;
-    }
-    if (opts?.stopBeforeDisplayMath && item.type === 'math' && item.display) {
-      break;
-    }
+    if (i >= segmentEnd) break;
 
     if (item.type === 'citation') {
       const currentIds = item.commentIds;
