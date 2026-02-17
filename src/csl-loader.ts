@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { access } from 'fs/promises';
 import { join, isAbsolute, dirname } from 'path';
 
 const VALID_STYLE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
@@ -42,26 +43,122 @@ const styleCache = new Map<string, string>();
 const localeCache = new Map<string, string>();
 
 /**
+ * Single source of truth for bundled CSL styles (name + display label).
+ */
+const BUNDLED_STYLE_ENTRIES: ReadonlyArray<{ name: string; label: string }> = [
+  { name: 'apa', label: 'APA (7th edition)' },
+  { name: 'bmj', label: 'BMJ' },
+  { name: 'chicago-author-date', label: 'Chicago (Author-Date)' },
+  { name: 'chicago-fullnote-bibliography', label: 'Chicago (Full Note)' },
+  { name: 'chicago-note-bibliography', label: 'Chicago (Note-Bibliography)' },
+  { name: 'modern-language-association', label: 'MLA (9th edition)' },
+  { name: 'ieee', label: 'IEEE' },
+  { name: 'nature', label: 'Nature' },
+  { name: 'cell', label: 'Cell' },
+  { name: 'science', label: 'Science' },
+  { name: 'american-medical-association', label: 'AMA (American Medical Association)' },
+  { name: 'american-chemical-society', label: 'ACS (American Chemical Society)' },
+  { name: 'american-political-science-association', label: 'APSA (American Political Science Association)' },
+  { name: 'american-sociological-association', label: 'ASA (American Sociological Association)' },
+  { name: 'vancouver', label: 'Vancouver' },
+  { name: 'harvard-cite-them-right', label: 'Harvard (Cite Them Right)' },
+];
+
+/**
  * List of bundled CSL style short names.
  */
-export const BUNDLED_STYLES = [
-  'apa',
-  'bmj',
-  'chicago-author-date',
-  'chicago-fullnote-bibliography',
-  'chicago-note-bibliography',
-  'modern-language-association',
-  'ieee',
-  'nature',
-  'cell',
-  'science',
-  'american-medical-association',
-  'american-chemical-society',
-  'american-political-science-association',
-  'american-sociological-association',
-  'vancouver',
-  'harvard-cite-them-right',
-];
+export const BUNDLED_STYLES: readonly string[] = BUNDLED_STYLE_ENTRIES.map(e => e.name);
+
+/**
+ * Human-readable display names for each bundled CSL style.
+ */
+export const BUNDLED_STYLE_LABELS: ReadonlyMap<string, string> = new Map(
+  BUNDLED_STYLE_ENTRIES.map(e => [e.name, e.label] as const)
+);
+
+/**
+ * Lightweight existence check for a CSL style (no XML parsing).
+ * Checks bundled styles list, bundled directory, optional cache directories,
+ * and file paths.
+ */
+export function isCslAvailable(
+  name: string,
+  options?: { cacheDirs?: string[]; sourceDir?: string }
+): boolean {
+  if (!name) return false;
+
+  // Fast in-memory check against known bundled style names
+  if (BUNDLED_STYLES.includes(name)) {
+    return true;
+  }
+
+  // Check bundled directory (for downloaded/cached styles not in the list)
+  if (existsSync(join(BUNDLED_STYLES_DIR, name + '.csl'))) {
+    return true;
+  }
+
+  // Check cache directories
+  if (options?.cacheDirs) {
+    for (const dir of options.cacheDirs) {
+      if (existsSync(join(dir, name + '.csl'))) {
+        return true;
+      }
+    }
+  }
+
+  // Check as file path (absolute or relative to sourceDir)
+  if (isAbsolute(name) || name.endsWith('.csl')) {
+    if (existsSync(name)) return true;
+    if (options?.sourceDir && !isAbsolute(name)) {
+      if (existsSync(join(options.sourceDir, name))) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Async variant of isCslAvailable that avoids blocking the event loop.
+ */
+export async function isCslAvailableAsync(
+  name: string,
+  options?: { cacheDirs?: string[]; sourceDir?: string }
+): Promise<boolean> {
+  if (!name) return false;
+
+  // Fast in-memory check against known bundled style names
+  if (BUNDLED_STYLES.includes(name)) {
+    return true;
+  }
+
+  const fileExists = async (p: string) => {
+    try { await access(p); return true; } catch { return false; }
+  };
+
+  // Check bundled directory
+  if (await fileExists(join(BUNDLED_STYLES_DIR, name + '.csl'))) {
+    return true;
+  }
+
+  // Check cache directories
+  if (options?.cacheDirs) {
+    for (const dir of options.cacheDirs) {
+      if (await fileExists(join(dir, name + '.csl'))) {
+        return true;
+      }
+    }
+  }
+
+  // Check as file path (absolute or relative to sourceDir)
+  if (isAbsolute(name) || name.endsWith('.csl')) {
+    if (await fileExists(name)) return true;
+    if (options?.sourceDir && !isAbsolute(name)) {
+      if (await fileExists(join(options.sourceDir, name))) return true;
+    }
+  }
+
+  return false;
+}
 
 /**
  * Load a CSL style XML string by short name or file path (synchronous).

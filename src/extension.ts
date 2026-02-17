@@ -14,6 +14,9 @@ import { convertDocx, CitationKeyFormat } from './converter';
 import { convertMdToDocx } from './md-to-docx';
 import * as path from 'path';
 import { parseFrontmatter, hasCitations, normalizeBibPath } from './frontmatter';
+import { BUNDLED_STYLE_LABELS } from './csl-loader';
+import { getCompletionContextAtOffset } from './lsp/citekey-language';
+import { getCslCompletionContext, shouldAutoTriggerSuggestFromChanges } from './lsp/csl-language';
 import {
 	getOutputBasePath,
 	getOutputConflictMessage,
@@ -34,8 +37,10 @@ import {
 } from './highlight-colors';
 let languageClient: LanguageClient | undefined;
 let languageClientDisposables: vscode.Disposable[] = [];
+let cslCacheDir: string = '';
 
 export function activate(context: vscode.ExtensionContext) {
+	cslCacheDir = path.join(context.globalStorageUri.fsPath, 'csl-styles');
 	syncLanguageClient(context);
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration((e) => {
@@ -61,6 +66,63 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('manuscript-markdown.nextChange', () => changes.next()),
 		vscode.commands.registerCommand('manuscript-markdown.prevChange', () => changes.prev())
+	);
+
+	// Register Set Citation Style command
+	context.subscriptions.push(
+		vscode.commands.registerCommand('manuscript-markdown.setCitationStyle', async () => {
+			const items = [...BUNDLED_STYLE_LABELS].map(([id, displayName]) => ({
+				label: displayName,
+				description: id,
+			}));
+			const picked = await vscode.window.showQuickPick(items, {
+				placeHolder: 'Select a citation style',
+				matchOnDescription: true,
+			});
+			if (!picked) return;
+
+			const editor = vscode.window.activeTextEditor;
+			if (!editor || editor.document.languageId !== 'markdown') {
+				vscode.window.showErrorMessage('No active Markdown file');
+				return;
+			}
+
+			const text = editor.document.getText();
+			const styleId = picked.description!;
+			const eol = editor.document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+
+			await editor.edit(editBuilder => {
+				const fmMatch = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+				if (fmMatch) {
+					const fmStart = fmMatch.index!;
+					const bodyStart = text.indexOf('\n', fmStart) + 1;
+					const fmBody = fmMatch[1];
+					const cslLineMatch = fmBody.match(/^csl:.*$/m);
+					if (cslLineMatch) {
+						// Replace existing csl: line
+						const lineStart = bodyStart + cslLineMatch.index!;
+						const cslLine = cslLineMatch[0].endsWith('\r')
+							? cslLineMatch[0].slice(0, -1)
+							: cslLineMatch[0];
+						const lineEnd = lineStart + cslLine.length;
+						const range = new vscode.Range(
+							editor.document.positionAt(lineStart),
+							editor.document.positionAt(lineEnd)
+						);
+						editBuilder.replace(range, `csl: ${styleId}`);
+					} else {
+						// Insert csl: line at end of frontmatter body
+						const insertOffset = bodyStart + fmBody.length;
+						const insertPos = editor.document.positionAt(insertOffset);
+						const insertionPrefix = fmBody.length > 0 ? eol : '';
+						editBuilder.insert(insertPos, `${insertionPrefix}csl: ${styleId}`);
+					}
+				} else {
+					// No frontmatter — prepend it
+					editBuilder.insert(new vscode.Position(0, 0), `---${eol}csl: ${styleId}${eol}---${eol}`);
+				}
+			});
+		})
 	);
 
 	// Register CriticMarkup annotation commands
@@ -415,6 +477,49 @@ export function activate(context: vscode.ExtensionContext) {
 			updateHighlightDecorations(editor);
 		}, 150);
 	}
+	function shouldTriggerLspSuggest(editor: vscode.TextEditor, event: vscode.TextDocumentChangeEvent): boolean {
+		if (editor.document.languageId !== 'markdown') {
+			return false;
+		}
+		if (editor.selections.length !== 1 || !editor.selection.isEmpty) {
+			return false;
+		}
+		if (event.contentChanges.length === 0) {
+			return false;
+		}
+		if (!shouldAutoTriggerSuggestFromChanges(event.contentChanges)) {
+			return false;
+		}
+		const text = editor.document.getText();
+		const offset = editor.document.offsetAt(editor.selection.active);
+		return (
+			getCslCompletionContext(text, offset) !== undefined ||
+			getCompletionContextAtOffset(text, offset) !== undefined
+		);
+	}
+	function shouldHideSuggestOnCitekeySemicolon(
+		editor: vscode.TextEditor,
+		event: vscode.TextDocumentChangeEvent
+	): boolean {
+		if (editor.document.languageId !== 'markdown') {
+			return false;
+		}
+		if (editor.selections.length !== 1 || !editor.selection.isEmpty) {
+			return false;
+		}
+		if (event.contentChanges.length === 0) {
+			return false;
+		}
+		const hasDelimiterChange = event.contentChanges.some(
+			change => change.text.includes(';') || change.text === ' '
+		);
+		if (!hasDelimiterChange) {
+			return false;
+		}
+		const cursor = editor.selection.active;
+		const linePrefix = editor.document.lineAt(cursor.line).text.slice(0, cursor.character);
+		return /\[[^\]\n]*;\s*$/.test(linePrefix) && linePrefix.includes('@');
+	}
 	context.subscriptions.push({
 		dispose: () => {
 			if (highlightDecorationUpdateTimer) {
@@ -436,6 +541,15 @@ export function activate(context: vscode.ExtensionContext) {
 			const editor = vscode.window.activeTextEditor;
 			if (editor && e.document === editor.document) {
 				scheduleHighlightDecorationsUpdate(editor);
+				if (shouldHideSuggestOnCitekeySemicolon(editor, e)) {
+					setTimeout(() => {
+						void vscode.commands.executeCommand('hideSuggestWidget');
+					}, 10);
+					return;
+				}
+				if (shouldTriggerLspSuggest(editor, e)) {
+					void vscode.commands.executeCommand('editor.action.triggerSuggest');
+				}
 			}
 		})
 	);
@@ -515,6 +629,7 @@ function getLspSettings(): Record<string, unknown> {
 	const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
 	return {
 		citekeyReferencesFromMarkdown: config.get<boolean>('citekeyReferencesFromMarkdown', false),
+		cslCacheDirs: [cslCacheDir],
 	};
 }
 
@@ -799,7 +914,6 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 	}
 
 	const authorName = author.getAuthorName();
-	const cslCacheDir = path.join(context.globalStorageUri.fsPath, 'csl-styles');
 	// basePath has .md stripped, but dirname still yields the parent directory
 	const sourceDir = path.dirname(input.basePath);
 	const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
