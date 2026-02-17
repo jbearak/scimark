@@ -228,4 +228,15 @@ describe('shouldAutoTriggerSuggestFromChanges', () => {
 	test('returns false for empty changes', () => {
 		expect(shouldAutoTriggerSuggestFromChanges([])).toBe(false);
 	});
+	test('returns false for single-character replacement', () => {
+		expect(shouldAutoTriggerSuggestFromChanges([
+			{ rangeLength: 1, text: 'a' },
+		])).toBe(false);
+	});
+	test('returns true for mixed valid changes (multiple single-char inserts)', () => {
+		expect(shouldAutoTriggerSuggestFromChanges([
+			{ rangeLength: 0, text: 'a' },
+			{ rangeLength: 0, text: 'b' },
+		])).toBe(true);
+	});
 });

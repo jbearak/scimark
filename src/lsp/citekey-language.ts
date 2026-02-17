@@ -106,7 +106,7 @@ export function getCompletionContextAtOffset(text: string, offset: number): Comp
 	if (atOffset < 0 || text.charAt(atOffset) !== '@') {
 		return undefined;
 	}
-	if (!isInsideCitationSegment(text, atOffset)) {
+	if (!isInsideCitationSegmentAtOffset(text, atOffset)) {
 		return undefined;
 	}
 
@@ -180,11 +180,7 @@ export function findBibKeyAtOffset(parsedBib: ParsedBibData, offset: number): st
 	}
 	return undefined;
 }
-export function isInsideCitationSegmentAtOffset(text: string, offset: number): boolean {
-	return isInsideCitationSegment(text, offset);
-}
-
-function isInsideCitationSegment(text: string, atOffset: number): boolean {
+export function isInsideCitationSegmentAtOffset(text: string, atOffset: number): boolean {
 	const openBracket = text.lastIndexOf('[', atOffset);
 	if (openBracket === -1) {
 		return false;

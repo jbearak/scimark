@@ -64,6 +64,16 @@ interface ResolvedSymbol {
 
 const bibCache = new Map<string, CachedBibData>();
 
+/** Per-source diagnostic maps so validators don't overwrite each other. */
+const citekeyDiagnostics = new Map<string, Diagnostic[]>();
+const cslDiagnostics = new Map<string, Diagnostic[]>();
+
+function publishDiagnostics(uri: string): void {
+	const citekey = citekeyDiagnostics.get(uri) ?? [];
+	const csl = cslDiagnostics.get(uri) ?? [];
+	connection.sendDiagnostics({ uri, diagnostics: [...citekey, ...csl] });
+}
+
 interface OpenDocBibCache {
 	version: number;
 	data: ParsedBibData;
@@ -104,6 +114,7 @@ connection.onDidChangeConfiguration((params) => {
 
 documents.onDidOpen((event) => {
 	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
+		validateCitekeys(event.document);
 		validateCslField(event.document);
 	}
 });
@@ -118,8 +129,6 @@ documents.onDidChangeContent((event) => {
 	}
 	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
 		validateCitekeys(event.document);
-	}
-	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
 		validateCslField(event.document);
 	}
 });
@@ -133,9 +142,8 @@ documents.onDidClose((event) => {
 		}
 	}
 	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
-		connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
-	}
-	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
+		citekeyDiagnostics.delete(event.document.uri);
+		cslDiagnostics.delete(event.document.uri);
 		connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
 	}
 });
@@ -331,7 +339,8 @@ function validateCslField(doc: TextDocument): void {
 		const text = doc.getText();
 		const fieldInfo = getCslFieldInfo(text);
 		if (!fieldInfo || !fieldInfo.value) {
-			connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+			cslDiagnostics.set(doc.uri, []);
+			publishDiagnostics(doc.uri);
 			return;
 		}
 
@@ -346,7 +355,8 @@ function validateCslField(doc: TextDocument): void {
 		});
 
 		if (available) {
-			connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+			cslDiagnostics.set(doc.uri, []);
+			publishDiagnostics(doc.uri);
 			return;
 		}
 
@@ -377,7 +387,8 @@ function validateCslField(doc: TextDocument): void {
 			message,
 			source: 'manuscript-markdown',
 		};
-		connection.sendDiagnostics({ uri: doc.uri, diagnostics: [diagnostic] });
+		cslDiagnostics.set(doc.uri, [diagnostic]);
+		publishDiagnostics(doc.uri);
 	} catch {
 		// Don't let validation errors crash the LSP connection
 	}
@@ -448,13 +459,15 @@ async function validateCitekeys(doc: TextDocument): Promise<void> {
 	const text = doc.getText();
 	const bibPath = resolveBibliographyPath(doc.uri, text, workspaceRootPaths);
 	if (!bibPath) {
-		connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+		citekeyDiagnostics.set(doc.uri, []);
+		publishDiagnostics(doc.uri);
 		return;
 	}
 
 	const bibData = await getBibDataForPath(bibPath);
 	if (!bibData) {
-		connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+		citekeyDiagnostics.set(doc.uri, []);
+		publishDiagnostics(doc.uri);
 		return;
 	}
 
@@ -470,7 +483,8 @@ async function validateCitekeys(doc: TextDocument): Promise<void> {
 		}
 	}
 
-	connection.sendDiagnostics({ uri: doc.uri, diagnostics });
+	citekeyDiagnostics.set(doc.uri, diagnostics);
+	publishDiagnostics(doc.uri);
 }
 
 function revalidateMarkdownDocsForBib(changedBibPath: string): void {

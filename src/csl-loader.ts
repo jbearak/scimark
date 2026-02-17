@@ -66,7 +66,7 @@ const BUNDLED_STYLE_ENTRIES: ReadonlyArray<{ name: string; label: string }> = [
 /**
  * List of bundled CSL style short names.
  */
-export const BUNDLED_STYLES: string[] = BUNDLED_STYLE_ENTRIES.map(e => e.name);
+export const BUNDLED_STYLES: readonly string[] = BUNDLED_STYLE_ENTRIES.map(e => e.name);
 
 /**
  * Human-readable display names for each bundled CSL style.
