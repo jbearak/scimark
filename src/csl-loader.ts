@@ -42,48 +42,38 @@ const styleCache = new Map<string, string>();
 const localeCache = new Map<string, string>();
 
 /**
+ * Single source of truth for bundled CSL styles (name + display label).
+ */
+const BUNDLED_STYLE_ENTRIES: ReadonlyArray<{ name: string; label: string }> = [
+  { name: 'apa', label: 'APA (7th edition)' },
+  { name: 'bmj', label: 'BMJ' },
+  { name: 'chicago-author-date', label: 'Chicago (Author-Date)' },
+  { name: 'chicago-fullnote-bibliography', label: 'Chicago (Full Note)' },
+  { name: 'chicago-note-bibliography', label: 'Chicago (Note-Bibliography)' },
+  { name: 'modern-language-association', label: 'MLA (9th edition)' },
+  { name: 'ieee', label: 'IEEE' },
+  { name: 'nature', label: 'Nature' },
+  { name: 'cell', label: 'Cell' },
+  { name: 'science', label: 'Science' },
+  { name: 'american-medical-association', label: 'AMA (American Medical Association)' },
+  { name: 'american-chemical-society', label: 'ACS (American Chemical Society)' },
+  { name: 'american-political-science-association', label: 'APSA (American Political Science Association)' },
+  { name: 'american-sociological-association', label: 'ASA (American Sociological Association)' },
+  { name: 'vancouver', label: 'Vancouver' },
+  { name: 'harvard-cite-them-right', label: 'Harvard (Cite Them Right)' },
+];
+
+/**
  * List of bundled CSL style short names.
  */
-export const BUNDLED_STYLES = [
-  'apa',
-  'bmj',
-  'chicago-author-date',
-  'chicago-fullnote-bibliography',
-  'chicago-note-bibliography',
-  'modern-language-association',
-  'ieee',
-  'nature',
-  'cell',
-  'science',
-  'american-medical-association',
-  'american-chemical-society',
-  'american-political-science-association',
-  'american-sociological-association',
-  'vancouver',
-  'harvard-cite-them-right',
-];
+export const BUNDLED_STYLES: string[] = BUNDLED_STYLE_ENTRIES.map(e => e.name);
 
 /**
  * Human-readable display names for each bundled CSL style.
  */
-export const BUNDLED_STYLE_LABELS: ReadonlyMap<string, string> = new Map([
-  ['apa', 'APA (7th edition)'],
-  ['bmj', 'BMJ'],
-  ['chicago-author-date', 'Chicago (Author-Date)'],
-  ['chicago-fullnote-bibliography', 'Chicago (Full Note)'],
-  ['chicago-note-bibliography', 'Chicago (Note-Bibliography)'],
-  ['modern-language-association', 'MLA (9th edition)'],
-  ['ieee', 'IEEE'],
-  ['nature', 'Nature'],
-  ['cell', 'Cell'],
-  ['science', 'Science'],
-  ['american-medical-association', 'AMA (American Medical Association)'],
-  ['american-chemical-society', 'ACS (American Chemical Society)'],
-  ['american-political-science-association', 'APSA (American Political Science Association)'],
-  ['american-sociological-association', 'ASA (American Sociological Association)'],
-  ['vancouver', 'Vancouver'],
-  ['harvard-cite-them-right', 'Harvard (Cite Them Right)'],
-]);
+export const BUNDLED_STYLE_LABELS: ReadonlyMap<string, string> = new Map(
+  BUNDLED_STYLE_ENTRIES.map(e => [e.name, e.label] as const)
+);
 
 /**
  * Lightweight existence check for a CSL style (no XML parsing).

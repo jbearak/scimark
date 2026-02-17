@@ -93,11 +93,13 @@ export function activate(context: vscode.ExtensionContext) {
 			await editor.edit(editBuilder => {
 				const fmMatch = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
 				if (fmMatch) {
+					const fmStart = fmMatch.index!;
+					const bodyStart = text.indexOf('\n', fmStart) + 1;
 					const fmBody = fmMatch[1];
 					const cslLineMatch = fmBody.match(/^csl:.*$/m);
 					if (cslLineMatch) {
 						// Replace existing csl: line
-						const lineStart = fmMatch.index! + fmMatch[0].indexOf(fmBody) + cslLineMatch.index!;
+						const lineStart = bodyStart + cslLineMatch.index!;
 						const lineEnd = lineStart + cslLineMatch[0].length;
 						const range = new vscode.Range(
 							editor.document.positionAt(lineStart),
@@ -105,11 +107,8 @@ export function activate(context: vscode.ExtensionContext) {
 						);
 						editBuilder.replace(range, `csl: ${styleId}`);
 					} else {
-						// Insert csl: line at end of frontmatter
-						// Insert csl: line at end of frontmatter body.
-						// Compute body start reliably (after opening --- and its newline).
-						const openDelimEnd = fmMatch.index! + 3 + (text.charAt(fmMatch.index! + 3) === '\r' ? 2 : 1);
-						const insertOffset = openDelimEnd + fmBody.length;
+						// Insert csl: line at end of frontmatter body
+						const insertOffset = bodyStart + fmBody.length;
 						const insertPos = editor.document.positionAt(insertOffset);
 						editBuilder.insert(insertPos, `\ncsl: ${styleId}`);
 					}
@@ -910,7 +909,6 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 	}
 
 	const authorName = author.getAuthorName();
-	const cslCacheDir = path.join(context.globalStorageUri.fsPath, 'csl-styles');
 	// basePath has .md stripped, but dirname still yields the parent directory
 	const sourceDir = path.dirname(input.basePath);
 	const config = vscode.workspace.getConfiguration('manuscriptMarkdown');

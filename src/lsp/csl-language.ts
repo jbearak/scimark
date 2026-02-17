@@ -21,6 +21,41 @@ export interface CslFieldInfo {
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
 
+interface CslLineMatch {
+	lineStart: number;
+	trimmedLine: string;
+	cslPrefixLength: number;
+	fmStart: number;
+	fmEnd: number;
+}
+
+/**
+ * Find the `csl:` line in YAML frontmatter and return its position info.
+ */
+function findCslLine(text: string): CslLineMatch | undefined {
+	const fmMatch = FRONTMATTER_RE.exec(text);
+	if (!fmMatch) return undefined;
+
+	const fmStart = fmMatch.index;
+	const fmEnd = fmStart + fmMatch[0].length;
+	const firstNewline = text.indexOf('\n', fmStart);
+	if (firstNewline === -1) return undefined;
+	const bodyStart = firstNewline + 1;
+
+	const fmBody = fmMatch[1];
+	const lines = fmBody.split(/\n/);
+	let pos = bodyStart;
+	for (const line of lines) {
+		const trimmedLine = line.endsWith('\r') ? line.slice(0, -1) : line;
+		const cslMatch = trimmedLine.match(/^csl:[ \t]*/);
+		if (cslMatch) {
+			return { lineStart: pos, trimmedLine, cslPrefixLength: cslMatch[0].length, fmStart, fmEnd };
+		}
+		pos += line.length + 1;
+	}
+	return undefined;
+}
+
 /**
  * Returns true only for direct single-character typing/backspace edits.
  * Used to avoid re-triggering suggestions when completion acceptance replaces text.
@@ -39,88 +74,45 @@ export function shouldAutoTriggerSuggestFromChanges(changes: readonly SuggestTri
  * Returns context for completions, or undefined if not in a CSL value position.
  */
 export function getCslCompletionContext(text: string, offset: number): CslCompletionContext | undefined {
-	const fmMatch = FRONTMATTER_RE.exec(text);
-	if (!fmMatch) return undefined;
+	const cslLine = findCslLine(text);
+	if (!cslLine) return undefined;
 
-	const fmStart = fmMatch.index;
-	const fmEnd = fmStart + fmMatch[0].length;
-	if (offset < fmStart || offset > fmEnd) return undefined;
+	if (offset < cslLine.fmStart || offset > cslLine.fmEnd) return undefined;
 
-	// Compute body start: right after the first newline following ---
-	const firstNewline = text.indexOf('\n', fmStart);
-	if (firstNewline === -1) return undefined;
-	const bodyStart = firstNewline + 1;
+	const lineEnd = cslLine.lineStart + cslLine.trimmedLine.length;
+	if (offset < cslLine.lineStart || offset > lineEnd) return undefined;
 
-	// Find the csl: line containing the cursor
-	const lines = text.slice(0, fmEnd).split(/\n/);
-	let pos = 0;
-	for (const line of lines) {
-		const lineEnd = pos + line.length;
-		if (offset >= pos && offset <= lineEnd) {
-			// Strip trailing \r for matching
-			const trimmedLine = line.endsWith('\r') ? line.slice(0, -1) : line;
-			// Check if this line is a csl: field
-			const cslMatch = trimmedLine.match(/^csl:[ \t]*/);
-			if (!cslMatch) return undefined;
-			// Must be within the frontmatter body (not the --- delimiters)
-			if (pos < bodyStart) return undefined;
+	const valueStart = cslLine.lineStart + cslLine.cslPrefixLength;
+	const valueEnd = lineEnd;
+	const prefix = text.slice(valueStart, Math.min(offset, valueEnd)).replace(/^['"]/, '');
 
-			const valueStart = pos + cslMatch[0].length;
-			const rawValue = trimmedLine.slice(cslMatch[0].length);
-			// Determine visible end of value (exclude trailing \r)
-			const valueEnd = pos + trimmedLine.length;
-			const prefix = text.slice(valueStart, Math.min(offset, valueEnd)).replace(/^['"]/, '');
-
-			return { prefix, valueStart, valueEnd };
-		}
-		pos = lineEnd + 1; // +1 for the newline
-	}
-
-	return undefined;
+	return { prefix, valueStart, valueEnd };
 }
 
 /**
  * Extract the `csl:` field value and its character range from YAML frontmatter.
  */
 export function getCslFieldInfo(text: string): CslFieldInfo | undefined {
-	const fmMatch = FRONTMATTER_RE.exec(text);
-	if (!fmMatch) return undefined;
+	const cslLine = findCslLine(text);
+	if (!cslLine) return undefined;
 
-	// Compute body start: right after the first newline following ---
-	const firstNewline = text.indexOf('\n', fmMatch.index);
-	if (firstNewline === -1) return undefined;
-	const fmBodyStart = firstNewline + 1;
+	const valueStart = cslLine.lineStart + cslLine.cslPrefixLength;
+	let rawValue = cslLine.trimmedLine.slice(cslLine.cslPrefixLength);
+	const valueEnd = cslLine.lineStart + cslLine.trimmedLine.length;
 
-	const fmBody = fmMatch[1];
-	const lines = fmBody.split(/\n/);
-	let pos = fmBodyStart;
-	for (const line of lines) {
-		// Strip trailing \r for matching
-		const trimmedLine = line.endsWith('\r') ? line.slice(0, -1) : line;
-		const cslMatch = trimmedLine.match(/^csl:[ \t]*/);
-		if (cslMatch) {
-			const valueStart = pos + cslMatch[0].length;
-			let rawValue = trimmedLine.slice(cslMatch[0].length);
-			const valueEnd = pos + trimmedLine.length;
-
-			// Strip surrounding quotes
-			let unquotedStart = valueStart;
-			let unquotedEnd = valueEnd;
-			if ((rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-				(rawValue.startsWith("'") && rawValue.endsWith("'"))) {
-				rawValue = rawValue.slice(1, -1);
-				unquotedStart = valueStart + 1;
-				unquotedEnd = valueEnd - 1;
-			}
-
-			return {
-				value: rawValue.trim(),
-				valueStart: unquotedStart,
-				valueEnd: unquotedEnd,
-			};
-		}
-		pos += line.length + 1;
+	// Strip surrounding quotes
+	let unquotedStart = valueStart;
+	let unquotedEnd = valueEnd;
+	if ((rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+		(rawValue.startsWith("'") && rawValue.endsWith("'"))) {
+		rawValue = rawValue.slice(1, -1);
+		unquotedStart = valueStart + 1;
+		unquotedEnd = valueEnd - 1;
 	}
 
-	return undefined;
+	return {
+		value: rawValue.trim(),
+		valueStart: unquotedStart,
+		valueEnd: unquotedEnd,
+	};
 }

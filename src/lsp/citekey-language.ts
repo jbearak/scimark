@@ -99,11 +99,6 @@ export function getCompletionContextAtOffset(text: string, offset: number): Comp
 
 	let replaceStart = offset;
 	while (replaceStart > 0 && isCitekeyChar(text.charAt(replaceStart - 1))) {
-		// Stop if we hit a semicolon (even if technically allowed in some key formats, 
-		// here it acts as a delimiter in citation groups)
-		if (text.charAt(replaceStart - 1) === ';') {
-			break;
-		}
 		replaceStart--;
 	}
 
