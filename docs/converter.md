@@ -2,22 +2,25 @@
 
 The DOCX converter transforms Microsoft Word documents into Manuscript Markdown format, preserving formatting, comments, citations, and equations.
 
-## What's Preserved
+## Round-Trip Features
 
-- **Title**: Word `Title` paragraph style extracted to `title:` frontmatter (multiple title paragraphs become multiple entries)
-- **Author**: `dc:creator` from Document Properties extracted to `author:` frontmatter (only if non-blank)
+The converter supports DOCX → Markdown → DOCX round-tripping. The following features are preserved in both directions:
+
+- **Title**: `title:` frontmatter ↔ Word `Title`-styled paragraphs (multiple entries supported)
+- **Author**: `author:` frontmatter ↔ `dc:creator` in Document Properties (omitted if blank)
 - **Text formatting**: bold, italic, underline, strikethrough, superscript, subscript
-- **Headings**: H1 through H6 from Word heading styles
+- **Headings**: H1 through H6 with Word heading styles
 - **Lists**: bulleted and numbered lists with nesting
-- **Comments**: converted to CriticMarkup `{==highlighted text==}{>>author: comment<<}` format
+- **Comments**: non-overlapping comments use CriticMarkup `{==highlighted text==}{>>author: comment<<}` format; overlapping comments use non-inline ID-based syntax (`{#id}text{/id}{#id>>comment<<}`) — see [Specification](specification.md#overlapping-comments)
 - **Track changes**: insertions and deletions mapped to CriticMarkup `{++...++}` and `{--...--}`
-- **Citations**: Zotero field codes converted to Pandoc `[@key]` syntax with BibTeX export
-- **Zotero document preferences**: CSL style, locale, and note type extracted and preserved as YAML frontmatter (`csl`, `locale`, `note-type`)
-- **Bibliography fields**: `ZOTERO_BIBL` field codes detected and omitted from Markdown output (bibliography is regenerated on export)
-- **Math**: OMML equations converted to LaTeX (`$inline$` and `$$display$$`)
+- **Citations**: Zotero field codes ↔ Pandoc `[@key]` syntax with BibTeX export
+- **Zotero document preferences**: CSL style, locale, and note type round-tripped between YAML frontmatter (`csl`, `locale`, `note-type`) and `docProps/custom.xml` (`ZOTERO_PREF_*` properties)
+- **Math**: OMML equations ↔ LaTeX (`$inline$` and `$$display$$`)
 - **Hyperlinks**: preserved as Markdown links with proper escaping
-- **Highlights**: colored highlights converted to `==text=={color}` syntax
-- **Tables**: converted to HTML table blocks (`<table>/<tr>/<th>/<td>`) with paragraph-preserving cell content
+- **Highlights**: colored highlights ↔ `==text=={color}` syntax
+- **Tables**: HTML table blocks (`<table>/<tr>/<th>/<td>`) with paragraph-preserving cell content; export also supports pipe-delimited tables with `colspan` and `rowspan`
+
+On import, `ZOTERO_BIBL` field codes are detected and omitted (bibliography is regenerated on export).
 
 ## Citation Key Formats
 
@@ -90,21 +93,12 @@ If a style is not bundled, you will be prompted to download it from the [CSL sty
 
 ### What's Exported
 
-- **Title**: `title:` frontmatter entries rendered as Word Title-styled paragraphs at the beginning of the document
-- **Author**: `author:` frontmatter written as `dc:creator` in Document Properties (omitted if no author specified)
-- **Text formatting**: bold, italic, underline, strikethrough, superscript, subscript, highlights (including colored)
-- **Headings**: H1 through H6 with proper Word heading styles
-- **Lists**: bulleted and numbered lists with nesting
+All [round-trip features](#round-trip-features) are preserved on export. The following additional features are supported:
+
 - **Blockquotes**: indented paragraphs with Quote style
 - **Code**: inline code with monospace character style, fenced code blocks with shaded paragraph style
-- **Hyperlinks**: preserved with proper relationship entries
-- **Tables**: pipe-delimited tables and HTML tables (`<table>/<tr>/<th>/<td>`) with header formatting, borders, `colspan`, and `rowspan`
-- **Track changes**: CriticMarkup additions/deletions/substitutions mapped to Word revisions (`w:ins`/`w:del`)
-- **Comments**: CriticMarkup comments mapped to Word comments with author and date
-- **Citations**: Pandoc `[@key]` citations reconstructed as Zotero field codes when BibTeX contains `zotero-key` and `zotero-uri` fields; visible text formatted by the CSL style if `csl` frontmatter is present. Mixed Zotero/non-Zotero grouped citations are split — Zotero entries become a field code and non-Zotero entries become plain text (configurable via `mixedCitationStyle`). Missing keys appear inline as `@citekey` with a post-bibliography note.
 - **Bibliography**: automatically generated and appended as a `ZOTERO_BIBL` field when a CSL style is specified
-- **Zotero document preferences**: `csl`, `locale`, and `note-type` from frontmatter written to `docProps/custom.xml` as `ZOTERO_PREF_*` properties, so Zotero can manage the document after export
-- **Math**: LaTeX equations converted to OMML (inline and display)
+- **Mixed citations**: Mixed Zotero/non-Zotero grouped citations are split — Zotero entries become a field code and non-Zotero entries become plain text (configurable via `mixedCitationStyle`). Missing keys appear inline as `@citekey` with a post-bibliography note.
 
 ### Template Support
 
