@@ -8,15 +8,15 @@ The converter supports DOCX → Markdown → DOCX round-tripping. The following 
 
 - **Title**: `title:` frontmatter ↔ Word `Title`-styled paragraphs (multiple entries supported)
 - **Author**: `author:` frontmatter ↔ `dc:creator` in Document Properties (omitted if blank)
-- **Text formatting**: bold, italic, underline, strikethrough, superscript, subscript
-- **Headings**: H1 through H6 with Word heading styles
-- **Lists**: bulleted and numbered lists with nesting
+- **Text formatting**: Markdown syntax ↔ Word run formatting (bold, italic, underline, strikethrough, superscript, subscript)
+- **Headings**: `#`–`######` Markdown headings ↔ Word heading styles (H1 through H6)
+- **Lists**: Markdown list syntax ↔ Word numbering (bulleted and numbered with nesting)
 - **Comments**: non-overlapping comments use CriticMarkup `{==highlighted text==}{>>author: comment<<}` format; overlapping comments use non-inline ID-based syntax (`{#1}highlighted text{/1}{#1>>alice: comment<<}`) — see [Specification](specification.md#overlapping-comments)
-- **Track changes**: insertions and deletions mapped to CriticMarkup `{++...++}` and `{--...--}`
+- **Track changes**: CriticMarkup `{++...++}` and `{--...--}` ↔ Word revisions (`w:ins`/`w:del`)
 - **Citations**: Zotero field codes ↔ Pandoc `[@key]` syntax with BibTeX export. On import, `ZOTERO_BIBL` field codes are detected and omitted (bibliography is regenerated on export).
 - **Zotero document preferences**: CSL style, locale, and note type round-tripped between YAML frontmatter (`csl`, `locale`, `note-type`) and `docProps/custom.xml` (`ZOTERO_PREF_*` properties)
 - **Math**: OMML equations ↔ LaTeX (`$inline$` and `$$display$$`)
-- **Hyperlinks**: preserved as Markdown links with proper escaping
+- **Hyperlinks**: Markdown links ↔ Word hyperlinks (with proper escaping)
 - **Highlights**: colored highlights ↔ `==text=={color}` syntax
 - **Tables**: DOCX→Markdown import produces HTML tables (`<table>/<tr>/<th>/<td>`) to preserve multi-paragraph cell content; Markdown→DOCX export accepts both HTML tables and pipe-delimited tables (with `colspan` and `rowspan` support)
 
