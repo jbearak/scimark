@@ -111,6 +111,13 @@ documents.onDidOpen((event) => {
 documents.onDidChangeContent((event) => {
 	if (isBibUri(event.document.uri)) {
 		invalidateBibCache(event.document.uri);
+		const fsPath = uriToFsPath(event.document.uri);
+		if (fsPath) {
+			revalidateMarkdownDocsForBib(fsPath);
+		}
+	}
+	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
+		validateCitekeys(event.document);
 	}
 	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
 		validateCslField(event.document);
@@ -120,6 +127,13 @@ documents.onDidChangeContent((event) => {
 documents.onDidClose((event) => {
 	if (isBibUri(event.document.uri)) {
 		invalidateBibCache(event.document.uri);
+		const fsPath = uriToFsPath(event.document.uri);
+		if (fsPath) {
+			revalidateMarkdownDocsForBib(fsPath);
+		}
+	}
+	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
+		connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
 	}
 	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
 		connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
@@ -130,6 +144,10 @@ connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
 	for (const change of params.changes) {
 		if (isBibUri(change.uri)) {
 			invalidateBibCache(change.uri);
+			const fsPath = uriToFsPath(change.uri);
+			if (fsPath) {
+				revalidateMarkdownDocsForBib(fsPath);
+			}
 		}
 	}
 });
@@ -423,6 +441,48 @@ function invalidateBibCache(uri: string): void {
 		const key = canonicalizeFsPath(fsPath);
 		bibCache.delete(key);
 		openDocBibCache.delete(key);
+	}
+}
+
+async function validateCitekeys(doc: TextDocument): Promise<void> {
+	const text = doc.getText();
+	const bibPath = resolveBibliographyPath(doc.uri, text, workspaceRootPaths);
+	if (!bibPath) {
+		connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+		return;
+	}
+
+	const bibData = await getBibDataForPath(bibPath);
+	if (!bibData) {
+		connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+		return;
+	}
+
+	const diagnostics: Diagnostic[] = [];
+	for (const usage of scanCitationUsages(text)) {
+		if (!bibData.entries.has(usage.key)) {
+			diagnostics.push({
+				severity: DiagnosticSeverity.Warning,
+				range: Range.create(doc.positionAt(usage.keyStart - 1), doc.positionAt(usage.keyEnd)),
+				message: `Citation key "@${usage.key}" not found in bibliography.`,
+				source: 'manuscript-markdown',
+			});
+		}
+	}
+
+	connection.sendDiagnostics({ uri: doc.uri, diagnostics });
+}
+
+function revalidateMarkdownDocsForBib(changedBibPath: string): void {
+	const changedCanonical = canonicalizeFsPath(changedBibPath);
+	for (const doc of documents.all()) {
+		if (!isMarkdownUri(doc.uri, doc.languageId)) {
+			continue;
+		}
+		const resolved = resolveBibliographyPath(doc.uri, doc.getText(), workspaceRootPaths);
+		if (resolved && canonicalizeFsPath(resolved) === changedCanonical) {
+			validateCitekeys(doc);
+		}
 	}
 }
 
