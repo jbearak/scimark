@@ -207,7 +207,7 @@ The `#id` appears between `{` and `>>`, extending the existing comment syntax. A
 
 #### Examples
 
-##### Overlapping comments
+##### Nested Overlapping comments
 
 ```markdown
 This is the first sentence of a {#1}paragraph. {#2}This is the second
@@ -219,7 +219,7 @@ sentence of a paragraph.{/2}{/1}
 
 Comment 1 covers "paragraph. This is the second sentence of a paragraph." while comment 2 covers only "This is the second sentence of a paragraph." — their ranges overlap.
 
-##### Nested comments
+Non-numeric identifiers also work:
 
 ```markdown
 {#outer}The entire {#inner}important{/inner} sentence.{/outer}
@@ -235,6 +235,17 @@ When `alwaysUseCommentIds` is enabled, even non-overlapping comments use ID synt
 ```markdown
 {#1}highlighted text{/1}{#1>>alice: note<<}
 ```
+
+##### Non-nested overlapping comments
+
+Overlapping comments need not be nested. E.g., comment 1 can begin before, and end inside of, comment 2:
+
+```markdown
+This is the first sentence of a {#1}paragraph. {#2}This is the{/1} second
+sentence of a paragraph.{/2}
+```
+
+In this example, comment 1 refers to `paragraph. This is the`.
 
 #### ID Format
 
