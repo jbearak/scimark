@@ -6,6 +6,12 @@ export interface BibtexEntry {
   zoteroUri?: string;
 }
 
+/** BibTeX fields whose values are verbatim identifiers (URLs, DOIs, etc.)
+ *  that must not be LaTeX-escaped. */
+const VERBATIM_BIBTEX_FIELDS: ReadonlySet<string> = new Set([
+  'doi', 'url', 'isbn', 'issn',
+]);
+
 function escapeBibtex(s: string): string {
   // Unescape first to avoid double-escaping on round-trips (idempotent)
   return unescapeBibtex(s).replace(/([&%$#_{}~^\\])/g, '\\$1');
@@ -103,9 +109,9 @@ export function serializeBibtex(entries: Map<string, BibtexEntry>): string {
     
     for (const [fieldName, value] of entry.fields) {
       let escapedValue = value;
-      
-      // Don't escape zotero-key values (alphanumeric identifiers)
-      if (fieldName !== 'zotero-key') {
+
+      // Don't escape verbatim identifier fields or zotero-key
+      if (fieldName !== 'zotero-key' && !VERBATIM_BIBTEX_FIELDS.has(fieldName)) {
         escapedValue = escapeBibtex(value);
       }
       

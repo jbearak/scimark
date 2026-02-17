@@ -15,7 +15,7 @@ export interface Comment {
 }
 
 export interface CitationMetadata {
-  authors: Array<{ family?: string; given?: string }>;
+  authors: Array<{ family?: string; given?: string; literal?: string }>;
   title: string;
   year: string;
   journal: string;
@@ -746,8 +746,10 @@ export function itemIdentifier(meta: CitationMetadata): string {
 }
 
 function getSurname(meta: CitationMetadata): string {
-  if (meta.authors.length > 0 && meta.authors[0].family) {
-    return meta.authors[0].family;
+  if (meta.authors.length > 0) {
+    const first = meta.authors[0];
+    if (first.literal) return first.literal;
+    if (first.family) return first.family;
   }
   return meta.fullItemData.publisher || meta.journal || 'unknown';
 }
@@ -1784,6 +1786,56 @@ export function escapeBibtex(s: string): string {
   return s.replace(/([&%$#_{}~^\\])/g, '\\$1');
 }
 
+/** Map CSL type back to the most appropriate BibTeX entry type. */
+export function mapCSLTypeToBibtex(cslType: string, genre?: string): string {
+  switch (cslType) {
+    case 'article-journal':
+    case 'article-magazine':
+    case 'article-newspaper':
+      return 'article';
+    case 'book':
+      return 'book';
+    case 'chapter':
+      return 'incollection';
+    case 'paper-conference':
+      return 'inproceedings';
+    case 'thesis':
+      return genre && /master/i.test(genre) ? 'mastersthesis' : 'phdthesis';
+    case 'report':
+      return 'techreport';
+    default:
+      return 'misc';
+  }
+}
+
+/** Serialize a single CSL name entry to BibTeX author format. */
+function serializeAuthor(a: { family?: string; given?: string; literal?: string }): string {
+  if (a.literal) return `{${escapeBibtex(a.literal)}}`;
+  return [a.family, a.given].filter((s): s is string => Boolean(s)).map(escapeBibtex).join(', ');
+}
+
+/** CSL fields whose values are verbatim identifiers — not LaTeX text.
+ *  These must NOT be run through escapeBibtex because escaping `_`, `%`,
+ *  `#`, `~` corrupts URLs, DOIs, and similar machine-readable strings. */
+const VERBATIM_CSL_FIELDS: ReadonlySet<string> = new Set([
+  'DOI', 'URL', 'ISBN', 'ISSN',
+]);
+
+/** CSL-JSON field → BibTeX field mapping (for fields stored in fullItemData). */
+const CSL_TO_BIBTEX: Record<string, string> = {
+  'editor': 'editor',
+  'publisher': 'publisher',
+  'publisher-place': 'address',
+  'URL': 'url',
+  'ISBN': 'isbn',
+  'ISSN': 'issn',
+  'issue': 'number',
+  'edition': 'edition',
+  'abstract': 'abstract',
+  'note': 'note',
+  'collection-title': 'series',
+};
+
 export function generateBibTeX(
   zoteroCitations: ZoteroCitation[],
   keyMap: Map<string, string>
@@ -1800,19 +1852,50 @@ export function generateBibTeX(
       const key = keyMap.get(id);
       if (!key) { continue; }
 
-      const authorStr = meta.authors
-        .map(a => [a.family, a.given].filter((s): s is string => Boolean(s)).map(escapeBibtex).join(', '))
-        .join(' and ');
+      const authorStr = meta.authors.map(serializeAuthor).join(' and ');
 
-      const entryType = (meta.journal || meta.volume) ? 'article' : 'misc';
+      const entryType = mapCSLTypeToBibtex(meta.type, meta.fullItemData?.genre);
       const fields: string[] = [];
-      if (authorStr) { fields.push(`  author = {${authorStr}}`); }
-      if (meta.title) { fields.push(`  title = {{${escapeBibtex(meta.title)}}}`); }
-      if (meta.journal) { fields.push(`  journal = {${escapeBibtex(meta.journal)}}`); }
-      if (meta.volume) { fields.push(`  volume = {${escapeBibtex(meta.volume)}}`); }
-      if (meta.pages) { fields.push(`  pages = {${escapeBibtex(meta.pages)}}`); }
-      if (meta.year) { fields.push(`  year = {${escapeBibtex(meta.year)}}`); }
-      if (meta.doi) { fields.push(`  doi = {${escapeBibtex(meta.doi)}}`); }
+      const alreadyEmitted = new Set<string>();
+
+      if (authorStr) { fields.push(`  author = {${authorStr}}`); alreadyEmitted.add('author'); }
+      if (meta.title) { fields.push(`  title = {{${escapeBibtex(meta.title)}}}`); alreadyEmitted.add('title'); }
+
+      // Emit container-title as journal or booktitle depending on entry type
+      if (meta.journal) {
+        if (entryType === 'incollection' || entryType === 'inproceedings') {
+          fields.push(`  booktitle = {${escapeBibtex(meta.journal)}}`);
+        } else {
+          fields.push(`  journal = {${escapeBibtex(meta.journal)}}`);
+        }
+        alreadyEmitted.add('container-title');
+      }
+
+      if (meta.volume) { fields.push(`  volume = {${escapeBibtex(meta.volume)}}`); alreadyEmitted.add('volume'); }
+      if (meta.pages) { fields.push(`  pages = {${escapeBibtex(meta.pages)}}`); alreadyEmitted.add('page'); }
+      if (meta.year) { fields.push(`  year = {${escapeBibtex(meta.year)}}`); alreadyEmitted.add('issued'); }
+      if (meta.doi) { fields.push(`  doi = {${meta.doi}}`); alreadyEmitted.add('DOI'); }
+
+      // Editor from fullItemData
+      const editorData = meta.fullItemData?.editor;
+      if (Array.isArray(editorData) && editorData.length > 0) {
+        const editorStr = editorData.map(serializeAuthor).join(' and ');
+        if (editorStr) { fields.push(`  editor = {${editorStr}}`); }
+        alreadyEmitted.add('editor');
+      }
+
+      // Additional CSL→BibTeX fields from fullItemData
+      for (const [cslField, bibtexField] of Object.entries(CSL_TO_BIBTEX)) {
+        if (alreadyEmitted.has(cslField)) continue;
+        if (cslField === 'editor') continue; // handled above
+        const val = meta.fullItemData?.[cslField];
+        if (val != null && (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean')) {
+          const strVal = String(val);
+          fields.push(`  ${bibtexField} = {${VERBATIM_CSL_FIELDS.has(cslField) ? strVal : escapeBibtex(strVal)}}`);
+          alreadyEmitted.add(cslField);
+        }
+      }
+
       if (meta.zoteroKey) { fields.push(`  zotero-key = {${meta.zoteroKey}}`); }
       if (meta.zoteroUri) { fields.push(`  zotero-uri = {${escapeBibtex(meta.zoteroUri)}}`); }
 

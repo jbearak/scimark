@@ -1683,7 +1683,7 @@ describe('Zotero citation roundtrip', () => {
     expect(bib).not.toContain('zotero-uri');
   });
 
-  test('generateBibTeX escapes DOI with underscores', () => {
+  test('generateBibTeX preserves DOI verbatim (no LaTeX escaping)', () => {
     const citations: ZoteroCitation[] = [{
       plainCitation: '(Test)',
       items: [{
@@ -1695,7 +1695,7 @@ describe('Zotero citation roundtrip', () => {
     }];
     const keyMap = buildCitationKeyMap(citations);
     const bib = generateBibTeX(citations, keyMap);
-    expect(bib).toContain('doi = {10.1/some\\_thing\\_test}');
+    expect(bib).toContain('doi = {10.1/some_thing_test}');
   });
 
   test('citationPandocKeys includes locator suffix', () => {

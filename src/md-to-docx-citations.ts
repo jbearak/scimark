@@ -293,6 +293,10 @@ export function buildItemData(entry: BibtexEntry): any {
     type: mapBibtexTypeToCSL(entry.type)
   };
 
+  const lowerType = entry.type.toLowerCase();
+  if (lowerType === 'mastersthesis') itemData.genre = "Master's thesis";
+  else if (lowerType === 'phdthesis') itemData.genre = "PhD thesis";
+
   const title = entry.fields.get('title');
   if (title) itemData.title = title;
 
@@ -316,6 +320,44 @@ export function buildItemData(entry: BibtexEntry): any {
   const doi = entry.fields.get('doi');
   if (doi) itemData.DOI = doi;
 
+  // Editor (parsed like authors, supports institutional editors)
+  const editor = entry.fields.get('editor');
+  if (editor) itemData.editor = parseAuthors(editor);
+
+  const publisher = entry.fields.get('publisher');
+  if (publisher) itemData.publisher = publisher;
+
+  const address = entry.fields.get('address');
+  if (address) itemData['publisher-place'] = address;
+
+  const url = entry.fields.get('url');
+  if (url) itemData.URL = url;
+
+  const isbn = entry.fields.get('isbn');
+  if (isbn) itemData.ISBN = isbn;
+
+  const issn = entry.fields.get('issn');
+  if (issn) itemData.ISSN = issn;
+
+  const number = entry.fields.get('number');
+  if (number) itemData.issue = number;
+
+  const edition = entry.fields.get('edition');
+  if (edition) itemData.edition = edition;
+
+  // booktitle → container-title, but only if journal didn't already set it
+  const booktitle = entry.fields.get('booktitle');
+  if (booktitle && !journal) itemData['container-title'] = booktitle;
+
+  const abstract_ = entry.fields.get('abstract');
+  if (abstract_) itemData.abstract = abstract_;
+
+  const note = entry.fields.get('note');
+  if (note) itemData.note = note;
+
+  const series = entry.fields.get('series');
+  if (series) itemData['collection-title'] = series;
+
   return itemData;
 }
 
@@ -334,9 +376,33 @@ function mapBibtexTypeToCSL(bibtexType: string): string {
   }
 }
 
-function parseAuthors(authorString: string): any[] {
-  const authors = authorString.split(' and ').map(a => a.trim());
+/** Split an author string on ` and ` while respecting brace depth. */
+export function splitAuthorString(authorString: string): string[] {
+  const result: string[] = [];
+  let depth = 0;
+  let start = 0;
+  const sep = ' and ';
+  for (let i = 0; i < authorString.length; i++) {
+    if (authorString[i] === '{') { depth++; continue; }
+    if (authorString[i] === '}') { depth = Math.max(0, depth - 1); continue; }
+    if (depth === 0 && authorString.slice(i, i + sep.length) === sep) {
+      result.push(authorString.slice(start, i).trim());
+      i += sep.length - 1;
+      start = i + 1;
+    }
+  }
+  result.push(authorString.slice(start).trim());
+  return result.filter(s => s.length > 0);
+}
+
+export function parseAuthors(authorString: string): any[] {
+  const authors = splitAuthorString(authorString);
   return authors.map(author => {
+    // Institutional/corporate author: wrapped in braces (after BibTeX parser
+    // stripped the outer field braces, institutional names arrive as {Name}).
+    if (author.startsWith('{') && author.endsWith('}')) {
+      return { literal: author.slice(1, -1) };
+    }
     const commaPos = author.indexOf(',');
     if (commaPos !== -1) {
       const family = author.slice(0, commaPos).trim();
@@ -374,10 +440,14 @@ export function generateFallbackText(keys: string[], entries: Map<string, Bibtex
 
     let text = '';
     if (author) {
-      const firstAuthor = author.split(' and ')[0].trim();
-      const commaPos = firstAuthor.indexOf(',');
-      const family = commaPos !== -1 ? firstAuthor.slice(0, commaPos).trim() : firstAuthor.split(' ').pop() || firstAuthor;
-      text = family;
+      const firstAuthor = splitAuthorString(author)[0] || author.trim();
+      if (firstAuthor.startsWith('{') && firstAuthor.endsWith('}')) {
+        // Institutional author — use the full name
+        text = firstAuthor.slice(1, -1);
+      } else {
+        const commaPos = firstAuthor.indexOf(',');
+        text = commaPos !== -1 ? firstAuthor.slice(0, commaPos).trim() : firstAuthor.split(' ').pop() || firstAuthor;
+      }
     } else {
       text = key;
     }

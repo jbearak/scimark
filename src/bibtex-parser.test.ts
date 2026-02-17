@@ -184,7 +184,7 @@ describe('BibTeX Parser', () => {
     
     const result = serializeBibtex(entries);
     expect(result).toContain('title = {Title \\& More}');
-    expect(result).toContain('doi = {10.1000/test\\_doi}'); // DOI escaped per AGENTS.md
+    expect(result).toContain('doi = {10.1000/test_doi}'); // DOI is verbatim (not LaTeX-escaped)
     expect(result).toContain('zotero-key = {ABC_123}'); // Not escaped (alphanumeric identifiers)
   });
 });
