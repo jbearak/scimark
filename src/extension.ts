@@ -106,7 +106,10 @@ export function activate(context: vscode.ExtensionContext) {
 						editBuilder.replace(range, `csl: ${styleId}`);
 					} else {
 						// Insert csl: line at end of frontmatter
-						const insertOffset = fmMatch.index! + fmMatch[0].indexOf(fmBody) + fmBody.length;
+						// Insert csl: line at end of frontmatter body.
+						// Compute body start reliably (after opening --- and its newline).
+						const openDelimEnd = fmMatch.index! + 3 + (text.charAt(fmMatch.index! + 3) === '\r' ? 2 : 1);
+						const insertOffset = openDelimEnd + fmBody.length;
 						const insertPos = editor.document.positionAt(insertOffset);
 						editBuilder.insert(insertPos, `\ncsl: ${styleId}`);
 					}
