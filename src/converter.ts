@@ -1814,6 +1814,13 @@ function serializeAuthor(a: { family?: string; given?: string; literal?: string 
   return [a.family, a.given].filter((s): s is string => Boolean(s)).map(escapeBibtex).join(', ');
 }
 
+/** CSL fields whose values are verbatim identifiers — not LaTeX text.
+ *  These must NOT be run through escapeBibtex because escaping `_`, `%`,
+ *  `#`, `~` corrupts URLs, DOIs, and similar machine-readable strings. */
+const VERBATIM_CSL_FIELDS: ReadonlySet<string> = new Set([
+  'DOI', 'URL', 'ISBN', 'ISSN',
+]);
+
 /** CSL-JSON field → BibTeX field mapping (for fields stored in fullItemData). */
 const CSL_TO_BIBTEX: Record<string, string> = {
   'editor': 'editor',
@@ -1867,7 +1874,7 @@ export function generateBibTeX(
       if (meta.volume) { fields.push(`  volume = {${escapeBibtex(meta.volume)}}`); alreadyEmitted.add('volume'); }
       if (meta.pages) { fields.push(`  pages = {${escapeBibtex(meta.pages)}}`); alreadyEmitted.add('page'); }
       if (meta.year) { fields.push(`  year = {${escapeBibtex(meta.year)}}`); alreadyEmitted.add('issued'); }
-      if (meta.doi) { fields.push(`  doi = {${escapeBibtex(meta.doi)}}`); alreadyEmitted.add('DOI'); }
+      if (meta.doi) { fields.push(`  doi = {${meta.doi}}`); alreadyEmitted.add('DOI'); }
 
       // Editor from fullItemData
       const editorData = meta.fullItemData?.editor;
@@ -1883,7 +1890,8 @@ export function generateBibTeX(
         if (cslField === 'editor') continue; // handled above
         const val = meta.fullItemData?.[cslField];
         if (val != null && (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean')) {
-          fields.push(`  ${bibtexField} = {${escapeBibtex(String(val))}}`);
+          const strVal = String(val);
+          fields.push(`  ${bibtexField} = {${VERBATIM_CSL_FIELDS.has(cslField) ? strVal : escapeBibtex(strVal)}}`);
           alreadyEmitted.add(cslField);
         }
       }

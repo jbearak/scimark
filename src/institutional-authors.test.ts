@@ -294,6 +294,26 @@ describe('generateBibTeX with institutional authors and additional fields', () =
     expect(bib).toContain('series = {Lecture Notes}');
   });
 
+  it('preserves URL and DOI verbatim without LaTeX escaping', () => {
+    const citations: ZoteroCitation[] = [{
+      plainCitation: '(Test)',
+      items: [{
+        authors: [{ family: 'Test', given: 'A' }],
+        title: 'Test', year: '2020', journal: 'J', volume: '1',
+        pages: '', doi: '10.1000/some_thing#ref', type: 'article-journal',
+        fullItemData: {
+          'URL': 'https://example.com/path_to/doc#section?q=100%25',
+          'ISBN': '978-0-12-345678-9',
+        },
+      }],
+    }];
+    const keyMap = buildCitationKeyMap(citations);
+    const bib = generateBibTeX(citations, keyMap);
+    expect(bib).toContain('doi = {10.1000/some_thing#ref}');
+    expect(bib).toContain('url = {https://example.com/path_to/doc#section?q=100%25}');
+    expect(bib).toContain('isbn = {978-0-12-345678-9}');
+  });
+
   it('emits numeric CSL field values (e.g. edition, issue)', () => {
     const citations: ZoteroCitation[] = [{
       plainCitation: '(Test)',
