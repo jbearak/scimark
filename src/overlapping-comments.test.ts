@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import {
   buildMarkdown,
+  convertDocx,
   DEFAULT_FORMATTING,
   formatLocalIsoMinute,
 } from './converter';
@@ -270,6 +271,27 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     expect(result).not.toContain('{>>alice: note A<<}');
     expect((result.match(/alice: note A/g) || []).length).toBe(1);
   });
+
+  test('mapped IDs are reused and new unmapped IDs get non-colliding numeric IDs', () => {
+    const comments = new Map([
+      ['0', { author: 'alice', text: 'mapped', date: '' }],
+      ['5', { author: 'bob', text: 'new from word', date: '' }],
+    ]);
+    const content = [
+      { type: 'text' as const, text: 'A', commentIds: new Set(['0']), formatting: DEFAULT_FORMATTING },
+      { type: 'text' as const, text: 'B', commentIds: new Set(['5']), formatting: DEFAULT_FORMATTING },
+      { type: 'text' as const, text: 'C', commentIds: new Set(['0', '5']), formatting: DEFAULT_FORMATTING },
+    ];
+    const result = buildMarkdown(content, comments, {
+      commentIdMapping: new Map([['0', 'intro-note']]),
+    });
+    expect(result).toContain('{#intro-note}');
+    expect(result).toContain('{/intro-note}');
+    expect(result).toContain('{#1}');
+    expect(result).toContain('{/1}');
+    expect(result).toContain('{#intro-note>>alice: mapped<<}');
+    expect(result).toContain('{#1>>bob: new from word<<}');
+  });
 });
 
 describe('Overlapping comments: md-to-docx (parseMd)', () => {
@@ -409,6 +431,62 @@ describe('Overlapping comments: round-trip', () => {
     const result = await convertMdToDocx(md, { authorName: 'test' });
     expect(result.docx).toBeDefined();
     expect(result.docx.length).toBeGreaterThan(0);
+  });
+
+  test('preserves non-numeric comment IDs through md→docx→md', async () => {
+    const md = '{#intro-note}A {#second-note}B{/second-note} C{/intro-note}\n\n{#intro-note>>alice: first<<}\n\n{#second-note>>bob: second<<}';
+    const { docx } = await convertMdToDocx(md, { authorName: 'test' });
+    const roundtrip = await convertDocx(docx);
+    expect(roundtrip.markdown).toContain('{#intro-note}');
+    expect(roundtrip.markdown).toContain('{/intro-note}');
+    expect(roundtrip.markdown).toContain('{#second-note}');
+    expect(roundtrip.markdown).toContain('{/second-note}');
+    expect(roundtrip.markdown).toContain('{#intro-note>>alice');
+    expect(roundtrip.markdown).toContain('first<<}');
+    expect(roundtrip.markdown).toContain('{#second-note>>bob');
+    expect(roundtrip.markdown).toContain('second<<}');
+  });
+
+  test('preserves overlapping non-numeric IDs through md→docx→md', async () => {
+    const md = '{#intro-note}A {#conclusion-remark}B{/conclusion-remark} C{/intro-note}\n\n{#intro-note>>alice: first<<}\n\n{#conclusion-remark>>bob: second<<}';
+    const { docx } = await convertMdToDocx(md, { authorName: 'test' });
+    const roundtrip = await convertDocx(docx);
+    expect(roundtrip.markdown).toContain('{#intro-note}');
+    expect(roundtrip.markdown).toContain('{#conclusion-remark}');
+    expect(roundtrip.markdown).toContain('{/intro-note}');
+    expect(roundtrip.markdown).toContain('{/conclusion-remark}');
+    expect(roundtrip.markdown).toContain('{#intro-note>>alice');
+    expect(roundtrip.markdown).toContain('first<<}');
+    expect(roundtrip.markdown).toContain('{#conclusion-remark>>bob');
+    expect(roundtrip.markdown).toContain('second<<}');
+  });
+
+  test('falls back to numeric IDs when mapping custom property is missing', async () => {
+    const md = '{#intro-note}A {#second-note}B{/second-note} C{/intro-note}\n\n{#intro-note>>alice: first<<}\n\n{#second-note>>bob: second<<}';
+    const { docx } = await convertMdToDocx(md, { authorName: 'test' });
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    zip.remove('docProps/custom.xml');
+    const noMappingDocx = await zip.generateAsync({ type: 'uint8array' });
+    const roundtrip = await convertDocx(noMappingDocx);
+    expect(roundtrip.markdown).toContain('{#1}');
+    expect(roundtrip.markdown).toContain('{/1}');
+    expect(roundtrip.markdown).toContain('{#2}');
+    expect(roundtrip.markdown).toContain('{/2}');
+    expect(roundtrip.markdown).toContain('{#1>>alice');
+    expect(roundtrip.markdown).toContain('{#2>>bob');
+    expect(roundtrip.markdown).not.toContain('{#intro-note}');
+  });
+
+  test('stores comment ID mapping in docProps/custom.xml', async () => {
+    const md = '{#intro-note}text{/intro-note}\n\n{#intro-note>>alice: note<<}';
+    const { docx } = await convertMdToDocx(md, { authorName: 'test' });
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const customXml = await zip.file('docProps/custom.xml')?.async('string');
+    expect(customXml).toBeDefined();
+    expect(customXml || '').toContain('MANUSCRIPT_COMMENT_IDS_1');
+    expect(customXml || '').toContain('&quot;0&quot;:&quot;intro-note&quot;');
   });
 });
 

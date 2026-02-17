@@ -533,6 +533,52 @@ export async function extractZoteroPrefs(data: Uint8Array | JSZip): Promise<Zote
   }
 }
 
+export async function extractCommentIdMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const parts: Array<{ index: number; value: string }> = [];
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (!name.startsWith('MANUSCRIPT_COMMENT_IDS')) continue;
+
+    let idx = 1;
+    if (name !== 'MANUSCRIPT_COMMENT_IDS') {
+      const chunkMatch = name.match(/^MANUSCRIPT_COMMENT_IDS_(\d+)$/);
+      if (!chunkMatch) continue;
+      idx = parseInt(chunkMatch[1], 10);
+      if (isNaN(idx)) continue;
+    }
+
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const val = nodeText(child['vt:lpwstr'] || []);
+        parts.push({ index: idx, value: val });
+      }
+    }
+  }
+
+  if (parts.length === 0) return null;
+
+  parts.sort((a, b) => a.index - b.index);
+  const mappingJson = parts.map(p => p.value).join('');
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<string, string>();
+    for (const [numericId, originalId] of Object.entries(parsedJson)) {
+      if (typeof originalId !== 'string' || !originalId) continue;
+      mapping.set(String(numericId), originalId);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
 /** Strip the Zotero styles URL prefix to get a short style name. */
 export function zoteroStyleShortName(styleId: string): string {
   if (styleId.startsWith(ZOTERO_STYLE_PREFIX)) {
@@ -1504,25 +1550,43 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
   // Build 1-indexed comment ID remap (order of first appearance in document)
   const commentIdRemap = new Map<string, string>();
+  const usedRemapIds = new Set<string>();
   // Comments that overlap anywhere in the document should use ID syntax
   // consistently across all their occurrences (including non-overlapping
   // paragraphs), to avoid mixed-format duplicate comment body emission.
   const forceIdCommentIds = new Set<string>();
   const emittedIdCommentBodies = new Set<string>();
   let nextRemapId = 1;
+  function nextAvailableNumericId(): string {
+    while (usedRemapIds.has(String(nextRemapId))) {
+      nextRemapId++;
+    }
+    const id = String(nextRemapId);
+    usedRemapIds.add(id);
+    nextRemapId++;
+    return id;
+  }
+  function assignRemappedId(id: string): string {
+    const mapped = options?.commentIdMapping?.get(id);
+    if (mapped && !usedRemapIds.has(mapped)) {
+      usedRemapIds.add(mapped);
+      return mapped;
+    }
+    return nextAvailableNumericId();
+  }
   function collectCommentMetadata(items: ContentItem[]): void {
     for (const item of items) {
       if (item.type === 'text' || item.type === 'citation') {
         const ids = [...item.commentIds];
         for (const id of ids) {
           if (!commentIdRemap.has(id)) {
-            commentIdRemap.set(id, String(nextRemapId++));
+            commentIdRemap.set(id, assignRemappedId(id));
           }
         }
         if (ids.length > 1) {
@@ -1797,11 +1861,12 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
     extractAuthor(zip),
+    extractCommentIdMapping(zip),
   ]);
 
   const keyMap = buildCitationKeyMap(zoteroCitations, format);
@@ -1810,7 +1875,11 @@ export async function convertDocx(
   // Extract consecutive Title-styled paragraphs from the beginning of the document
   const titleLines = extractTitleLines(docContent);
 
-  let markdown = buildMarkdown(docContent, comments, { tableIndent: options?.tableIndent, alwaysUseCommentIds: options?.alwaysUseCommentIds });
+  let markdown = buildMarkdown(docContent, comments, {
+    tableIndent: options?.tableIndent,
+    alwaysUseCommentIds: options?.alwaysUseCommentIds,
+    commentIdMapping,
+  });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
   if (!zoteroBiblData) {
