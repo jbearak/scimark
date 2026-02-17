@@ -637,8 +637,11 @@ export async function extractZoteroCitations(data: Uint8Array | JSZip): Promise<
         };
 
         // Extract citation-key (CSL standard field) for round-trip preservation
-        if (d['citation-key']) {
-          result.citationKey = d['citation-key'];
+        if (d['citation-key'] != null) {
+          const ck = String(d['citation-key']).trim();
+          if (ck) {
+            result.citationKey = ck;
+          }
         }
 
         // Extract Zotero URI and key
