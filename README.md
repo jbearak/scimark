@@ -42,7 +42,7 @@ manuscript-markdown paper.md      # Markdown → DOCX
 
 - CriticMarkup annotations with comment attribution and timestamps
 - Markdown formatting toolbar (bold, italic, lists, headings, code, links, tables)
-- DOCX to Markdown conversion preserving formatting, comments, and citations
+- DOCX to Markdown conversion preserving formatting, comments, change tracking, and citations
 - Markdown to DOCX export with template support and Zotero field code reconstruction
 - LaTeX equation support (inline and display math, converted to/from Word OMML)
 - Zotero citation roundtrip with BibTeX export
