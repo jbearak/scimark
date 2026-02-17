@@ -1236,8 +1236,25 @@ function appPropsXml(): string {
     '<Application>Manuscript Markup</Application>\n' +
     '</Properties>';
 }
+interface CustomPropEntry {
+  name: string;
+  value: string;
+}
 
-function zoteroCustomPropsXml(fm: Frontmatter): string {
+function customPropsXml(properties: CustomPropEntry[]): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  xml += '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">\n';
+  for (let i = 0; i < properties.length; i++) {
+    const pid = i + 2; // fmtid starts at pid=2 per OOXML convention
+    xml += '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="' + pid + '" name="' + escapeXml(properties[i].name) + '">';
+    xml += '<vt:lpwstr>' + escapeXml(properties[i].value) + '</vt:lpwstr>';
+    xml += '</property>\n';
+  }
+  xml += '</Properties>';
+  return xml;
+}
+
+function zoteroCustomProps(fm: Frontmatter): CustomPropEntry[] {
   const styleId = zoteroStyleFullId(fm.csl || '');
   const prefData = JSON.stringify({
     dataVersion: 4,
@@ -1256,21 +1273,32 @@ function zoteroCustomPropsXml(fm: Frontmatter): string {
 
   // Chunk the pref string into ZOTERO_PREF_1, ZOTERO_PREF_2, etc. (max 240 chars each)
   const CHUNK_SIZE = 240;
-  const chunks: string[] = [];
+  const props: CustomPropEntry[] = [];
   for (let i = 0; i < prefData.length; i += CHUNK_SIZE) {
-    chunks.push(prefData.slice(i, i + CHUNK_SIZE));
+    props.push({
+      name: 'ZOTERO_PREF_' + (props.length + 1),
+      value: prefData.slice(i, i + CHUNK_SIZE),
+    });
   }
+  return props;
+}
 
-  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
-  xml += '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">\n';
-  for (let i = 0; i < chunks.length; i++) {
-    const pid = i + 2; // fmtid starts at pid=2 per OOXML convention
-    xml += '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="' + pid + '" name="ZOTERO_PREF_' + (i + 1) + '">';
-    xml += '<vt:lpwstr>' + escapeXml(chunks[i]) + '</vt:lpwstr>';
-    xml += '</property>\n';
+function commentIdMappingProps(commentIdMap: Map<string, number>): CustomPropEntry[] {
+  if (commentIdMap.size === 0) return [];
+  const mapping: Record<string, string> = {};
+  for (const [mdId, numericId] of commentIdMap) {
+    mapping[String(numericId)] = mdId;
   }
-  xml += '</Properties>';
-  return xml;
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_COMMENT_IDS_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
 }
 
 function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean): string {
@@ -1803,10 +1831,14 @@ export async function convertMdToDocx(
   zip.file('docProps/core.xml', corePropsXml(frontmatter.author));
   zip.file('docProps/app.xml', appPropsXml());
 
-  // Write Zotero document preferences if CSL style specified
-  const hasCustomProps = !!frontmatter.csl;
+  const customProps: CustomPropEntry[] = [];
   if (frontmatter.csl) {
-    zip.file('docProps/custom.xml', zoteroCustomPropsXml(frontmatter));
+    customProps.push(...zoteroCustomProps(frontmatter));
+  }
+  customProps.push(...commentIdMappingProps(state.commentIdMap));
+  const hasCustomProps = customProps.length > 0;
+  if (hasCustomProps) {
+    zip.file('docProps/custom.xml', customPropsXml(customProps));
   }
 
   zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps));
