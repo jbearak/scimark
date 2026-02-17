@@ -81,7 +81,7 @@ export type ContentItem =
       listMeta?: ListMeta;     // present if list item
       isTitle?: boolean;       // true if Word "Title" paragraph style
     }
-  | { type: 'math'; latex: string; display: boolean };
+  | { type: 'math'; latex: string; display: boolean; commentIds: Set<string> };
 export interface TableRow {
   isHeader: boolean;
   cells: TableCell[];
@@ -1076,10 +1076,10 @@ export async function extractDocumentContent(
             try {
               const latex = ommlToLatex(oMathNode['m:oMath']);
               if (latex) {
-                target.push({ type: 'math', latex, display: true });
+                target.push({ type: 'math', latex, display: true, commentIds: new Set(activeComments) });
               }
             } catch {
-              target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true });
+              target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true, commentIds: new Set(activeComments) });
             }
           }
         } else if (key === 'm:oMath') {
@@ -1088,10 +1088,10 @@ export async function extractDocumentContent(
           try {
             const latex = ommlToLatex(mathChildren);
             if (latex) {
-              target.push({ type: 'math', latex, display: false });
+              target.push({ type: 'math', latex, display: false, commentIds: new Set(activeComments) });
             }
           } catch {
-            target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false });
+            target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false, commentIds: new Set(activeComments) });
           }
         } else if (Array.isArray(node[key])) {
           walk(node[key], currentFormatting, target, inTableCell);
