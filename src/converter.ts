@@ -81,7 +81,7 @@ export type ContentItem =
       listMeta?: ListMeta;     // present if list item
       isTitle?: boolean;       // true if Word "Title" paragraph style
     }
-  | { type: 'math'; latex: string; display: boolean };
+  | { type: 'math'; latex: string; display: boolean; commentIds: Set<string> };
 export interface TableRow {
   isHeader: boolean;
   cells: TableCell[];
@@ -996,6 +996,20 @@ export async function extractDocumentContent(
             }
           }
           walk(runChildren, runFormatting, target, inTableCell);
+        } else if (key === 'w:br') {
+          // Line break within a run (Shift+Enter in Word).
+          // Only emit for default/textWrapping breaks; skip page/column breaks.
+          const brType = getAttr(node, 'type');
+          if (!brType || brType === 'textWrapping') {
+            if (!inBibliographyField && !inCitationField) {
+              target.push({
+                type: 'text',
+                text: '\n',
+                commentIds: new Set(activeComments),
+                formatting: currentFormatting,
+              });
+            }
+          }
         } else if (key === 'w:t') {
           const text = nodeText(node['w:t'] || []);
           if (text) {
@@ -1062,10 +1076,10 @@ export async function extractDocumentContent(
             try {
               const latex = ommlToLatex(oMathNode['m:oMath']);
               if (latex) {
-                target.push({ type: 'math', latex, display: true });
+                target.push({ type: 'math', latex, display: true, commentIds: new Set(activeComments) });
               }
             } catch {
-              target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true });
+              target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true, commentIds: new Set(activeComments) });
             }
           }
         } else if (key === 'm:oMath') {
@@ -1074,10 +1088,10 @@ export async function extractDocumentContent(
           try {
             const latex = ommlToLatex(mathChildren);
             if (latex) {
-              target.push({ type: 'math', latex, display: false });
+              target.push({ type: 'math', latex, display: false, commentIds: new Set(activeComments) });
             }
           } catch {
-            target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false });
+            target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false, commentIds: new Set(activeComments) });
           }
         } else if (Array.isArray(node[key])) {
           walk(node[key], currentFormatting, target, inTableCell);
@@ -1148,28 +1162,127 @@ function mergeConsecutiveRuns(content: ContentItem[]): ContentItem[] {
 
 function renderInlineSegment(
   segment: ContentItem[],
-  comments: Map<string, Comment>
-): string {
-  return renderInlineRange(segment, 0, comments).text;
+  comments: Map<string, Comment>,
+  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string> }
+): { text: string; deferredComments: string[] } {
+  const result = renderInlineRange(segment, 0, comments, undefined, renderOpts);
+  return {
+    // Keep parity with paragraph-level emission behavior.
+    text: result.text.replace(/\n+$/, ''),
+    deferredComments: result.deferredComments,
+  };
+}
+
+/** Check whether any position in the segment has more than one active comment. */
+function hasOverlappingComments(segment: ContentItem[]): boolean {
+  const allIds = new Set<string>();
+  for (const item of segment) {
+    if (item.type === 'text' || item.type === 'citation') {
+      for (const id of item.commentIds) allIds.add(id);
+    }
+  }
+  if (allIds.size <= 1) return false;
+
+  // Two or more comment IDs exist — check if their ranges actually overlap
+  // by seeing if any single run is covered by 2+ comments
+  for (const item of segment) {
+    if (item.type === 'text' || item.type === 'citation') {
+      if (item.commentIds.size > 1) return true;
+    }
+  }
+
+  // Even if no single run has 2+, overlapping can occur if comment ranges
+  // interleave across runs. Check via boundary analysis.
+  const starts = new Map<string, number>();
+  const ends = new Map<string, number>();
+  let pos = 0;
+  let prevIds = new Set<string>();
+  for (const item of segment) {
+    if (item.type !== 'text' && item.type !== 'citation') { pos++; continue; }
+    const ids = item.commentIds;
+    for (const id of ids) {
+      if (!prevIds.has(id)) starts.set(id, Math.min(starts.get(id) ?? pos, pos));
+    }
+    for (const id of prevIds) {
+      if (!ids.has(id)) ends.set(id, Math.max(ends.get(id) ?? pos, pos));
+    }
+    prevIds = ids;
+    pos++;
+  }
+  for (const id of prevIds) {
+    if (!ends.has(id)) {
+      ends.set(id, pos);
+    }
+  }
+
+  // Check if any pair of comment ranges overlaps
+  const ranges = [...allIds].map(id => ({ id, start: starts.get(id) ?? 0, end: ends.get(id) ?? 0 }));
+  for (let a = 0; a < ranges.length; a++) {
+    for (let b = a + 1; b < ranges.length; b++) {
+      if (ranges[a].start < ranges[b].end && ranges[b].start < ranges[a].end) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function formatDateSuffix(date: string | undefined): string {
+  if (!date) return '';
+  try {
+    return ` (${formatLocalIsoMinute(date)})`;
+  } catch { return ` (${date})`; }
+}
+
+function formatCommentBody(_cid: string, c: Comment): string {
+  return `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+}
+
+function formatCommentBodyWithId(cid: string, c: Comment): string {
+  return `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+}
+
+function computeSegmentEnd(
+  segment: ContentItem[],
+  startIndex: number,
+  opts?: { stopBeforeDisplayMath?: boolean }
+): number {
+  let idx = startIndex;
+  while (idx < segment.length) {
+    const item = segment[idx];
+    if (item.type === 'para' || item.type === 'table') break;
+    if (opts?.stopBeforeDisplayMath && item.type === 'math' && item.display) break;
+    idx++;
+  }
+  return idx;
 }
 
 function renderInlineRange(
   segment: ContentItem[],
   startIndex: number,
   comments: Map<string, Comment>,
-  opts?: { stopBeforeDisplayMath?: boolean }
-): { text: string; nextIndex: number } {
+  opts?: { stopBeforeDisplayMath?: boolean },
+  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string> }
+): { text: string; nextIndex: number; deferredComments: string[] } {
   let out = '';
   let i = startIndex;
 
+  // Determine if we should use ID-based syntax for this inline segment only
+  const segmentEnd = computeSegmentEnd(segment, startIndex, opts);
+  const forceIdCommentIds = renderOpts?.forceIdCommentIds;
+  const hasForcedIdCommentInSegment = !!forceIdCommentIds && [...segment.slice(startIndex, segmentEnd)].some(item => (
+    (item.type === 'text' || item.type === 'citation') &&
+    [...item.commentIds].some(id => forceIdCommentIds.has(id))
+  ));
+  const useIds = renderOpts?.alwaysUseCommentIds || hasForcedIdCommentInSegment || hasOverlappingComments(segment.slice(startIndex, segmentEnd));
+
+  if (useIds) {
+    return renderInlineRangeWithIds(segment, startIndex, comments, opts, renderOpts?.commentIdRemap, renderOpts?.emittedIdCommentBodies);
+  }
+
   while (i < segment.length) {
     const item = segment[i];
-    if (item.type === 'para' || item.type === 'table') {
-      break;
-    }
-    if (opts?.stopBeforeDisplayMath && item.type === 'math' && item.display) {
-      break;
-    }
+    if (i >= segmentEnd) break;
 
     if (item.type === 'citation') {
       if (item.pandocKeys.length > 0) {
@@ -1215,13 +1328,7 @@ function renderInlineRange(
       for (const cid of [...commentSet].sort()) {
         const c = comments.get(cid);
         if (!c) { continue; }
-        let dateStr = '';
-        if (c.date) {
-          try {
-            dateStr = ` (${formatLocalIsoMinute(c.date)})`;
-          } catch { dateStr = ` (${c.date})`; }
-        }
-        out += `{>>${c.author}${dateStr}: ${c.text}<<}`;
+        out += formatCommentBody(cid, c);
       }
 
       i = j;
@@ -1235,10 +1342,137 @@ function renderInlineRange(
     out += formattedText;
     i++;
   }
-  return { text: out, nextIndex: i };
+  return { text: out, nextIndex: i, deferredComments: [] };
 }
 
-function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  '): string {
+/** Render inline content using ID-based comment syntax ({#id}...{/id}).
+ *  Comment bodies are deferred (not emitted inline) and returned separately. */
+function renderInlineRangeWithIds(
+  segment: ContentItem[],
+  startIndex: number,
+  comments: Map<string, Comment>,
+  opts?: { stopBeforeDisplayMath?: boolean },
+  commentIdRemap?: Map<string, string>,
+  emittedIdCommentBodies?: Set<string>
+): { text: string; nextIndex: number; deferredComments: string[] } {
+  let out = '';
+  let i = startIndex;
+  let prevCommentIds = new Set<string>();
+  const collectedBodies = new Set<string>();
+  const deferred: Array<{ remappedId: string; body: string }> = [];
+  const segmentEnd = computeSegmentEnd(segment, startIndex, opts);
+
+  const remap = (id: string) => commentIdRemap?.get(id) ?? id;
+
+  function collectBody(cid: string): void {
+    if (collectedBodies.has(cid)) return;
+    if (emittedIdCommentBodies?.has(cid)) return;
+    const c = comments.get(cid);
+    if (!c) return;
+    collectedBodies.add(cid);
+    emittedIdCommentBodies?.add(cid);
+    deferred.push({ remappedId: remap(cid), body: formatCommentBodyWithId(remap(cid), c) });
+  }
+
+  while (i < segment.length) {
+    const item = segment[i];
+    if (i >= segmentEnd) break;
+
+    if (item.type === 'citation') {
+      const currentIds = item.commentIds;
+      for (const cid of [...prevCommentIds].sort()) {
+        if (!currentIds.has(cid)) {
+          out += `{/${remap(cid)}}`;
+          collectBody(cid);
+        }
+      }
+      for (const cid of [...currentIds].sort()) {
+        if (!prevCommentIds.has(cid)) {
+          out += `{#${remap(cid)}}`;
+        }
+      }
+      prevCommentIds = new Set(currentIds);
+
+      if (item.pandocKeys.length > 0) {
+        out += ' [' + item.pandocKeys.map(k => '@' + k).join('; ') + ']';
+      } else {
+        out += item.text;
+      }
+      i++;
+      continue;
+    }
+
+    if (item.type === 'math') {
+      const currentIds = item.commentIds;
+      for (const cid of [...prevCommentIds].sort()) {
+        if (!currentIds.has(cid)) {
+          out += `{/${remap(cid)}}`;
+          collectBody(cid);
+        }
+      }
+      for (const cid of [...currentIds].sort()) {
+        if (!prevCommentIds.has(cid)) {
+          out += `{#${remap(cid)}}`;
+        }
+      }
+      prevCommentIds = new Set(currentIds);
+
+      out += item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+      i++;
+      continue;
+    }
+
+    if (item.type !== 'text') {
+      i++;
+      continue;
+    }
+
+    const currentIds = item.commentIds;
+
+    for (const cid of [...prevCommentIds].sort()) {
+      if (!currentIds.has(cid)) {
+        out += `{/${remap(cid)}}`;
+        collectBody(cid);
+      }
+    }
+
+    for (const cid of [...currentIds].sort()) {
+      if (!prevCommentIds.has(cid)) {
+        out += `{#${remap(cid)}}`;
+      }
+    }
+
+    prevCommentIds = new Set(currentIds);
+
+    const fmtForText: RunFormatting = currentIds.size > 0
+      ? { ...item.formatting, highlight: false }
+      : item.formatting;
+    let formattedText = wrapWithFormatting(item.text, fmtForText);
+    if (item.href) {
+      formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
+    }
+    out += formattedText;
+    i++;
+  }
+
+  // Close any remaining open comments
+  for (const cid of [...prevCommentIds].sort()) {
+    out += `{/${remap(cid)}}`;
+    collectBody(cid);
+  }
+
+  // Sort deferred comments by remapped ID (numeric then lexicographic)
+  deferred.sort((a, b) => {
+    const na = parseInt(a.remappedId, 10);
+    const nb = parseInt(b.remappedId, 10);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a.remappedId.localeCompare(b.remappedId);
+  });
+
+  return { text: out, nextIndex: i, deferredComments: deferred.map(d => d.body) };
+}
+
+function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  ', renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string> }): string {
   const i1 = indent;  // tr level
   const i2 = indent + indent;  // td/th level
   const i3 = indent + indent + indent;  // content level
@@ -1253,7 +1487,11 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
       if (cell.rowspan && cell.rowspan > 1) attrs += ' rowspan="' + cell.rowspan + '"';
       lines.push(i2 + '<' + tag + attrs + '>');
       for (const para of cell.paragraphs) {
-        lines.push(i3 + '<p>' + renderInlineSegment(mergeConsecutiveRuns(para), comments) + '</p>');
+        const rendered = renderInlineSegment(mergeConsecutiveRuns(para), comments, renderOpts);
+        lines.push(i3 + '<p>' + rendered.text + '</p>');
+        if (rendered.deferredComments.length > 0) {
+          lines.push(i3 + rendered.deferredComments.join('\n' + i3));
+        }
       }
       lines.push(i2 + '</' + tag + '>');
     }
@@ -1266,9 +1504,100 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
+
+  // Build 1-indexed comment ID remap (order of first appearance in document)
+  const commentIdRemap = new Map<string, string>();
+  // Comments that overlap anywhere in the document should use ID syntax
+  // consistently across all their occurrences (including non-overlapping
+  // paragraphs), to avoid mixed-format duplicate comment body emission.
+  const forceIdCommentIds = new Set<string>();
+  const emittedIdCommentBodies = new Set<string>();
+  let nextRemapId = 1;
+  function collectCommentMetadata(items: ContentItem[]): void {
+    for (const item of items) {
+      if (item.type === 'text' || item.type === 'citation') {
+        const ids = [...item.commentIds];
+        for (const id of ids) {
+          if (!commentIdRemap.has(id)) {
+            commentIdRemap.set(id, String(nextRemapId++));
+          }
+        }
+        if (ids.length > 1) {
+          for (const id of ids) {
+            forceIdCommentIds.add(id);
+          }
+        }
+      } else if (item.type === 'table') {
+        for (const row of item.rows) {
+          for (const cell of row.cells) {
+            for (const para of cell.paragraphs) {
+              collectCommentMetadata(para);
+            }
+          }
+        }
+      }
+    }
+  }
+  collectCommentMetadata(mergedContent);
+
+  // Global overlap detection: mark comments that overlap anywhere in the document
+  function detectGlobalOverlaps(items: ContentItem[]): void {
+    const starts = new Map<string, number>();
+    const ends = new Map<string, number>();
+    let pos = 0;
+    let prevIds = new Set<string>();
+
+    function scan(itemList: ContentItem[]): void {
+      for (const item of itemList) {
+        if (item.type === 'text' || item.type === 'citation') {
+          const ids = item.commentIds;
+          for (const id of ids) {
+            if (!prevIds.has(id)) starts.set(id, Math.min(starts.get(id) ?? pos, pos));
+          }
+          for (const id of prevIds) {
+            if (!ids.has(id)) ends.set(id, Math.max(ends.get(id) ?? pos, pos));
+          }
+          prevIds = ids;
+          pos++;
+        } else if (item.type === 'table') {
+          for (const row of item.rows) {
+            for (const cell of row.cells) {
+              for (const para of cell.paragraphs) {
+                scan(para);
+              }
+            }
+          }
+        }
+      }
+    }
+    scan(items);
+    for (const id of prevIds) {
+      if (!ends.has(id)) ends.set(id, pos);
+    }
+
+    const allIds = [...commentIdRemap.keys()];
+    const ranges = allIds.map(id => ({ id, start: starts.get(id) ?? 0, end: ends.get(id) ?? 0 }));
+    for (let a = 0; a < ranges.length; a++) {
+      for (let b = a + 1; b < ranges.length; b++) {
+        if (ranges[a].start < ranges[b].end && ranges[b].start < ranges[a].end) {
+          forceIdCommentIds.add(ranges[a].id);
+          forceIdCommentIds.add(ranges[b].id);
+        }
+      }
+    }
+  }
+  detectGlobalOverlaps(mergedContent);
+
+  const renderOpts = {
+    alwaysUseCommentIds: options?.alwaysUseCommentIds,
+    commentIdRemap,
+    forceIdCommentIds,
+    emittedIdCommentBodies,
+  };
+
   const output: string[] = [];
   let i = 0;
   let lastListType: 'bullet' | 'ordered' | undefined;
@@ -1288,17 +1617,17 @@ export function buildMarkdown(
       }
 
       lastListType = isCurrentList ? item.listMeta!.type : undefined;
-      
+
       if (item.headingLevel) {
         output.push('#'.repeat(item.headingLevel) + ' ');
       } else if (item.listMeta) {
-        const indent = item.listMeta.type === 'bullet' 
+        const indent = item.listMeta.type === 'bullet'
           ? ' '.repeat(2 * item.listMeta.level)
           : ' '.repeat(3 * item.listMeta.level);
         const marker = item.listMeta.type === 'bullet' ? '- ' : '1. ';
         output.push(indent + marker);
       }
-      
+
       i++;
       continue;
     }
@@ -1319,17 +1648,24 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      output.push(renderHtmlTable(item, comments, options?.tableIndent));
+      output.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
       lastListType = undefined;
       i++;
       continue;
     }
 
-    const rendered = renderInlineRange(mergedContent, i, comments, { stopBeforeDisplayMath: true });
+    const rendered = renderInlineRange(mergedContent, i, comments, { stopBeforeDisplayMath: true }, renderOpts);
     if (rendered.nextIndex <= i) {
       throw new Error('Invariant violated: renderInlineRange did not advance index');
     }
-    output.push(rendered.text);
+    if (rendered.deferredComments.length > 0) {
+      // Strip trailing newlines (from <w:br/> between comment references in round-tripped DOCX)
+      output.push(rendered.text.replace(/\n+$/, ''));
+      output.push('\n');
+      output.push(rendered.deferredComments.join('\n'));
+    } else {
+      output.push(rendered.text);
+    }
     i = rendered.nextIndex;
   }
 
@@ -1458,7 +1794,7 @@ export async function extractAuthor(zip: JSZip): Promise<string | undefined> {
 export async function convertDocx(
   data: Uint8Array,
   format: CitationKeyFormat = 'authorYearTitle',
-  options?: { tableIndent?: string },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
   const [comments, zoteroCitations, zoteroPrefs, author] = await Promise.all([
@@ -1474,7 +1810,7 @@ export async function convertDocx(
   // Extract consecutive Title-styled paragraphs from the beginning of the document
   const titleLines = extractTitleLines(docContent);
 
-  let markdown = buildMarkdown(docContent, comments, { tableIndent: options?.tableIndent });
+  let markdown = buildMarkdown(docContent, comments, { tableIndent: options?.tableIndent, alwaysUseCommentIds: options?.alwaysUseCommentIds });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
   if (!zoteroBiblData) {

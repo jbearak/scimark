@@ -4,7 +4,10 @@
         { "include": "#addition" },
         { "include": "#deletion" },
         { "include": "#substitution" },
+        { "include": "#comment_with_id" },
         { "include": "#comment" },
+        { "include": "#comment_range_start" },
+        { "include": "#comment_range_end" },
         { "include": "#highlight" },
         { "include": "#colored_format_highlight" },
         { "include": "#format_highlight" },
@@ -37,11 +40,48 @@
 				}
 			]
 		},
-		"comment": {
-			"begin": "\\{>>",
+		"comment_with_id": {
+			"begin": "(\\{#)([a-zA-Z0-9_-]+)(>>)",
+			"beginCaptures": {
+				"1": { "name": "punctuation.definition.tag.begin.manuscript-markdown" },
+				"2": { "name": "entity.name.tag.manuscript-markdown" },
+				"3": { "name": "punctuation.definition.tag.begin.manuscript-markdown" }
+			},
 			"end": "<<\\}",
+			"endCaptures": {
+				"0": { "name": "punctuation.definition.tag.end.manuscript-markdown" }
+			},
+			"contentName": "comment.block.manuscript-markdown"
+		},
+		"comment": {
+			"begin": "(\\{)(>>)",
+			"beginCaptures": {
+				"1": { "name": "punctuation.definition.tag.begin.manuscript-markdown" },
+				"2": { "name": "punctuation.definition.tag.begin.manuscript-markdown" }
+			},
+			"end": "(<<)(\\})",
+			"endCaptures": {
+				"1": { "name": "punctuation.definition.tag.end.manuscript-markdown" },
+				"2": { "name": "punctuation.definition.tag.end.manuscript-markdown" }
+			},
 			"name": "comment.block.manuscript-markdown",
 			"contentName": "comment.block"
+		},
+		"comment_range_start": {
+			"match": "(\\{#)([a-zA-Z0-9_-]+)(\\})",
+			"captures": {
+				"1": { "name": "punctuation.definition.tag.begin.manuscript-markdown" },
+				"2": { "name": "entity.name.tag.manuscript-markdown" },
+				"3": { "name": "punctuation.definition.tag.end.manuscript-markdown" }
+			}
+		},
+		"comment_range_end": {
+			"match": "(\\{/)([a-zA-Z0-9_-]+)(\\})",
+			"captures": {
+				"1": { "name": "punctuation.definition.tag.begin.manuscript-markdown" },
+				"2": { "name": "entity.name.tag.manuscript-markdown" },
+				"3": { "name": "punctuation.definition.tag.end.manuscript-markdown" }
+			}
 		},
 		"highlight": {
 			"begin": "\\{==",

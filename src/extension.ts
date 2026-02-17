@@ -79,7 +79,12 @@ export function activate(context: vscode.ExtensionContext) {
 		),
 		vscode.commands.registerCommand('manuscript-markdown.comment', () => {
 			const authorName = author.getFormattedAuthorName();
-			applyFormatting((text) => formatting.highlightAndComment(text, authorName));
+			const useIds = vscode.workspace.getConfiguration('manuscriptMarkdown').get<boolean>('alwaysUseCommentIds', false);
+			if (useIds) {
+				applyFormatting((text) => formatting.highlightAndCommentWithId(text, authorName));
+			} else {
+				applyFormatting((text) => formatting.highlightAndComment(text, authorName));
+			}
 		}),
 		vscode.commands.registerCommand('manuscript-markdown.substituteAndComment', () => {
 			const authorName = author.getFormattedAuthorName();
@@ -183,7 +188,11 @@ export function activate(context: vscode.ExtensionContext) {
 				const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
 				const format = config.get<CitationKeyFormat>('citationKeyFormat', 'authorYearTitle');
 				const tableIndentSpaces = config.get<number>('tableIndent', 2);
-				const result = await convertDocx(new Uint8Array(data), format, { tableIndent: ' '.repeat(tableIndentSpaces) });
+				const alwaysUseCommentIds = config.get<boolean>('alwaysUseCommentIds', false);
+				const result = await convertDocx(new Uint8Array(data), format, {
+					tableIndent: ' '.repeat(tableIndentSpaces),
+					alwaysUseCommentIds,
+				});
 
 				const basePath = uri.fsPath.replace(/\.docx$/i, '');
 				let mdUri = vscode.Uri.file(basePath + '.md');
