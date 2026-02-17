@@ -11,16 +11,14 @@ The converter supports DOCX → Markdown → DOCX round-tripping. The following 
 - **Text formatting**: bold, italic, underline, strikethrough, superscript, subscript
 - **Headings**: H1 through H6 with Word heading styles
 - **Lists**: bulleted and numbered lists with nesting
-- **Comments**: non-overlapping comments use CriticMarkup `{==highlighted text==}{>>author: comment<<}` format; overlapping comments use non-inline ID-based syntax (`{#id}text{/id}{#id>>comment<<}`) — see [Specification](specification.md#overlapping-comments)
+- **Comments**: non-overlapping comments use CriticMarkup `{==highlighted text==}{>>author: comment<<}` format; overlapping comments use non-inline ID-based syntax (`{#1}highlighted text{/1}{#1>>alice: comment<<}`) — see [Specification](specification.md#overlapping-comments)
 - **Track changes**: insertions and deletions mapped to CriticMarkup `{++...++}` and `{--...--}`
-- **Citations**: Zotero field codes ↔ Pandoc `[@key]` syntax with BibTeX export
+- **Citations**: Zotero field codes ↔ Pandoc `[@key]` syntax with BibTeX export. On import, `ZOTERO_BIBL` field codes are detected and omitted (bibliography is regenerated on export).
 - **Zotero document preferences**: CSL style, locale, and note type round-tripped between YAML frontmatter (`csl`, `locale`, `note-type`) and `docProps/custom.xml` (`ZOTERO_PREF_*` properties)
 - **Math**: OMML equations ↔ LaTeX (`$inline$` and `$$display$$`)
 - **Hyperlinks**: preserved as Markdown links with proper escaping
 - **Highlights**: colored highlights ↔ `==text=={color}` syntax
-- **Tables**: HTML table blocks (`<table>/<tr>/<th>/<td>`) with paragraph-preserving cell content; export also supports pipe-delimited tables with `colspan` and `rowspan`
-
-On import, `ZOTERO_BIBL` field codes are detected and omitted (bibliography is regenerated on export).
+- **Tables**: DOCX→Markdown import produces HTML tables (`<table>/<tr>/<th>/<td>`) to preserve multi-paragraph cell content; Markdown→DOCX export accepts both HTML tables and pipe-delimited tables (with `colspan` and `rowspan` support)
 
 ## Citation Key Formats
 
@@ -98,7 +96,7 @@ All [round-trip features](#round-trip-features) are preserved on export. The fol
 - **Blockquotes**: indented paragraphs with Quote style
 - **Code**: inline code with monospace character style, fenced code blocks with shaded paragraph style
 - **Bibliography**: automatically generated and appended as a `ZOTERO_BIBL` field when a CSL style is specified
-- **Mixed citations**: Mixed Zotero/non-Zotero grouped citations are split — Zotero entries become a field code and non-Zotero entries become plain text (configurable via `mixedCitationStyle`). Missing keys appear inline as `@citekey` with a post-bibliography note.
+- **Mixed citations**: Mixed Zotero/non-Zotero grouped citations are split — Zotero entries become a field code and non-Zotero entries become plain text. The `manuscriptMarkdown.mixedCitationStyle` setting controls rendering: `"separate"` (default) gives each portion its own parentheses for clean Zotero refresh, while `"unified"` wraps everything in one set of parentheses (see [Zotero Round-Trip](zotero-roundtrip.md#mixedcitationstyle-setting)). Missing keys appear inline as `@citekey` with a post-bibliography note.
 
 ### Template Support
 
