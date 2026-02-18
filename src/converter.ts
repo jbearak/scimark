@@ -557,7 +557,8 @@ async function extractIdMappingFromCustomXml(
 
     let idx = 1;
     if (name !== propPrefix) {
-      const chunkMatch = name.match(new RegExp('^' + propPrefix + '_(\\d+)$'));
+      if (!name.startsWith(propPrefix + '_')) continue;
+      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
       if (!chunkMatch) continue;
       idx = parseInt(chunkMatch[1], 10);
       if (isNaN(idx)) continue;
@@ -1394,7 +1395,7 @@ function renderInlineSegment(
 function hasOverlappingComments(segment: ContentItem[]): boolean {
   const allIds = new Set<string>();
   for (const item of segment) {
-    if (item.type === 'text' || item.type === 'citation') {
+    if ((item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math') && item.commentIds) {
       for (const id of item.commentIds) allIds.add(id);
     }
   }
@@ -1403,7 +1404,7 @@ function hasOverlappingComments(segment: ContentItem[]): boolean {
   // Two or more comment IDs exist — check if their ranges actually overlap
   // by seeing if any single run is covered by 2+ comments
   for (const item of segment) {
-    if (item.type === 'text' || item.type === 'citation') {
+    if ((item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math') && item.commentIds) {
       if (item.commentIds.size > 1) return true;
     }
   }
@@ -1415,7 +1416,8 @@ function hasOverlappingComments(segment: ContentItem[]): boolean {
   let pos = 0;
   let prevIds = new Set<string>();
   for (const item of segment) {
-    if (item.type !== 'text' && item.type !== 'citation') { pos++; continue; }
+    if (item.type !== 'text' && item.type !== 'citation' && item.type !== 'footnote_ref' && item.type !== 'math') { pos++; continue; }
+    if (!item.commentIds) { pos++; continue; }
     const ids = item.commentIds;
     for (const id of ids) {
       if (!prevIds.has(id)) starts.set(id, Math.min(starts.get(id) ?? pos, pos));
@@ -1488,8 +1490,8 @@ function renderInlineRange(
   const segmentEnd = computeSegmentEnd(segment, startIndex, opts);
   const forceIdCommentIds = renderOpts?.forceIdCommentIds;
   const hasForcedIdCommentInSegment = !!forceIdCommentIds && [...segment.slice(startIndex, segmentEnd)].some(item => (
-    (item.type === 'text' || item.type === 'citation') &&
-    [...item.commentIds].some(id => forceIdCommentIds.has(id))
+    (item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math') &&
+    item.commentIds && [...item.commentIds].some(id => forceIdCommentIds.has(id))
   ));
   const useIds = renderOpts?.alwaysUseCommentIds || hasForcedIdCommentInSegment || hasOverlappingComments(segment.slice(startIndex, segmentEnd));
 
@@ -1783,16 +1785,18 @@ export function buildMarkdown(
   }
   function collectCommentMetadata(items: ContentItem[]): void {
     for (const item of items) {
-      if (item.type === 'text' || item.type === 'citation') {
-        const ids = [...item.commentIds];
-        for (const id of ids) {
-          if (!commentIdRemap.has(id)) {
-            commentIdRemap.set(id, assignRemappedId(id));
-          }
-        }
-        if (ids.length > 1) {
+      if (item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math') {
+        if (item.commentIds) {
+          const ids = [...item.commentIds];
           for (const id of ids) {
-            forceIdCommentIds.add(id);
+            if (!commentIdRemap.has(id)) {
+              commentIdRemap.set(id, assignRemappedId(id));
+            }
+          }
+          if (ids.length > 1) {
+            for (const id of ids) {
+              forceIdCommentIds.add(id);
+            }
           }
         }
       } else if (item.type === 'table') {
@@ -2251,7 +2255,8 @@ export async function convertDocx(
     notesMap.set(key, { label, body: body.content, noteKind: ref.noteKind });
   }
 
-  // Detect which note kind is used for the frontmatter notes field
+  // Detect which note kind is used for the frontmatter notes field.
+  // V1: mixed footnote+endnote documents are uncommon; if both exist, endnotes wins.
   let detectedNotesMode: NotesMode | undefined;
   if (endnotes.size > 0) {
     detectedNotesMode = 'endnotes';

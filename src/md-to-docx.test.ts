@@ -206,17 +206,7 @@ describe('generateRun', () => {
 });
 
 describe('generateParagraph', () => {
-  const createState = () => ({
-    commentId: 0,
-    comments: [],
-    commentIdMap: new Map<string, number>(),
-    relationships: new Map(),
-    nextRId: 1, rIdOffset: 3,
-    warnings: [],
-    hasList: false,
-    hasComments: false,
-    missingKeys: new Set<string>()
-  });
+  const createState = () => ({ ...makeState(), rIdOffset: 3 });
 
   it('generates basic paragraph', () => {
     const token: MdToken = {
@@ -941,17 +931,7 @@ console.log('code');
 });
 
 describe('CriticMarkup OOXML generation', () => {
-  const createState = () => ({
-    commentId: 0,
-    comments: [] as { id: number; author: string; date: string; text: string }[],
-    commentIdMap: new Map<string, number>(),
-    relationships: new Map(),
-    nextRId: 1, rIdOffset: 3,
-    warnings: [],
-    hasList: false,
-    hasComments: false,
-    missingKeys: new Set<string>()
-  });
+  const createState = () => ({ ...makeState(), rIdOffset: 3 });
 
   it('generates w:ins for additions', () => {
     const token: MdToken = {
@@ -1293,9 +1273,9 @@ describe('Full MD→DOCX footnote generation', () => {
 
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(docx);
-    expect(zip.file('word/footnotes.xml')).not.toBeNull();
-
-    const footnotesXml = await zip.file('word/footnotes.xml')!.async('string');
+    const footnotesFile = zip.file('word/footnotes.xml');
+    expect(footnotesFile).not.toBeNull();
+    const footnotesXml = await footnotesFile!.async('string');
     expect(footnotesXml).toContain('w:footnoteRef');
     expect(footnotesXml).toContain('A footnote.');
   });
@@ -1307,10 +1287,10 @@ describe('Full MD→DOCX footnote generation', () => {
 
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(docx);
-    expect(zip.file('word/endnotes.xml')).not.toBeNull();
+    const endnotesFile = zip.file('word/endnotes.xml');
+    expect(endnotesFile).not.toBeNull();
     expect(zip.file('word/footnotes.xml')).toBeNull();
-
-    const endnotesXml = await zip.file('word/endnotes.xml')!.async('string');
+    const endnotesXml = await endnotesFile!.async('string');
     expect(endnotesXml).toContain('w:endnoteRef');
     expect(endnotesXml).toContain('An endnote.');
   });

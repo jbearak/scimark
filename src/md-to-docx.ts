@@ -285,8 +285,8 @@ function footnoteRefRule(state: any, silent: boolean): boolean {
   const label = src.slice(start + 2, end);
   if (!/^[a-zA-Z0-9_-]+$/.test(label)) return false;
 
-  // Must NOT be followed by : (that would be a definition, not a reference)
-  if (end + 1 < max && src.charAt(end + 1) === ':') return false;
+  // No colon check needed here — start-of-line definitions are already
+  // stripped by extractFootnoteDefinitions() before parseMd() is called.
 
   if (!silent) {
     const token = state.push('footnote_ref', '', 0);
