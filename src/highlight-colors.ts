@@ -193,3 +193,23 @@ export function extractSubstitutionNewRanges(text: string): Array<{ start: numbe
   }
   return ranges;
 }
+
+export interface AllDecorationRanges {
+  highlights: Map<string, Array<{ start: number; end: number }>>;
+  comments: Array<{ start: number; end: number }>;
+  additions: Array<{ start: number; end: number }>;
+  deletions: Array<{ start: number; end: number }>;
+  delimiters: Array<{ start: number; end: number }>;
+  substitutionNew: Array<{ start: number; end: number }>;
+}
+
+export function extractAllDecorationRanges(text: string, defaultColor: string): AllDecorationRanges {
+  return {
+    highlights: extractHighlightRanges(text, defaultColor),
+    comments: extractCommentRanges(text),
+    additions: extractAdditionRanges(text),
+    deletions: extractDeletionRanges(text),
+    delimiters: extractCriticDelimiterRanges(text),
+    substitutionNew: extractSubstitutionNewRanges(text),
+  };
+}
