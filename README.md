@@ -53,12 +53,12 @@ manuscript-markdown paper.md      # Markdown → DOCX
 
 ## Known Limitations
 
-- No table conversion from DOCX
 - No marking comments as resolved (only delete)
 - Multi-line patterns only render in preview when starting at beginning of line
 
 ## Documentation
 
+- [Getting Started](docs/intro.md)
 - [Specification Overview](docs/specification.md)
 - [CriticMarkup Syntax](docs/criticmarkup.md)
 - [Language Server](docs/language-server.md)
