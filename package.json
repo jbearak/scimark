@@ -562,7 +562,7 @@
         {
           "command": "manuscript-markdown.convertDocx",
           "when": "resourceExtname == .docx",
-          "group": "9_export"
+          "group": "9_export@0"
         },
         {
           "command": "manuscript-markdown.openInWord",

@@ -237,10 +237,22 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register Open in Word command
 	context.subscriptions.push(
 		vscode.commands.registerCommand('manuscript-markdown.openInWord', async (uri?: vscode.Uri) => {
-			if (!uri) { return; }
-			const opened = await vscode.env.openExternal(uri);
-			if (!opened) {
-				vscode.window.showErrorMessage('Failed to open file in external application.');
+			try {
+				if (!uri) {
+					const files = await vscode.window.showOpenDialog({
+						filters: { 'Word Documents': ['docx'] },
+						canSelectMany: false,
+					});
+					if (!files || files.length === 0) { return; }
+					uri = files[0];
+				}
+				const opened = await vscode.env.openExternal(uri);
+				if (!opened) {
+					vscode.window.showErrorMessage('Failed to open file in external application.');
+				}
+			} catch (err: unknown) {
+				const message = err instanceof Error ? err.message : String(err);
+				vscode.window.showErrorMessage(`Failed to open file: ${message}`);
 			}
 		})
 	);
