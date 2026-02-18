@@ -53,7 +53,8 @@ describe('Property 3: Single-Pass Decoration Extraction Equivalence', () => {
         expect(all.comments).toEqual(expectedComments);
         expect(all.additions).toEqual(expectedAdditions);
         expect(all.deletions).toEqual(expectedDeletions);
-        expect(all.delimiters).toEqual(expectedDelimiters);
+        const sortRanges = (a: { start: number; end: number }[]) => [...a].sort((x, y) => x.start - y.start || x.end - y.end);
+        expect(sortRanges(all.delimiters)).toEqual(sortRanges(expectedDelimiters));
         expect(all.substitutionNew).toEqual(expectedSubNew);
       }),
       { numRuns: 200 }

@@ -216,6 +216,7 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
   const comments: Array<{ start: number; end: number }> = [];
   const additions: Array<{ start: number; end: number }> = [];
   const deletions: Array<{ start: number; end: number }> = [];
+  const delimiters: Array<{ start: number; end: number }> = [];
   const substitutionNew: Array<{ start: number; end: number }> = [];
   const criticSpans: Array<{ start: number; end: number }> = [];
 
@@ -234,35 +235,46 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
       if (c2 === 0x2B && c3 === 0x2B) { // {++
         const ci = text.indexOf('++}', i + 3);
         if (ci !== -1) {
+          delimiters.push({ start: i, end: i + 3 });
           if (ci > i + 3) additions.push({ start: i + 3, end: ci });
+          delimiters.push({ start: ci, end: ci + 3 });
           i = ci + 3; continue;
         }
       } else if (c2 === 0x2D && c3 === 0x2D) { // {--
         const ci = text.indexOf('--}', i + 3);
         if (ci !== -1) {
+          delimiters.push({ start: i, end: i + 3 });
           if (ci > i + 3) deletions.push({ start: i + 3, end: ci });
+          delimiters.push({ start: ci, end: ci + 3 });
           i = ci + 3; continue;
         }
       } else if (c2 === 0x7E && c3 === 0x7E) { // {~~
         const ci = text.indexOf('~~}', i + 3);
         if (ci !== -1) {
+          delimiters.push({ start: i, end: i + 3 });
           const content = text.slice(i + 3, ci);
           const cai = content.indexOf('~>');
           if (cai !== -1) {
+            if (cai < content.length - 2) {
+              delimiters.push({ start: i + 3 + cai, end: i + 3 + cai + 2 });
+            }
             const newStart = i + 3 + cai + 2;
             if (ci > newStart) substitutionNew.push({ start: newStart, end: ci });
           }
+          delimiters.push({ start: ci, end: ci + 3 });
           i = ci + 3; continue;
         }
       } else if (c2 === 0x3E && c3 === 0x3E) { // {>>
         const ci = text.indexOf('<<}', i + 3);
         if (ci !== -1) {
+          // Skip comment delimiters (preserves TextMate tag punctuation scopes)
           comments.push({ start: i + 3, end: ci });
           i = ci + 3; continue;
         }
       } else if (c2 === 0x3D && c3 === 0x3D) { // {==
         const ci = text.indexOf('==}', i + 3);
         if (ci !== -1) {
+          // Skip highlight delimiters (preserves TextMate tag punctuation scopes)
           pushHl('critic', i + 3, ci);
           criticSpans.push({ start: i, end: ci + 3 });
           i = ci + 3; continue;
@@ -299,7 +311,6 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
   }
 
   return {
-    highlights, comments, additions, deletions, substitutionNew,
-    delimiters: extractCriticDelimiterRanges(text),
+    highlights, comments, additions, deletions, substitutionNew, delimiters,
   };
 }
