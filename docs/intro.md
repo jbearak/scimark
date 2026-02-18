@@ -76,7 +76,7 @@ _italic text_
 ==highlighted text=={red}
 ```
 
-The highlight color is optional — without it, the default color (yellow) is used.
+The highlight color is optional — without it, the color from the `manuscriptMarkdown.defaultHighlightColor` setting is used, falling back to yellow if that setting is missing or invalid.
 
 #### Citations
 
@@ -225,7 +225,7 @@ Two ways:
 1. **Explorer sidebar**: right-click the `.docx` file > **Export to Markdown**
 2. **Editor toolbar**: when a `.docx` file is open, click the document icon > **Export to Markdown**
 
-The converted `.md` file opens automatically. If the document contains citations, a companion `.bib` file is also generated and opens in a side-by-side tab.
+The converted `.md` file opens automatically. If the document contains citations, a companion `.bib` file is also generated and opens in a side-by-side tab. If a `.md` (or `.bib`) file with the same name already exists, you will be prompted to replace, rename, or cancel before any file is written.
 
 See the [Converter documentation](converter.md) for full details.
 
