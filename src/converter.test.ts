@@ -14,6 +14,7 @@ import {
   wrapWithFormatting,
   DEFAULT_FORMATTING,
   RunFormatting,
+  ContentItem,
   isToggleOn,
   parseHeadingLevel,
   parseRunProperties,
@@ -1904,7 +1905,9 @@ async function buildSyntheticDocxWithParts(documentXml: string, extraParts?: Rec
 
 function wrapFootnotesXml(content: string): string {
   return '<?xml version="1.0"?>'
-    + '<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + '<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    + ' xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+    + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
     + '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
     + '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>'
     + content
@@ -1913,7 +1916,9 @@ function wrapFootnotesXml(content: string): string {
 
 function wrapEndnotesXml(content: string): string {
   return '<?xml version="1.0"?>'
-    + '<w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + '<w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    + ' xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+    + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
     + '<w:endnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:endnote>'
     + '<w:endnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:endnote>'
     + content
@@ -2062,6 +2067,160 @@ describe('DOCX footnote extraction', () => {
 
     expect(result.markdown).toContain('Text[^my-note]');
     expect(result.markdown).toContain('[^my-note]: A note.');
+  });
+
+  test('footnote body with hyperlink produces markdown link', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r>'
+      + '<w:r><w:t> See </w:t></w:r>'
+      + '<w:hyperlink r:id="rId1"><w:r><w:t>example</w:t></w:r></w:hyperlink>'
+      + '<w:r><w:t>.</w:t></w:r>'
+      + '</w:p></w:footnote>'
+    );
+    const relsXml = '<?xml version="1.0"?>'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com" TargetMode="External"/>'
+      + '</Relationships>';
+    const buf = await buildSyntheticDocxWithParts(docXml, {
+      'word/footnotes.xml': footnotesXml,
+      'word/_rels/footnotes.xml.rels': relsXml,
+    });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('[^1]: See [example](https://example.com).');
+  });
+
+  test('footnote body with inline math produces $latex$', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r>'
+      + '<w:r><w:t> Where </w:t></w:r>'
+      + '<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>'
+      + '<w:r><w:t> is defined.</w:t></w:r>'
+      + '</w:p></w:footnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, { 'word/footnotes.xml': footnotesXml });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('[^1]: Where $x$ is defined.');
+  });
+
+  test('footnote body with table produces HTML table', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r>'
+      + '<w:r><w:t> See table:</w:t></w:r></w:p>'
+      + '<w:tbl>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc></w:tr>'
+      + '<w:tr><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc></w:tr>'
+      + '</w:tbl>'
+      + '</w:footnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, { 'word/footnotes.xml': footnotesXml });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('[^1]: See table:');
+    // Table content should appear in the footnote definition area
+    expect(result.markdown).toContain('A');
+    expect(result.markdown).toContain('B');
+  });
+
+  test('footnote body with Zotero citation field produces [@key]', async () => {
+    const cslPayload = JSON.stringify({
+      citationItems: [{
+        itemData: {
+          type: 'article-journal',
+          title: 'Test Article',
+          author: [{ family: 'Smith', given: 'John' }],
+          issued: { 'date-parts': [[2020]] },
+          'container-title': 'Journal',
+          volume: '1',
+          page: '1-10',
+          DOI: '10.1234/test',
+        },
+      }],
+      properties: { formattedCitation: '(Smith 2020)' },
+    });
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r>'
+      + '<w:r><w:t> As noted in </w:t></w:r>'
+      + '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+      + '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ' + cslPayload + '</w:instrText></w:r>'
+      + '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+      + '<w:r><w:t>(Smith 2020)</w:t></w:r>'
+      + '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+      + '<w:r><w:t>.</w:t></w:r>'
+      + '</w:p></w:footnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, {
+      'word/footnotes.xml': footnotesXml,
+    });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('[^1]:');
+    expect(result.markdown).toContain('@smith2020test');
+  });
+
+  test('mixed footnotes + endnotes does not set notes: endnotes in frontmatter', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r>'
+      + '<w:r><w:endnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t> A footnote.</w:t></w:r></w:p></w:footnote>'
+    );
+    const endnotesXml = wrapEndnotesXml(
+      '<w:endnote w:id="1"><w:p><w:r><w:endnoteRef/></w:r><w:r><w:t> An endnote.</w:t></w:r></w:p></w:endnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, {
+      'word/footnotes.xml': footnotesXml,
+      'word/endnotes.xml': endnotesXml,
+    });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).not.toContain('notes: endnotes');
+    expect(result.markdown).toContain('[^1]: A footnote.');
+    expect(result.markdown).toContain('[^2]: An endnote.');
+  });
+
+  test('deferred comments in footnote body are rendered after definition', async () => {
+    // Construct content items directly to test buildMarkdown rendering
+    const docContent: ContentItem[] = [
+      { type: 'text', text: 'Body text', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+      { type: 'footnote_ref', noteId: '1', noteKind: 'footnote', commentIds: new Set() },
+    ];
+    const comments = new Map([
+      ['c1', { author: 'Reviewer', text: 'fn comment', date: '' }],
+    ]);
+    const noteBody: ContentItem[] = [
+      { type: 'text', text: 'Note text', commentIds: new Set(['c1']), formatting: DEFAULT_FORMATTING },
+    ];
+    const notesMap = new Map([
+      ['footnote:1', { label: '1', body: noteBody, noteKind: 'footnote' as const }],
+    ]);
+    const assignedLabels = new Map([['footnote:1', '1']]);
+    const md = buildMarkdown(docContent, comments, {
+      alwaysUseCommentIds: true,
+      notes: { map: notesMap, assignedLabels },
+    });
+
+    expect(md).toContain('[^1]:');
+    expect(md).toContain('fn comment');
   });
 });
 
