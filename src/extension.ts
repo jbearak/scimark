@@ -936,6 +936,15 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 		return;
 	}
 
+	// Auto-use existing .docx as style template when no explicit template is provided
+	if (!templateDocx) {
+		const existingDocxUri = vscode.Uri.file(input.basePath + '.docx');
+		if (await fileExists(existingDocxUri)) {
+			const data = await vscode.workspace.fs.readFile(existingDocxUri);
+			templateDocx = new Uint8Array(data);
+		}
+	}
+
 	const authorName = author.getAuthorName();
 	// basePath has .md stripped, but dirname still yields the parent directory
 	const sourceDir = path.dirname(input.basePath);

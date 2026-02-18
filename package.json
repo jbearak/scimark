@@ -168,7 +168,7 @@
       },
       {
         "command": "manuscript-markdown.exportToWordWithTemplate",
-        "title": "Export to Word (with template)"
+        "title": "Export to Word with Template"
       },
       {
         "command": "manuscript-markdown.setCitationStyle",

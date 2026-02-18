@@ -9,10 +9,14 @@ This document describes the menus, toolbar buttons, keyboard shortcuts, and mess
 When a `.md` file is open, three dropdown menus appear in the editor toolbar. Each menu is a small icon; click it to open the dropdown.
 
 > **Submenus** — some menu items have a small arrow (▸) on the right edge. Hover over them to reveal a nested list of choices.
+>
+> **Command IDs** — the tables below list the internal command ID for each item. You can use these IDs in the [Command Palette](https://code.visualstudio.com/docs/getstarted/userinterface#_command-palette) or to assign [custom keyboard shortcuts](https://code.visualstudio.com/docs/getstarted/keybindings).
 
 ---
 
-### Markdown Formatting &ensp;`$(edit)`
+### Markdown Formatting
+
+> Look for the **pencil icon** (codicon `edit`) in the editor toolbar.
 
 Text formatting, lists, and structure commands for Markdown editing.
 
@@ -35,9 +39,11 @@ Text formatting, lists, and structure commands for Markdown editing.
 | Tables | **Reflow Table** | `manuscript-markdown.reflowTable` |
 | Heading | **Heading** ▸ | submenu — see below |
 
+> **Reflow Table** re-aligns a Markdown pipe table — the kind you build with `|` and `-` characters — so that the `|` column separators line up neatly. Place your cursor anywhere in the table and run the command.
+
 #### Highlight Color submenu
 
-The colors are shown in three groups, separated by divider lines:
+The colors are shown in three groups, separated by divider lines. The group labels (Standard, Dark, Neutral) are used here for reference only — they don't appear as visible text in the VS Code menu.
 
 | Group | Item | Command |
 |-------|------|---------|
@@ -71,9 +77,11 @@ The colors are shown in three groups, separated by divider lines:
 
 ---
 
-### Markdown Annotations &ensp;`$(comment-discussion)`
+### Markdown Annotations
 
-CriticMarkup annotation and navigation commands. See [CriticMarkup](criticmarkup.md) for the underlying syntax.
+> Look for the **speech-bubble icon** (codicon `comment-discussion`) in the editor toolbar.
+
+Annotation and change-tracking commands — the Markdown equivalent of tracked changes and comments in MS Word. See [CriticMarkup](criticmarkup.md) for the underlying syntax.
 
 | Group | Item | Command |
 |-------|------|---------|
@@ -87,19 +95,27 @@ CriticMarkup annotation and navigation commands. See [CriticMarkup](criticmarkup
 | Navigation | **Previous Change** | `manuscript-markdown.prevChange` |
 | | **Next Change** | `manuscript-markdown.nextChange` |
 
-> The extension also registers a **Highlight** command (`manuscript-markdown.highlight`) that wraps text in CriticMarkup highlight syntax (`{== ==}`). It does not appear in any menu but is available from the Command Palette.
+> The extension also registers a **Highlight** command (`manuscript-markdown.highlight`) that wraps text in annotation highlight syntax (`{== ==}`). It does not appear in any menu but is available from the Command Palette.
 
 ---
 
-### Export to Word &ensp;`$(file-binary)`
+### Export to Word
+
+> Look for the **binary-file icon** (codicon `file-binary`) in the editor toolbar.
 
 Export and citation-style commands. See [Converter](converter.md) for details on the conversion process.
 
 | Group | Item | Command |
 |-------|------|---------|
 | Export | **Export to Word** | `manuscript-markdown.exportToWord` |
-| | **Export to Word (with template)** | `manuscript-markdown.exportToWordWithTemplate` |
+| | **Export to Word with Template** | `manuscript-markdown.exportToWordWithTemplate` |
 | Style | **Set Citation Style** | `manuscript-markdown.setCitationStyle` |
+
+> **Export to Word** converts the Markdown file to `.docx`. If a `.docx` with the same name already exists, its paragraph and formatting styles are automatically reused as a template — so fonts, spacing, and colors you previously set in Word are preserved.
+>
+> **Export to Word with Template** first opens a file picker so you can choose any `.docx` file whose paragraph formatting styles (fonts, sizes, spacing, colors) will be applied to the exported document.
+>
+> **Set Citation Style** does not export anything — it inserts or updates the `csl:` field in the document's YAML frontmatter, which controls how citations are formatted on the next export.
 
 ---
 
@@ -107,7 +123,9 @@ Export and citation-style commands. See [Converter](converter.md) for details on
 
 When a `.docx` file is open in the editor, one dropdown menu appears in the toolbar.
 
-### Word Document &ensp;`$(file-binary)`
+### Word Document
+
+> Look for the **binary-file icon** (codicon `file-binary`) in the editor toolbar.
 
 | Item | Condition | Command |
 |------|-----------|---------|
@@ -129,7 +147,7 @@ Right-click a file in the Explorer to see these items:
 | `.docx` | **Export to Markdown** | `manuscript-markdown.convertDocx` |
 | `.docx` (local only) | **Open in Word** | `manuscript-markdown.openInWord` |
 | `.md` | **Export to Word** | `manuscript-markdown.exportToWord` |
-| `.md` | **Export to Word (with template)** | `manuscript-markdown.exportToWordWithTemplate` |
+| `.md` | **Export to Word with Template** | `manuscript-markdown.exportToWordWithTemplate` |
 
 ---
 
@@ -141,8 +159,8 @@ Right-clicking inside a Markdown editor shows two submenus at the bottom of the 
 
 | Submenu | Contents |
 |---------|----------|
-| **Markdown Annotations** | Same items as the [Markdown Annotations](#markdown-annotations-comment-discussion) toolbar menu |
-| **Markdown Formatting** | Same items as the [Markdown Formatting](#markdown-formatting-edit) toolbar menu |
+| **Markdown Annotations** | Same items as the [Markdown Annotations](#markdown-annotations) toolbar menu |
+| **Markdown Formatting** | Same items as the [Markdown Formatting](#markdown-formatting) toolbar menu |
 
 ---
 
@@ -152,8 +170,8 @@ Right-clicking inside a Markdown editor shows two submenus at the bottom of the 
 
 | Shortcut | Command | Description |
 |----------|---------|-------------|
-| `Alt+Shift+J` | `manuscript-markdown.nextChange` | Jump to the next CriticMarkup change |
-| `Alt+Shift+K` | `manuscript-markdown.prevChange` | Jump to the previous CriticMarkup change |
+| `Alt+Shift+J` | `manuscript-markdown.nextChange` | Jump to the next annotation |
+| `Alt+Shift+K` | `manuscript-markdown.prevChange` | Jump to the previous annotation |
 
 These shortcuts are active when a Markdown file has focus.
 
@@ -164,6 +182,8 @@ These shortcuts are active when a Markdown file has focus.
 > **Modal dialog** — a popup window that blocks the editor until you click one of its buttons. Non-modal messages appear briefly in the bottom-right corner.
 
 ### Export to Markdown (DOCX → MD)
+
+The output is saved with the same base name as the source file (e.g., `report.docx` → `report.md`). If the document contains bibliographic data, a `.bib` file is also generated alongside it.
 
 **Output file conflict** — if the target `.md` (or `.bib`) file already exists, a modal dialog asks what to do:
 
@@ -177,6 +197,8 @@ Buttons: **Replace** · **New Name** · **Cancel**
 
 Choosing **New Name** opens a save-as dialog so you can pick a different filename.
 
+Once complete, the Markdown file opens in the editor. If a `.bib` file was generated, it opens in a side-by-side tab.
+
 **Success** — `"Exported to Markdown successfully"`
 
 **Error** — `"DOCX conversion failed: <error>"`
@@ -184,6 +206,8 @@ Choosing **New Name** opens a save-as dialog so you can pick a different filenam
 ---
 
 ### Export to Word (MD → DOCX)
+
+The output is saved with the same base name as the source file (e.g., `report.md` → `report.docx`). If a `.docx` with the same name already exists, its styles are automatically reused as a template so that fonts, spacing, and colors you set in Word are preserved.
 
 **No active file** — if no Markdown file is open: `"No active Markdown file"`
 
@@ -210,6 +234,8 @@ Buttons: **Replace** · **New Name** · **Cancel**
 
 Choosing **New Name** opens a save-as dialog.
 
+When the export finishes, a notification appears in the bottom-right corner with an **Open in Word** button (since `.docx` files aren't opened directly in the editor).
+
 **Success** — `Exported to "<filename>"` with an **Open in Word** button.
 
 **Success with warnings** — `Exported to "<filename>" with warnings: <warnings>` with an **Open in Word** button.
@@ -218,9 +244,9 @@ Choosing **New Name** opens a save-as dialog.
 
 ---
 
-### Export to Word (with template)
+### Export to Word with Template
 
-Behaves the same as [Export to Word](#export-to-word-md--docx), but first shows a file-picker dialog to select a `.docx` template file.
+Behaves the same as [Export to Word](#export-to-word-md-docx), but first shows a file-picker dialog to choose a `.docx` template file. "Choosing a template" means selecting an existing `.docx` file whose paragraph formatting styles — fonts, sizes, spacing, colors — will be applied to the exported document.
 
 ---
 
