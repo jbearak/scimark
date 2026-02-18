@@ -12,6 +12,14 @@ export interface Comment {
   author: string;
   text: string;
   date: string;
+  paraId?: string;         // w14:paraId from <w:p> in comments.xml
+  replies?: CommentReply[];
+}
+
+export interface CommentReply {
+  author: string;
+  text: string;
+  date: string;
 }
 
 export interface CitationMetadata {
@@ -81,6 +89,7 @@ export type ContentItem =
       headingLevel?: number;   // 1–6 if heading, undefined otherwise
       listMeta?: ListMeta;     // present if list item
       isTitle?: boolean;       // true if Word "Title" paragraph style
+      blockquoteLevel?: number; // 1+ if Quote/IntenseQuote paragraph style
     }
   | { type: 'math'; latex: string; display: boolean; commentIds: Set<string> }
   | { type: 'footnote_ref'; noteId: string; noteKind: 'footnote' | 'endnote'; commentIds: Set<string> };
@@ -227,6 +236,23 @@ export function parseTitleStyle(pPrChildren: any[]): boolean {
   const pStyleElement = pPrChildren.find(child => child['w:pStyle'] !== undefined);
   if (!pStyleElement) return false;
   return getAttr(pStyleElement, 'val').toLowerCase() === 'title';
+}
+
+export function parseBlockquoteLevel(pPrChildren: any[]): number | undefined {
+  const pStyleElement = pPrChildren.find(child => child['w:pStyle'] !== undefined);
+  if (!pStyleElement) return undefined;
+  const val = getAttr(pStyleElement, 'val').toLowerCase();
+  if (val !== 'quote' && val !== 'intensequote') return undefined;
+
+  // Extract left indent to determine nesting level
+  const indElement = pPrChildren.find(child => child['w:ind'] !== undefined);
+  if (indElement) {
+    const left = parseInt(getAttr(indElement, 'left'), 10);
+    if (!isNaN(left) && left > 0) {
+      return Math.max(1, Math.round(left / 720));
+    }
+  }
+  return 1;
 }
 
 export function parseListMeta(pPrChildren: any[], numberingDefs: Map<string, Map<string, 'bullet' | 'ordered'>>): ListMeta | undefined {
@@ -476,9 +502,87 @@ export async function extractComments(data: Uint8Array | JSZip): Promise<Map<str
     // Collect all w:t text within this comment
     const tNodes = findAllDeep(node['w:comment'] || [], 'w:t');
     const text = tNodes.map(t => nodeText(t['w:t'] || [])).join('');
-    comments.set(id, { author, text, date });
+    // Extract w14:paraId from the first <w:p> child
+    const pNodes = findAllDeep(node['w:comment'] || [], 'w:p');
+    const paraId = pNodes[0]?.[':@']?.['@_w14:paraId'];
+    comments.set(id, { author, text, date, paraId });
   }
   return comments;
+}
+
+/** Parse word/commentsExtended.xml and return paraId→parentParaId map for reply comments. */
+export async function extractCommentThreads(data: Uint8Array | JSZip): Promise<Map<string, string>> {
+  const threads = new Map<string, string>();
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'word/commentsExtended.xml');
+  if (!parsed) { return threads; }
+
+  for (const node of findAllDeep(parsed, 'w15:commentEx')) {
+    const paraId = node?.[':@']?.['@_w15:paraId'] ?? '';
+    const parentParaId = node?.[':@']?.['@_w15:paraIdParent'] ?? '';
+    if (paraId && parentParaId) {
+      threads.set(paraId, parentParaId);
+    }
+  }
+  return threads;
+}
+
+/**
+ * Group reply comments under their parent as CommentReply entries.
+ * Returns the set of reply comment IDs (to exclude from ranges).
+ */
+export function groupCommentThreads(
+  comments: Map<string, Comment>,
+  threads: Map<string, string>
+): Set<string> {
+  const replyIds = new Set<string>();
+  if (threads.size === 0) return replyIds;
+
+  // Build paraId→commentId lookup
+  const paraIdToCommentId = new Map<string, string>();
+  for (const [id, comment] of comments) {
+    if (comment.paraId) {
+      paraIdToCommentId.set(comment.paraId, id);
+    }
+  }
+
+  // Attach replies to parents, flattening deeper chains to the root parent.
+  // Word UI only produces flat reply lists, but third-party generators could
+  // create deeper chains (reply-to-reply). We resolve these by walking up
+  // the thread until we find the root (non-reply) comment.
+  for (const [childParaId, parentParaId] of threads) {
+    const childId = paraIdToCommentId.get(childParaId);
+    if (!childId) continue;
+
+    // Walk up to the root parent (with cycle detection for malformed DOCX)
+    let resolvedParaId = parentParaId;
+    const visited = new Set<string>();
+    while (threads.has(resolvedParaId)) {
+      if (visited.has(resolvedParaId)) break;
+      visited.add(resolvedParaId);
+      resolvedParaId = threads.get(resolvedParaId)!;
+    }
+    const parentId = paraIdToCommentId.get(resolvedParaId);
+    if (!parentId) continue;
+
+    const parent = comments.get(parentId);
+    const child = comments.get(childId);
+    if (!parent || !child) continue;
+
+    if (!parent.replies) parent.replies = [];
+    parent.replies.push({ author: child.author, text: child.text, date: child.date });
+    replyIds.add(childId);
+  }
+
+  // Sort replies by date so ordering is deterministic regardless of
+  // the element order in commentsExtended.xml.
+  for (const comment of comments.values()) {
+    if (comment.replies && comment.replies.length > 1) {
+      comment.replies.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    }
+  }
+
+  return replyIds;
 }
 
 /** Matches the 8-character Zotero item key at the end of a URI. */
@@ -1237,6 +1341,7 @@ export async function extractDocumentContent(
   options?: {
     numberingDefs?: Map<string, Map<string, 'bullet' | 'ordered'>>;
     relationshipMap?: Map<string, string>;
+    replyIds?: Set<string>;
   }
 ): Promise<DocumentContentResult> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
@@ -1246,6 +1351,7 @@ export async function extractDocumentContent(
   // Parse relationships and numbering definitions
   const relationshipMap = options?.relationshipMap ?? await parseRelationships(zip);
   const numberingDefs = options?.numberingDefs ?? await parseNumberingDefinitions(zip);
+  const replyIds = options?.replyIds;
 
   // Build a lookup: instrText index -> ZoteroCitation (in order of appearance)
   let citationIdx = 0;
@@ -1320,9 +1426,11 @@ export async function extractDocumentContent(
         } else if (key === 'w:instrText' && inField) {
           fieldInstrParts.push(nodeText(node['w:instrText'] || []));
         } else if (key === 'w:commentRangeStart') {
-          activeComments.add(getAttr(node, 'id'));
+          const id = getAttr(node, 'id');
+          if (!replyIds?.has(id)) activeComments.add(id);
         } else if (key === 'w:commentRangeEnd') {
-          activeComments.delete(getAttr(node, 'id'));
+          const id = getAttr(node, 'id');
+          if (!replyIds?.has(id)) activeComments.delete(id);
         } else if (key === 'w:footnoteReference') {
           const noteId = getAttr(node, 'id');
           if (noteId && noteId !== '0' && noteId !== '-1') {
@@ -1429,6 +1537,7 @@ export async function extractDocumentContent(
           let headingLevel: number | undefined;
           let listMeta: ListMeta | undefined;
           let isTitle = false;
+          let blockquoteLevel: number | undefined;
           let paraFormatting = currentFormatting;
 
           const paraChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
@@ -1438,6 +1547,7 @@ export async function extractDocumentContent(
               headingLevel = parseHeadingLevel(pPrChildren);
               listMeta = parseListMeta(pPrChildren, numberingDefs);
               isTitle = parseTitleStyle(pPrChildren);
+              blockquoteLevel = parseBlockquoteLevel(pPrChildren);
               const pRPrElement = pPrChildren.find(pprChild => pprChild['w:rPr'] !== undefined);
               if (pRPrElement) {
                 const pRPrChildren = Array.isArray(pRPrElement['w:rPr']) ? pRPrElement['w:rPr'] : [pRPrElement['w:rPr']];
@@ -1447,10 +1557,10 @@ export async function extractDocumentContent(
             }
           }
 
-          // Always push a new para when heading/list/title metadata is present (so metadata
+          // Always push a new para when heading/list/title/blockquote metadata is present (so metadata
           // isn't silently dropped after empty paragraphs).  For plain paragraphs,
           // push only when the previous item isn't already a para separator.
-          const needsPara = inTableCell || (headingLevel || listMeta || isTitle)
+          const needsPara = inTableCell || (headingLevel || listMeta || isTitle || blockquoteLevel)
             ? true
             : target.length > 0 && target[target.length - 1].type !== 'para';
 
@@ -1459,6 +1569,7 @@ export async function extractDocumentContent(
             if (headingLevel) paraItem.headingLevel = headingLevel;
             if (listMeta) paraItem.listMeta = listMeta;
             if (isTitle) paraItem.isTitle = true;
+            if (blockquoteLevel) paraItem.blockquoteLevel = blockquoteLevel;
             target.push(paraItem);
           }
           walk(paraChildren, paraFormatting, target, inTableCell);
@@ -1630,11 +1741,29 @@ function formatDateSuffix(date: string | undefined): string {
 }
 
 function formatCommentBody(_cid: string, c: Comment): string {
-  return `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+  let body = `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
+  if (c.replies && c.replies.length > 0) {
+    for (const reply of c.replies) {
+      body += `\n  {>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+    }
+    body += '\n<<}';
+  } else {
+    body += '<<}';
+  }
+  return body;
 }
 
 function formatCommentBodyWithId(cid: string, c: Comment): string {
-  return `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+  let body = `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
+  if (c.replies && c.replies.length > 0) {
+    for (const reply of c.replies) {
+      body += `\n  {>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+    }
+    body += '\n<<}';
+  } else {
+    body += '<<}';
+  }
+  return body;
 }
 
 function computeSegmentEnd(
@@ -2073,6 +2202,8 @@ export function buildMarkdown(
           : ' '.repeat(3 * item.listMeta.level);
         const marker = item.listMeta.type === 'bullet' ? '- ' : '1. ';
         output.push(indent + marker);
+      } else if (item.blockquoteLevel) {
+        output.push('> '.repeat(item.blockquoteLevel));
       }
 
       i++;
@@ -2383,14 +2514,18 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, threads] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
     extractAuthor(zip),
     extractCommentIdMapping(zip),
     extractFootnoteIdMapping(zip),
+    extractCommentThreads(zip),
   ]);
+
+  // Group reply comments under their parents and get IDs to exclude from ranges
+  const replyIds = groupCommentThreads(comments, threads);
 
   const keyMap = buildCitationKeyMap(zoteroCitations, format);
 
@@ -2409,7 +2544,7 @@ export async function convertDocx(
   const enContext: NoteBodyContext = { relationshipMap: enRelsMerged, zoteroCitations, keyMap, numberingDefs, format };
 
   const [{ content: docContent, zoteroBiblData }, footnotes, endnotes] = await Promise.all([
-    extractDocumentContent(zip, zoteroCitations, keyMap, { numberingDefs, relationshipMap: docRels }),
+    extractDocumentContent(zip, zoteroCitations, keyMap, { numberingDefs, relationshipMap: docRels, replyIds }),
     extractFootnotes(zip, fnContext),
     extractEndnotes(zip, enContext),
   ]);

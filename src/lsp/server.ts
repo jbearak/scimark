@@ -3,6 +3,7 @@ import * as path from 'path';
 import {
 	CompletionItem,
 	CompletionItemKind,
+	CompletionList,
 	CompletionParams,
 	createConnection,
 	DefinitionParams,
@@ -41,6 +42,8 @@ import {
 	findRangeTextForId,
 	stripCriticMarkup,
 } from './comment-language';
+import { getCslCompletionContext, getCslFieldInfo } from './csl-language';
+import { BUNDLED_STYLE_LABELS, isCslAvailableAsync } from '../csl-loader';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
@@ -61,6 +64,16 @@ interface ResolvedSymbol {
 
 const bibCache = new Map<string, CachedBibData>();
 
+/** Per-source diagnostic maps so validators don't overwrite each other. */
+const citekeyDiagnostics = new Map<string, Diagnostic[]>();
+const cslDiagnostics = new Map<string, Diagnostic[]>();
+
+function publishDiagnostics(uri: string): void {
+	const citekey = citekeyDiagnostics.get(uri) ?? [];
+	const csl = cslDiagnostics.get(uri) ?? [];
+	connection.sendDiagnostics({ uri, diagnostics: [...citekey, ...csl] });
+}
+
 interface OpenDocBibCache {
 	version: number;
 	data: ParsedBibData;
@@ -70,6 +83,7 @@ const openDocBibCache = new Map<string, OpenDocBibCache>();
 /** Client-provided settings (see `getLspSettings()` in extension.ts). */
 interface LspSettings {
 	citekeyReferencesFromMarkdown?: boolean;
+	cslCacheDirs?: string[];
 }
 let settings: LspSettings = {};
 
@@ -83,7 +97,7 @@ connection.onInitialize((params: InitializeParams) => {
 		capabilities: {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
 			completionProvider: {
-				triggerCharacters: ['@'],
+				triggerCharacters: ['@', ':'],
 			},
 			definitionProvider: true,
 			hoverProvider: true,
@@ -98,6 +112,13 @@ connection.onDidChangeConfiguration((params) => {
 	}
 });
 
+documents.onDidOpen((event) => {
+	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
+		validateCitekeys(event.document);
+		validateCslField(event.document);
+	}
+});
+
 documents.onDidChangeContent((event) => {
 	if (isBibUri(event.document.uri)) {
 		invalidateBibCache(event.document.uri);
@@ -108,6 +129,7 @@ documents.onDidChangeContent((event) => {
 	}
 	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
 		validateCitekeys(event.document);
+		validateCslField(event.document);
 	}
 });
 
@@ -120,6 +142,8 @@ documents.onDidClose((event) => {
 		}
 	}
 	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
+		citekeyDiagnostics.delete(event.document.uri);
+		cslDiagnostics.delete(event.document.uri);
 		connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
 	}
 });
@@ -136,7 +160,7 @@ connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
 	}
 });
 
-connection.onCompletion(async (params: CompletionParams): Promise<CompletionItem[]> => {
+connection.onCompletion(async (params: CompletionParams): Promise<CompletionItem[] | CompletionList> => {
 	const doc = await getTextDocument(params.textDocument.uri, 'markdown');
 	if (!doc || !isMarkdownUri(doc.uri, doc.languageId)) {
 		return [];
@@ -144,6 +168,36 @@ connection.onCompletion(async (params: CompletionParams): Promise<CompletionItem
 
 	const text = doc.getText();
 	const offset = doc.offsetAt(params.position);
+
+	// Check for CSL completion context first
+	const cslContext = getCslCompletionContext(text, offset);
+	if (cslContext) {
+		const prefix = cslContext.prefix.toLowerCase();
+		const replaceRange = Range.create(
+			doc.positionAt(cslContext.valueStart),
+			doc.positionAt(cslContext.valueEnd)
+		);
+		const items: CompletionItem[] = [];
+		for (const [id, displayName] of BUNDLED_STYLE_LABELS) {
+			if (prefix && !id.toLowerCase().startsWith(prefix) &&
+				!displayName.toLowerCase().includes(prefix)) {
+				continue;
+			}
+			items.push({
+				label: id,
+				kind: CompletionItemKind.Value,
+				detail: displayName,
+				textEdit: {
+					range: replaceRange,
+					newText: id,
+				},
+				filterText: id,
+				sortText: id,
+			});
+		}
+		return { isIncomplete: items.length > 0, items };
+	}
+
 	const completionContext = getCompletionContextAtOffset(text, offset);
 	if (!completionContext) {
 		return [];
@@ -179,6 +233,7 @@ connection.onCompletion(async (params: CompletionParams): Promise<CompletionItem
 			},
 			filterText: entry.key,
 			sortText: entry.key,
+			commitCharacters: [';', ',', ']'],
 		});
 	}
 
@@ -279,6 +334,74 @@ connection.onHover(async (params: HoverParams): Promise<Hover | null> => {
 documents.listen(connection);
 connection.listen();
 
+async function validateCslField(doc: TextDocument): Promise<void> {
+	try {
+		const text = doc.getText();
+		const fieldInfo = getCslFieldInfo(text);
+		if (!fieldInfo || !fieldInfo.value) {
+			cslDiagnostics.set(doc.uri, []);
+			publishDiagnostics(doc.uri);
+			return;
+		}
+
+		const sourceDir = (() => {
+			const fsPath = uriToFsPath(doc.uri);
+			return fsPath ? path.dirname(fsPath) : undefined;
+		})();
+
+		const available = await isCslAvailableAsync(fieldInfo.value, {
+			cacheDirs: settings.cslCacheDirs,
+			sourceDir,
+		});
+
+		if (available) {
+			cslDiagnostics.set(doc.uri, []);
+			publishDiagnostics(doc.uri);
+			return;
+		}
+
+		// Build suggestion list from bundled styles matching the user's input
+		const maxSuggestions = 3;
+		const userValue = fieldInfo.value.toLowerCase();
+		const suggestions: string[] = [];
+		let totalMatches = 0;
+		if (userValue) {
+			for (const [id, displayName] of BUNDLED_STYLE_LABELS) {
+				if (id.toLowerCase().startsWith(userValue) || displayName.toLowerCase().includes(userValue)) {
+					totalMatches++;
+					if (suggestions.length < maxSuggestions) {
+						suggestions.push(id);
+					}
+				}
+			}
+		}
+		let message = `CSL style "${fieldInfo.value}" not found.`;
+		const remaining = totalMatches - suggestions.length;
+		if (suggestions.length === 1 && remaining === 0) {
+			message += ` Did you mean \`${suggestions[0]}\`?`;
+		} else if (suggestions.length > 0) {
+			const quoted = suggestions.map(s => `\`${s}\``);
+			const hint = remaining > 0 ? `, and ${remaining} more` : '';
+			message += ` Did you mean ${quoted.join(', ')}${hint}?`;
+		}
+
+		const diagnostic: Diagnostic = {
+			severity: DiagnosticSeverity.Warning,
+			range: Range.create(
+				doc.positionAt(fieldInfo.valueStart),
+				doc.positionAt(fieldInfo.valueEnd)
+			),
+			message,
+			source: 'manuscript-markdown',
+		};
+		cslDiagnostics.set(doc.uri, [diagnostic]);
+		publishDiagnostics(doc.uri);
+	} catch (e) {
+		// Don't let validation errors crash the LSP connection
+		connection.console.error(`Error building CSL suggestions: ${e instanceof Error ? e.stack ?? e.message : e}`);
+	}
+}
+
 function extractWorkspaceRoots(params: InitializeParams): string[] {
 	const paths = new Set<string>();
 	if (params.workspaceFolders) {
@@ -344,13 +467,15 @@ async function validateCitekeys(doc: TextDocument): Promise<void> {
 	const text = doc.getText();
 	const bibPath = resolveBibliographyPath(doc.uri, text, workspaceRootPaths);
 	if (!bibPath) {
-		connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+		citekeyDiagnostics.set(doc.uri, []);
+		publishDiagnostics(doc.uri);
 		return;
 	}
 
 	const bibData = await getBibDataForPath(bibPath);
 	if (!bibData) {
-		connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+		citekeyDiagnostics.set(doc.uri, []);
+		publishDiagnostics(doc.uri);
 		return;
 	}
 
@@ -366,7 +491,8 @@ async function validateCitekeys(doc: TextDocument): Promise<void> {
 		}
 	}
 
-	connection.sendDiagnostics({ uri: doc.uri, diagnostics });
+	citekeyDiagnostics.set(doc.uri, diagnostics);
+	publishDiagnostics(doc.uri);
 }
 
 function revalidateMarkdownDocsForBib(changedBibPath: string): void {

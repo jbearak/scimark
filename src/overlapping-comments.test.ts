@@ -25,6 +25,8 @@ function makeState(): DocxGenState {
     hasList: false,
     hasComments: false,
     missingKeys: new Set(),
+    replyRanges: [],
+    nextParaId: 1,
   };
 }
 

@@ -159,12 +159,20 @@
         "title": "Export to Markdown"
       },
       {
+        "command": "manuscript-markdown.openInWord",
+        "title": "Open in Word"
+      },
+      {
         "command": "manuscript-markdown.exportToWord",
         "title": "Export to Word"
       },
       {
         "command": "manuscript-markdown.exportToWordWithTemplate",
         "title": "Export to Word (with template)"
+      },
+      {
+        "command": "manuscript-markdown.setCitationStyle",
+        "title": "Set Citation Style"
       },
       {
         "command": "manuscript-markdown.formatHighlight_yellow",
@@ -244,6 +252,11 @@
         "label": "Heading"
       },
       {
+        "id": "docx.actions",
+        "label": "Word Document",
+        "icon": "$(file-binary)"
+      },
+      {
         "id": "markdown.highlightColor",
         "label": "Highlight Color"
       }
@@ -264,6 +277,11 @@
           "submenu": "markdown.exportDocx",
           "when": "editorLangId == markdown && !isInDiffEditor",
           "group": "navigation@3"
+        },
+        {
+          "submenu": "docx.actions",
+          "when": "resourceExtname == .docx && !isInDiffEditor",
+          "group": "navigation@1"
         }
       ],
       "editor/context": [
@@ -521,13 +539,35 @@
           "command": "manuscript-markdown.exportToWordWithTemplate",
           "when": "editorLangId == markdown",
           "group": "1_export@2"
+        },
+        {
+          "command": "manuscript-markdown.setCitationStyle",
+          "when": "editorLangId == markdown",
+          "group": "2_style@1"
+        }
+      ],
+      "docx.actions": [
+        {
+          "command": "manuscript-markdown.convertDocx",
+          "when": "resourceExtname == .docx",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "manuscript-markdown.openInWord",
+          "when": "resourceExtname == .docx && !remoteName",
+          "group": "1_actions@2"
         }
       ],
       "explorer/context": [
         {
           "command": "manuscript-markdown.convertDocx",
           "when": "resourceExtname == .docx",
-          "group": "9_export"
+          "group": "9_export@0"
+        },
+        {
+          "command": "manuscript-markdown.openInWord",
+          "when": "resourceExtname == .docx && !remoteName",
+          "group": "9_export@1"
         },
         {
           "command": "manuscript-markdown.exportToWord",
@@ -651,6 +691,15 @@
             "Sequential numbers (e.g., 1, 2, 3)"
           ],
           "description": "Citation key format for DOCX to Markdown conversion"
+        },
+        "manuscriptMarkdown.blockquoteStyle": {
+          "type": "string",
+          "enum": [
+            "Quote",
+            "IntenseQuote"
+          ],
+          "default": "Quote",
+          "description": "Word paragraph style to use for blockquotes when converting Markdown to DOCX"
         },
         "manuscriptMarkdown.alwaysUseCommentIds": {
           "type": "boolean",

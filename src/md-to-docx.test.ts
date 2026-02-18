@@ -33,6 +33,8 @@ function makeState(): DocxGenState {
     footnoteLabelToId: new Map(),
     notesMode: 'footnotes',
     missingKeys: new Set(),
+    replyRanges: [],
+    nextParaId: 1,
   };
 }
 
@@ -983,12 +985,13 @@ describe('CriticMarkup OOXML generation', () => {
     expect(result).toContain('highlighted text');
     expect(state.hasComments).toBe(true);
     expect(state.comments).toHaveLength(1);
-    expect(state.comments[0]).toEqual({
+    expect(state.comments[0]).toMatchObject({
       id: 0,
       author: 'Alice',
       date: '2024-01-04T00:00:00Z',
       text: 'This is a comment'
     });
+    expect(state.comments[0].paraId).toMatch(/^[0-9A-F]{8}$/);
   });
 
   it('generates zero-width comment for standalone comments', () => {
@@ -1355,5 +1358,40 @@ describe('Footnote round-trip', () => {
 
     expect(result.markdown).toContain('[^my-note]');
     expect(result.markdown).toContain('[^my-note]: Named note content.');
+  });
+});
+describe('parseMd list levels with blockquotes', () => {
+  it('resets list level inside blockquote and preserves quote level', () => {
+    const tokens = parseMd('- outer item\n> - quoted item');
+    expect(tokens).toHaveLength(2);
+
+    expect(tokens[0]).toMatchObject({
+      type: 'list_item',
+      level: 1,
+      ordered: false,
+    });
+
+    expect(tokens[1]).toMatchObject({
+      type: 'blockquote',
+      level: 1,
+      ordered: false,
+    });
+  });
+});
+
+describe('generateParagraph blockquoteStyle option', () => {
+  it('uses Quote style by default', () => {
+    const token: MdToken = { type: 'blockquote', level: 1, runs: [{ type: 'text', text: 'hello' }] };
+    const state = makeState();
+    const xml = generateParagraph(token, state);
+    expect(xml).toContain('w:pStyle w:val="Quote"');
+  });
+
+  it('uses IntenseQuote style when specified', () => {
+    const token: MdToken = { type: 'blockquote', level: 1, runs: [{ type: 'text', text: 'hello' }] };
+    const state = makeState();
+    const xml = generateParagraph(token, state, { blockquoteStyle: 'IntenseQuote' });
+    expect(xml).toContain('w:pStyle w:val="IntenseQuote"');
+    expect(xml).not.toContain('w:pStyle w:val="Quote"');
   });
 });
