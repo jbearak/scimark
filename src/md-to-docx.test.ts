@@ -1244,6 +1244,13 @@ describe('extractFootnoteDefinitions', () => {
     expect(definitions.size).toBe(0);
     expect(cleaned).toBe('Just plain text.');
   });
+
+  it('keeps indented fenced code blocks inside footnote bodies', () => {
+    const input = 'Body text.\n\n[^1]: Here is code:\n\n    ```python\n    print(\"hello\")\n    ```';
+    const { cleaned, definitions } = extractFootnoteDefinitions(input);
+    expect(definitions.get('1')).toBe('Here is code:\n\n```python\nprint(\"hello\")\n```');
+    expect(cleaned).toBe('Body text.\n');
+  });
 });
 
 describe('Footnote OOXML generation', () => {

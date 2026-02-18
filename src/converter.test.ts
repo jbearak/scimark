@@ -2092,6 +2092,22 @@ describe('DOCX footnote extraction', () => {
     expect(result.markdown).toContain('[^1]: Where $x$ is defined.');
   });
 
+  test('footnote body with display math uses block footnote form', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id=\"1\"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapNotesXml('footnotes',
+      '<w:footnote w:id=\"1\"><w:p><w:r><w:footnoteRef/></w:r></w:p>'
+      + '<m:oMathPara><m:oMath><m:r><m:t>E=mc^2</m:t></m:r></m:oMath></m:oMathPara>'
+      + '</w:footnote>'
+    );
+    const buf = await buildSyntheticDocx(docXml, { 'word/footnotes.xml': footnotesXml });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('[^1]:\n\n    $$\n    \\mathrm{E=mc^2}\n    $$');
+  });
+
   test('footnote body with table produces HTML table', async () => {
     const docXml = wrapDocumentXml(
       '<w:p><w:r><w:t>Text</w:t></w:r>'

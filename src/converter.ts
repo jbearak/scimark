@@ -2274,6 +2274,15 @@ export function buildMarkdown(
             deferredAll.push(...part.deferredComments);
           }
           partStart = bi + 1;
+        } else if (item.type === 'math' && item.display) {
+          // Flush preceding inline content and keep display math as its own block part.
+          if (bi > partStart) {
+            const part = renderInlineRange(bodyMerged, partStart, comments, undefined, renderOpts);
+            bodyParts.push(part.text);
+            deferredAll.push(...part.deferredComments);
+          }
+          bodyParts.push('$$' + '\n' + item.latex + '\n' + '$$');
+          partStart = bi + 1;
         } else if (item.type === 'table') {
           // Flush preceding inline content
           if (bi > partStart) {
