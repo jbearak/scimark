@@ -16,7 +16,7 @@ The guide is organized in three parts:
 
 VS Code is a free text editor from Microsoft. Download it from [code.visualstudio.com](https://code.visualstudio.com) and run the installer.
 
-> Several VS Code forks — such as Cursor, Google Antigravity, and Amazon Kiro — also work with this extension. If you already use one of those, you can skip this step.
+> Several VS Code forks — such as [Cursor](https://www.cursor.com/), [Google Antigravity](https://antigravity.google/), and [Amazon Kiro](https://kiro.dev/) — also work with this extension. If you already use one of those, you can skip this step.
 
 ### Installing the Extension
 
@@ -27,7 +27,7 @@ VS Code is a free text editor from Microsoft. Download it from [code.visualstudi
 
 ### Setting Up a Project Folder
 
-VS Code works with folders, not individual files. Start by creating a folder on your computer for your project, then open it in VS Code: **File > Open Folder**.
+VS Code can open individual files, but it's designed to work with folders — opening a folder gives you a file explorer, git integration, and a workspace for your project. Start by creating a folder on your computer for your project, then open it in VS Code: **File > Open Folder**.
 
 There are two ways to start working:
 
@@ -37,7 +37,7 @@ There are two ways to start working:
 
 #### Keeping Word files out of git
 
-If you drag `.docx` files into your project folder, you'll want to tell git to ignore them so they don't clutter your version history:
+Binary files like `.docx` don't work well with git — they bloat the repository and git can't show meaningful differences for them. Whether you import a Word document or use **Export to Word** to generate one, you'll want to tell git to ignore `.docx` files:
 
 1. Click the new-file icon in the Explorer sidebar and name the file `.gitignore`
 2. Add `*.docx` on the first line
@@ -86,7 +86,7 @@ The highlight color is optional — without it, the default color (yellow) is us
 [@smith2020; @jones2021]
 ```
 
-Citations reference entries in a companion `.bib` file. If you converted a Word document that had Zotero citations, this file was generated automatically.
+Citations reference entries in a companion `.bib` file. If you converted a Word document that had Zotero citations, this file was generated automatically. BibTeX is a standard format for bibliographic data ([bibtex.org](https://www.bibtex.org/)). You don't need to learn it in detail: if you have an AI assistant in VS Code (like Claude), you can open its sidebar and ask it to add a citation — paste in bibliographic details or a screenshot of a reference page, and it will format the BibTeX entry for you.
 
 #### Paragraphs
 
@@ -160,7 +160,7 @@ Once you've made some edits, save a snapshot with git:
 
 #### Recommended open-source fonts
 
-Download and install a font on your system first, then enter its name in VS Code settings.
+Download and install a font on your system first, then type its name directly into the settings field (e.g., type `JetBrains Mono` into the **Editor: Font Family** field).
 
 **For the editor** (monospace):
 
@@ -182,7 +182,8 @@ Download and install a font on your system first, then enter its name in VS Code
 ### Previewing Markdown
 
 - Click the **Open Preview to the Side** icon in the top-right of the editor (it looks like a book with a magnifying glass), or press `Ctrl+K V` (`Cmd+K V` on Mac)
-- For a full-screen preview that replaces the editor tab, press `Ctrl+Shift+V` (`Cmd+Shift+V` on Mac)
+- For a full-screen preview that replaces the editor tab, `Alt`-click (`Option`-click on Mac) the same preview button, or press `Ctrl+Shift+V` (`Cmd+Shift+V` on Mac)
+- Double-click anywhere in the preview to switch back to the editor
 
 The preview shows formatted text with highlights, annotations, and headings rendered visually.
 
@@ -221,8 +222,8 @@ If a `.docx` with the same name already exists, its formatting styles (fonts, sp
 
 Two ways:
 
-1. **Editor toolbar**: when a `.docx` file is open, click the document icon > **Export to Markdown**
-2. **Explorer sidebar**: right-click the `.docx` file > **Export to Markdown**
+1. **Explorer sidebar**: right-click the `.docx` file > **Export to Markdown**
+2. **Editor toolbar**: when a `.docx` file is open, click the document icon > **Export to Markdown**
 
 The converted `.md` file opens automatically. If the document contains citations, a companion `.bib` file is also generated and opens in a side-by-side tab.
 
@@ -238,7 +239,7 @@ After making changes, the Source Control sidebar shows modified files. Click a f
 
 A few things to know about the diff view:
 
-- To return to the normal editor, click the **Open File** button in the top-right of the editor (it looks like a file with an arrow), or simply open the file from the Explorer sidebar.
+- To return to the normal editor, click the button whose tooltip reads **Open File** in the top-right of the editor, or simply open the file from the Explorer sidebar. (To switch back to the diff view later, click the **Open Changes** button in the same position.)
 - You **can** edit directly in the diff view if you're looking at **unstaged** changes — the right side is editable.
 - If the diff view won't let you type, you're looking at a **staged** change. Unstage it first (click the **−** icon in Source Control) or switch to the normal editor.
 
@@ -280,6 +281,23 @@ Tables use pipes and dashes:
 | cell     | cell     |
 ```
 
+For more complex tables — multi-paragraph cells, merged rows or columns — use HTML table syntax:
+
+```html
+<table>
+<tr>
+  <td>Column A</td>
+  <td>Column B</td>
+</tr>
+<tr>
+  <td>cell</td>
+  <td>cell</td>
+</tr>
+</table>
+```
+
+The DOCX converter always uses HTML table syntax on import, since it safely handles complex structures. See the [MDN `<table>` reference](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/table) for the full set of table elements.
+
 See the [Specification](specification.md) for the full reference.
 
 ### Annotation Syntax
@@ -292,7 +310,6 @@ The toolbar buttons insert CriticMarkup — here's what the raw syntax looks lik
 | Deletion | `{--removed text--}` |
 | Substitution | `{~~old text~>new text~~}` |
 | Comment | `{>>comment text<<}` |
-| Highlight | `{==highlighted text==}` |
 
 You can type these directly instead of using the toolbar menus. See the [CriticMarkup documentation](criticmarkup.md) for full details.
 
