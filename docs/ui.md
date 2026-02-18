@@ -95,8 +95,6 @@ Annotation and change-tracking commands — the Markdown equivalent of tracked c
 | Navigation | **Previous Change** | `manuscript-markdown.prevChange` |
 | | **Next Change** | `manuscript-markdown.nextChange` |
 
-> The extension also registers a **Highlight** command (`manuscript-markdown.highlight`) that wraps text in annotation highlight syntax (`{== ==}`). It does not appear in any menu but is available from the Command Palette.
-
 ---
 
 ### Export to Word
@@ -246,7 +244,7 @@ When the export finishes, a notification appears in the bottom-right corner with
 
 ### Export to Word with Template
 
-Behaves the same as [Export to Word](#export-to-word-md-docx), but first shows a file-picker dialog to choose a `.docx` template file. "Choosing a template" means selecting an existing `.docx` file whose paragraph formatting styles — fonts, sizes, spacing, colors — will be applied to the exported document.
+Behaves the same as [Export to Word](#export-to-word-md--docx), but first shows a file-picker dialog to choose a `.docx` template file. "Choosing a template" means selecting an existing `.docx` file whose paragraph formatting styles — fonts, sizes, spacing, colors — will be applied to the exported document.
 
 ---
 
