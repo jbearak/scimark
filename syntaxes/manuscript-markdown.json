@@ -1,19 +1,19 @@
 {
-    "injectionSelector": "L:text.html.markdown",
+    "injectionSelector": "L:text.html.markdown -string -meta.embedded -markup.inline.raw -markup.fenced_code",
     "patterns": [
+        { "include": "#citation_list" },
+        { "include": "#footnote_ref" },
+        { "include": "#footnote_def" },
+        { "include": "#colored_format_highlight" },
+        { "include": "#format_highlight" },
         { "include": "#addition" },
         { "include": "#deletion" },
         { "include": "#substitution" },
+        { "include": "#highlight" },
         { "include": "#comment_with_id" },
         { "include": "#comment" },
         { "include": "#comment_range_start" },
-        { "include": "#comment_range_end" },
-        { "include": "#highlight" },
-        { "include": "#colored_format_highlight" },
-        { "include": "#format_highlight" },
-        { "include": "#citation_list" },
-        { "include": "#footnote_def" },
-        { "include": "#footnote_ref" }
+        { "include": "#comment_range_end" }
     ],
 	"repository": {
 		"addition": {
