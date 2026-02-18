@@ -1168,6 +1168,8 @@ export interface DocxGenState {
   timezone?: string; // UTC offset from frontmatter (e.g. "-05:00")
   replyRanges: Array<{replyId: number; parentId: number}>;
   nextParaId: number;
+  codeBlockIndex: number;
+  codeBlockLanguages: Map<number, string>;
 }
 
 interface CommentEntry {
@@ -1324,13 +1326,13 @@ function stylesXml(): string {
     '</w:style>\n' +
     '<w:style w:type="character" w:styleId="CodeChar">\n' +
     '<w:name w:val="Code Char"/>\n' +
-    '<w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr>\n' +
+    '<w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr>\n' +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="CodeBlock">\n' +
     '<w:name w:val="Code Block"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:shd w:val="clear" w:color="auto" w:fill="E8E8E8"/></w:pPr>\n' +
-    '<w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr>\n' +
+    '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:shd w:val="clear" w:color="auto" w:fill="F6F8FA"/></w:pPr>\n' +
+    '<w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>\n' +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Title">\n' +
     '<w:name w:val="Title"/>\n' +
@@ -1414,7 +1416,7 @@ function fontTableXml(): string {
     '<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">\n' +
     '<w:font w:name="Calibri"><w:panose1 w:val="020F0502020204030204"/><w:charset w:val="00"/><w:family w:val="swiss"/><w:pitch w:val="variable"/></w:font>\n' +
     '<w:font w:name="Times New Roman"><w:panose1 w:val="02020603050405020304"/><w:charset w:val="00"/><w:family w:val="roman"/><w:pitch w:val="variable"/></w:font>\n' +
-    '<w:font w:name="Courier New"><w:panose1 w:val="02070309020205020404"/><w:charset w:val="00"/><w:family w:val="modern"/><w:pitch w:val="fixed"/></w:font>\n' +
+    '<w:font w:name="Consolas"><w:panose1 w:val="02070309020205020404"/><w:charset w:val="00"/><w:family w:val="modern"/><w:pitch w:val="fixed"/></w:font>\n' +
     '</w:fonts>';
 }
 
@@ -1524,6 +1526,24 @@ function footnoteIdMappingProps(footnoteLabelToId: Map<string, number>): CustomP
   for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
     props.push({
       name: 'MANUSCRIPT_FOOTNOTE_IDS_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+
+function codeBlockLanguageProps(codeBlockLanguages: Map<number, string>): CustomPropEntry[] {
+  if (codeBlockLanguages.size === 0) return [];
+  const mapping: Record<string, string> = {};
+  for (const [index, language] of codeBlockLanguages) {
+    mapping[String(index)] = language;
+  }
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_CODE_BLOCK_LANGS_' + (props.length + 1),
       value: mappingJson.slice(i, i + CHUNK_SIZE),
     });
   }
@@ -1818,6 +1838,10 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       break;
     case 'code_block':
       pPr = '<w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr>';
+      if (token.language) {
+        state.codeBlockLanguages.set(state.codeBlockIndex, token.language);
+      }
+      state.codeBlockIndex++;
       break;
     case 'hr':
       pPr = '<w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="auto"/></w:pBdr></w:pPr>';
@@ -1826,7 +1850,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   
   if (token.type === 'code_block') {
     const lines = (token.runs[0]?.text || '').split('\n');
-    return lines.map(line => '<w:p>' + pPr + generateRun(line, '<w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr>') + '</w:p>').join('');
+    return lines.map(line => '<w:p>' + pPr + generateRun(line, '<w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr>') + '</w:p>').join('');
   }
   
   if (token.type === 'hr') {
@@ -2079,12 +2103,19 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     }
   }
 
+  let prevTokenType: string | undefined;
   for (const token of tokens) {
+    // Insert an empty paragraph between consecutive code blocks so they
+    // don't merge into a single block on DOCX→MD round-trip.
+    if (token.type === 'code_block' && prevTokenType === 'code_block') {
+      body += '<w:p/>';
+    }
     if (token.type === 'table') {
       body += generateTable(token, state, options, bibEntries, citeprocEngine);
     } else {
       body += generateParagraph(token, state, options, bibEntries, citeprocEngine);
     }
+    prevTokenType = token.type;
   }
 
   // Append bibliography field if we have a citeproc engine
@@ -2213,6 +2244,8 @@ export async function convertMdToDocx(
     timezone: frontmatter.timezone,
     replyRanges: [],
     nextParaId: 1,
+    codeBlockIndex: 0,
+    codeBlockLanguages: new Map(),
   };
 
   const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
@@ -2323,6 +2356,7 @@ export async function convertMdToDocx(
   }
   customProps.push(...commentIdMappingProps(state.commentIdMap));
   customProps.push(...footnoteIdMappingProps(state.footnoteLabelToId));
+  customProps.push(...codeBlockLanguageProps(state.codeBlockLanguages));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));

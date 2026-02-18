@@ -90,6 +90,7 @@ export type ContentItem =
       listMeta?: ListMeta;     // present if list item
       isTitle?: boolean;       // true if Word "Title" paragraph style
       blockquoteLevel?: number; // 1+ if Quote/IntenseQuote paragraph style
+      isCodeBlock?: boolean;   // true if Word "Code Block" paragraph style
     }
   | { type: 'math'; latex: string; display: boolean; commentIds: Set<string> }
   | { type: 'footnote_ref'; noteId: string; noteKind: 'footnote' | 'endnote'; commentIds: Set<string> };
@@ -253,6 +254,12 @@ export function parseBlockquoteLevel(pPrChildren: any[]): number | undefined {
     }
   }
   return 1;
+}
+
+export function parseCodeBlockStyle(pPrChildren: any[]): boolean {
+  const pStyleElement = pPrChildren.find(child => child['w:pStyle'] !== undefined);
+  if (!pStyleElement) return false;
+  return getAttr(pStyleElement, 'val').toLowerCase() === 'codeblock';
 }
 
 export function parseListMeta(pPrChildren: any[], numberingDefs: Map<string, Map<string, 'bullet' | 'ordered'>>): ListMeta | undefined {
@@ -715,6 +722,10 @@ export async function extractCommentIdMapping(data: Uint8Array | JSZip): Promise
 
 export async function extractFootnoteIdMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_FOOTNOTE_IDS');
+}
+
+export async function extractCodeBlockLanguageMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_CODE_BLOCK_LANGS');
 }
 
 async function extractNotes(
@@ -1539,6 +1550,7 @@ export async function extractDocumentContent(
           let listMeta: ListMeta | undefined;
           let isTitle = false;
           let blockquoteLevel: number | undefined;
+          let isCodeBlock = false;
           let paraFormatting = currentFormatting;
 
           const paraChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
@@ -1549,6 +1561,7 @@ export async function extractDocumentContent(
               listMeta = parseListMeta(pPrChildren, numberingDefs);
               isTitle = parseTitleStyle(pPrChildren);
               blockquoteLevel = parseBlockquoteLevel(pPrChildren);
+              isCodeBlock = parseCodeBlockStyle(pPrChildren);
               const pRPrElement = pPrChildren.find(pprChild => pprChild['w:rPr'] !== undefined);
               if (pRPrElement) {
                 const pRPrChildren = Array.isArray(pRPrElement['w:rPr']) ? pRPrElement['w:rPr'] : [pRPrElement['w:rPr']];
@@ -1558,12 +1571,15 @@ export async function extractDocumentContent(
             }
           }
 
-          // Always push a new para when heading/list/title/blockquote metadata is present (so metadata
+          // Always push a new para when heading/list/title/blockquote/codeblock metadata is present (so metadata
           // isn't silently dropped after empty paragraphs).  For plain paragraphs,
-          // push only when the previous item isn't already a para separator.
-          const needsPara = inTableCell || (headingLevel || listMeta || isTitle || blockquoteLevel)
+          // push only when the previous item isn't already a para separator — except
+          // after a code-block para, where a plain para acts as a group boundary.
+          const prevItem = target.length > 0 ? target[target.length - 1] : undefined;
+          const prevIsCodeBlockPara = prevItem?.type === 'para' && prevItem.isCodeBlock;
+          const needsPara = inTableCell || (headingLevel || listMeta || isTitle || blockquoteLevel || isCodeBlock)
             ? true
-            : target.length > 0 && target[target.length - 1].type !== 'para';
+            : target.length > 0 && (prevItem!.type !== 'para' || prevIsCodeBlockPara);
 
           if (needsPara) {
             const paraItem: ContentItem = { type: 'para' };
@@ -1571,6 +1587,7 @@ export async function extractDocumentContent(
             if (listMeta) paraItem.listMeta = listMeta;
             if (isTitle) paraItem.isTitle = true;
             if (blockquoteLevel) paraItem.blockquoteLevel = blockquoteLevel;
+            if (isCodeBlock) paraItem.isCodeBlock = true;
             target.push(paraItem);
           }
           walk(paraChildren, paraFormatting, target, inTableCell);
@@ -2059,7 +2076,7 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> } },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -2178,11 +2195,79 @@ export function buildMarkdown(
   const output: string[] = [];
   let i = 0;
   let lastListType: 'bullet' | 'ordered' | undefined;
+  let codeBlockGroupIndex = 0;
+  const codeBlockLangs = options?.codeBlockLangs;
 
   while (i < mergedContent.length) {
     const item = mergedContent[i];
 
     if (item.type === 'para') {
+      // Code block grouping: collect consecutive code-block paragraphs into a fenced block
+      if (item.isCodeBlock) {
+        if (output.length > 0) {
+          output.push('\n\n');
+        }
+        lastListType = undefined;
+
+        const lang = codeBlockLangs?.get(String(codeBlockGroupIndex)) || '';
+        const codeLines: string[] = [];
+
+        // Collect text from consecutive code-block paragraphs.
+        // Each code line in DOCX is: { type: 'para', isCodeBlock: true } followed by
+        // optional { type: 'text', text: '...' }. Consecutive isCodeBlock paras are
+        // part of the same group; a non-isCodeBlock para (separator) ends the group.
+        let lineText = '';
+        let firstLine = true;
+        while (i < mergedContent.length) {
+          const next = mergedContent[i];
+          if (next.type === 'para' && next.isCodeBlock) {
+            if (!firstLine) {
+              codeLines.push(lineText);
+              lineText = '';
+            }
+            firstLine = false;
+            i++;
+            continue;
+          }
+          if (next.type === 'para' && !next.isCodeBlock) {
+            // Non-code-block para — separator between groups or end of block
+            break;
+          }
+          if (next.type === 'text') {
+            lineText += next.text;
+          }
+          // Skip non-para, non-text items within the code block (shouldn't typically happen)
+          if (next.type !== 'para' && next.type !== 'text') {
+            break;
+          }
+          i++;
+        }
+        // Push the last collected line
+        if (!firstLine) {
+          codeLines.push(lineText);
+        }
+
+        // Trim trailing empty lines (artifact of markdown-it's trailing \n in fence content)
+        while (codeLines.length > 0 && codeLines[codeLines.length - 1] === '') {
+          codeLines.pop();
+        }
+
+        output.push('```' + lang + '\n' + codeLines.join('\n') + '\n```');
+        codeBlockGroupIndex++;
+        // Skip the separator para between consecutive code block groups
+        // so it doesn't produce extra blank lines in the output.
+        // Skip a plain separator para that was inserted between consecutive code
+        // block groups during export.  Only skip when the next item after the
+        // separator is another code-block para (proving it's a separator, not
+        // real content).
+        const sep = i < mergedContent.length ? mergedContent[i] : undefined;
+        const afterSep = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
+        if (sep && sep.type === 'para' && !sep.isCodeBlock && afterSep && afterSep.type === 'para' && afterSep.isCodeBlock) {
+          i++;
+        }
+        continue;
+      }
+
       const isCurrentList = item.listMeta !== undefined;
 
       if (output.length > 0) {
@@ -2529,13 +2614,14 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, threads] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
     extractAuthor(zip),
     extractCommentIdMapping(zip),
     extractFootnoteIdMapping(zip),
+    extractCodeBlockLanguageMapping(zip),
     extractCommentThreads(zip),
   ]);
 
@@ -2629,6 +2715,7 @@ export async function convertDocx(
     alwaysUseCommentIds: options?.alwaysUseCommentIds,
     commentIdMapping,
     notes: notesMap.size > 0 ? { map: notesMap, assignedLabels } : undefined,
+    codeBlockLangs: codeBlockLangMapping,
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
