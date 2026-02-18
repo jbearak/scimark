@@ -56,6 +56,7 @@ export interface RunFormatting {
   highlightColor?: string;
   superscript: boolean;
   subscript: boolean;
+  code: boolean;
 }
 
 /** List metadata for a paragraph */
@@ -72,6 +73,7 @@ export const DEFAULT_FORMATTING: Readonly<RunFormatting> = Object.freeze({
   highlight: false,
   superscript: false,
   subscript: false,
+  code: false,
 });
 
 export type ContentItem =
@@ -466,15 +468,41 @@ export function parseRunProperties(
     formatting.superscript = val === 'superscript';
     formatting.subscript = val === 'subscript';
   }
-  
+
+  // inline code: w:rStyle with val matching "CodeChar" (case-insensitive)
+  const rStyleElement = rPrChildren.find(child => child['w:rStyle'] !== undefined);
+  if (rStyleElement) {
+    const val = getAttr(rStyleElement, 'val');
+    formatting.code = !!(val && val.toLowerCase() === 'codechar');
+  }
+
   return formatting;
 }
 
 /** Apply formatting delimiters in nesting order */
 export function wrapWithFormatting(text: string, fmt: RunFormatting): string {
   let result = text;
-  
+
   // Apply in reverse nesting order (innermost to outermost)
+  // Code is innermost — applied first
+  if (fmt.code) {
+    // Find the longest run of consecutive backticks in the text
+    let maxRun = 0;
+    const backtickRuns = result.match(/`+/g);
+    if (backtickRuns) {
+      for (const run of backtickRuns) {
+        if (run.length > maxRun) maxRun = run.length;
+      }
+    }
+    const fence = '`'.repeat(maxRun + 1);
+    // Add padding space if content starts/ends with a backtick, or if
+    // content has both leading and trailing spaces (CommonMark §6.1 would
+    // strip one space from each end, losing the original whitespace).
+    const hasLeadingTrailingSpaces = result.startsWith(' ') && result.endsWith(' ') && result.trim().length > 0;
+    const needsPadding = result.startsWith('`') || result.endsWith('`') || hasLeadingTrailingSpaces;
+    result = needsPadding ? `${fence} ${result} ${fence}` : `${fence}${result}${fence}`;
+  }
+
   // If both superscript and subscript are true, superscript takes precedence
   if (fmt.superscript) {
     result = `<sup>${result}</sup>`;
@@ -486,7 +514,7 @@ export function wrapWithFormatting(text: string, fmt: RunFormatting): string {
   if (fmt.strikethrough) result = `~~${result}~~`;
   if (fmt.italic) result = `*${result}*`;
   if (fmt.bold) result = `**${result}**`;
-  
+
   return result;
 }
 
@@ -1633,7 +1661,8 @@ function formattingEquals(a: RunFormatting, b: RunFormatting): boolean {
   return a.bold === b.bold && a.italic === b.italic && a.underline === b.underline &&
          a.strikethrough === b.strikethrough && a.highlight === b.highlight &&
          a.highlightColor === b.highlightColor &&
-         a.superscript === b.superscript && a.subscript === b.subscript;
+         a.superscript === b.superscript && a.subscript === b.subscript &&
+         a.code === b.code;
 }
 
 function commentSetsEqual(a: Set<string>, b: Set<string>): boolean {

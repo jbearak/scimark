@@ -851,13 +851,13 @@ describe('wrapWithFormatting', () => {
     fc.assert(
       fc.property(
         fc.string({ minLength: 1, maxLength: 50 }),
-        fc.constantFrom('bold', 'italic', 'strikethrough', 'underline', 'highlight', 'superscript', 'subscript'),
+        fc.constantFrom('bold', 'italic', 'strikethrough', 'underline', 'highlight', 'superscript', 'subscript', 'code'),
         (text, formatType) => {
           const fmt: RunFormatting = { ...DEFAULT_FORMATTING };
           (fmt as any)[formatType] = true;
-          
+
           const result = wrapWithFormatting(text, fmt);
-          
+
           const delimiters = {
             bold: ['**', '**'],
             italic: ['*', '*'],
@@ -866,6 +866,7 @@ describe('wrapWithFormatting', () => {
             highlight: ['==', '=='],
             superscript: ['<sup>', '</sup>'],
             subscript: ['<sub>', '</sub>'],
+            code: ['`', '`'],
           };
           
           const [open, close] = delimiters[formatType as keyof typeof delimiters];
@@ -890,11 +891,12 @@ describe('wrapWithFormatting', () => {
           highlight: fc.boolean(),
           superscript: fc.boolean(),
           subscript: fc.boolean(),
+          code: fc.boolean(),
         }).filter(fmt => Object.values(fmt).filter(Boolean).length >= 2),
         (text, fmt) => {
           const result = wrapWithFormatting(text, fmt);
-          
-          // Check nesting order: bold (outermost) → italic → strikethrough → underline → highlight → super/subscript (innermost)
+
+          // Check nesting order: bold (outermost) → italic → strikethrough → underline → highlight → super/subscript → code (innermost)
           const patterns = [];
           if (fmt.bold) patterns.push('\\*\\*');
           if (fmt.italic) patterns.push('\\*');
@@ -907,6 +909,7 @@ describe('wrapWithFormatting', () => {
           } else if (fmt.subscript) {
             patterns.push('<sub>');
           }
+          if (fmt.code) patterns.push('`');
           
           // Build expected opening pattern
           const openPattern = patterns.join('');
@@ -933,6 +936,7 @@ describe('buildMarkdown', () => {
           highlight: fc.boolean(),
           superscript: fc.boolean(),
           subscript: fc.boolean(),
+          code: fc.boolean(),
         }),
         fc.option(fc.webUrl(), { nil: undefined }),
         (texts, formatting, href) => {
@@ -1000,6 +1004,7 @@ describe('buildMarkdown', () => {
           highlight: fc.boolean(),
           superscript: fc.boolean(),
           subscript: fc.boolean(),
+          code: fc.boolean(),
         }).filter(fmt => Object.values(fmt).some(Boolean)),
         (text, url, formatting) => {
           const content = [{
@@ -2427,6 +2432,108 @@ describe('Code block round-trip', () => {
     const docxResult = await convertMdToDocx(md);
     const result = await convertDocx(docxResult.docx);
     expect(result.markdown.trim()).toBe('```javascript\nconst x = 1;\nconst y = 2;\nconsole.log(x + y);\n```');
+  });
+});
+
+describe('Inline code import (CodeChar detection)', () => {
+  test('parseRunProperties detects CodeChar style', () => {
+    const children = [{ 'w:rStyle': [], ':@': { '@_w:val': 'CodeChar' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.code).toBe(true);
+  });
+
+  test('parseRunProperties detects CodeChar case-insensitively', () => {
+    const children = [{ 'w:rStyle': [], ':@': { '@_w:val': 'codechar' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.code).toBe(true);
+  });
+
+  test('parseRunProperties does not set code for other styles', () => {
+    const children = [{ 'w:rStyle': [], ':@': { '@_w:val': 'Emphasis' } }];
+    const formatting = parseRunProperties(children);
+    expect(formatting.code).toBe(false);
+  });
+
+  test('parseRunProperties resets inherited code when rStyle is non-CodeChar', () => {
+    const base = { ...DEFAULT_FORMATTING, code: true };
+    const children = [{ 'w:rStyle': [], ':@': { '@_w:val': 'Emphasis' } }];
+    const formatting = parseRunProperties(children, base);
+    expect(formatting.code).toBe(false);
+  });
+
+  test('wrapWithFormatting wraps text with backticks when code is true', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true };
+    expect(wrapWithFormatting('hello', fmt)).toBe('`hello`');
+  });
+
+  test('wrapWithFormatting uses double-backtick fence when text contains backticks', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true };
+    expect(wrapWithFormatting('a`b', fmt)).toBe('``a`b``');
+  });
+
+  test('wrapWithFormatting handles text with multiple backtick runs', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true };
+    expect(wrapWithFormatting('a``b', fmt)).toBe('```a``b```');
+  });
+
+  test('wrapWithFormatting adds padding when text starts with backtick', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true };
+    expect(wrapWithFormatting('`start', fmt)).toBe('`` `start ``');
+  });
+
+  test('wrapWithFormatting adds padding when text ends with backtick', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true };
+    expect(wrapWithFormatting('end`', fmt)).toBe('`` end` ``');
+  });
+
+  test('wrapWithFormatting adds padding when text has leading and trailing spaces', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true };
+    expect(wrapWithFormatting(' hello ', fmt)).toBe('`  hello  `');
+  });
+
+  test('wrapWithFormatting does not pad all-space content', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true };
+    expect(wrapWithFormatting('   ', fmt)).toBe('`   `');
+  });
+
+  test('wrapWithFormatting applies code inside bold', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true, bold: true };
+    expect(wrapWithFormatting('hello', fmt)).toBe('**`hello`**');
+  });
+
+  test('wrapWithFormatting applies code inside italic', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true, italic: true };
+    expect(wrapWithFormatting('hello', fmt)).toBe('*`hello`*');
+  });
+});
+
+describe('Inline code round-trip', () => {
+  test('inline code survives MD→DOCX→MD', async () => {
+    const md = 'Some `inline code` here';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('Some `inline code` here');
+  });
+
+  test('bold inline code survives round-trip', async () => {
+    const md = '**`bold code`**';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('**`bold code`**');
+  });
+
+  test('italic inline code survives round-trip', async () => {
+    const md = '*`italic code`*';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('*`italic code`*');
+  });
+
+  test('inline code containing backticks round-trips correctly', async () => {
+    const md = 'Use `` `backtick` `` in code';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('Use `` `backtick` `` in code');
   });
 });
 

@@ -8,7 +8,7 @@ The converter supports DOCX → Markdown → DOCX round-tripping. The following 
 
 - **Title**: `title:` frontmatter ↔ Word `Title`-styled paragraphs (multiple entries supported)
 - **Author**: `author:` frontmatter ↔ `dc:creator` in Document Properties (omitted if blank)
-- **Text formatting**: Markdown syntax ↔ Word run formatting (bold, italic, underline, strikethrough, superscript, subscript)
+- **Text formatting**: Markdown syntax ↔ Word run formatting (bold, italic, underline, strikethrough, superscript, subscript, inline code)
 - **Headings**: `#`–`######` Markdown headings ↔ Word heading styles (H1 through H6)
 - **Lists**: Markdown list syntax ↔ Word numbering (bulleted and numbered with nesting)
 - **Comments**: non-overlapping comments use CriticMarkup `{==highlighted text==}{>>author: comment<<}` format; overlapping comments use non-inline ID-based syntax (`{#1}highlighted text{/1}{#1>>alice: comment<<}`) — see [Specification](specification.md#overlapping-comments)
@@ -20,7 +20,7 @@ The converter supports DOCX → Markdown → DOCX round-tripping. The following 
 - **Highlights**: colored highlights ↔ `==text=={color}` syntax
 - **Blockquotes**: `> quoted text` ↔ Word Quote/Intense Quote paragraph style (with nesting)
 - **Tables**: DOCX→Markdown import produces HTML tables (`<table>/<tr>/<th>/<td>`) to preserve multi-paragraph cell content; Markdown→DOCX export accepts both HTML tables and pipe-delimited tables (with `colspan` and `rowspan` support)
-- **Code blocks**: fenced code blocks (`` ``` ``) ↔ Word "Code Block" paragraph style. Language annotations (e.g., `` ```stata ``) preserved via `MANUSCRIPT_CODE_BLOCK_LANGS` custom property.
+- **Code blocks**: fenced code blocks (`` ``` ``) ↔ Word "Code Block" paragraph style. Language annotations (e.g., `` ```stata ``) preserved via `MANUSCRIPT_CODE_BLOCK_LANGS` custom property. Inline code (`` `text` ``) uses the `CodeChar` character style (Consolas font, same as code blocks).
 - **Footnotes/endnotes**: `[^label]` references and `[^label]: text` definitions ↔ Word footnotes/endnotes. Named labels preserved via `MANUSCRIPT_FOOTNOTE_IDS` custom property. See [Specification](specification.md#footnotes).
 
 ## Citation Key Formats

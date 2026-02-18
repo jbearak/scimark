@@ -30,11 +30,12 @@ const bulletGen = safeText.map(text => '- ' + text);
 const orderedGen = safeText.map(text => '1. ' + text);
 const boldGen = safeText.map(text => '**' + text + '**');
 const blockquoteGen = safeText.map(text => '> ' + text);
+const inlineCodeGen = safeText.map(text => '`' + text + '`');
 const codeBlockLang = fc.constantFrom('', 'python', 'stata', 'r', 'javascript');
 const codeBlockGen = fc.tuple(codeBlockLang, safeText)
   .map(([lang, text]) => '```' + lang + '\n' + text + '\n```');
 
-const elementGen = fc.oneof(paragraphGen, headingGen, bulletGen, orderedGen, boldGen, blockquoteGen, codeBlockGen);
+const elementGen = fc.oneof(paragraphGen, headingGen, bulletGen, orderedGen, boldGen, blockquoteGen, codeBlockGen, inlineCodeGen);
 const documentGen = fc.array(elementGen, { minLength: 1, maxLength: 5 })
   .map(elements => elements.join('\n\n'));
 
