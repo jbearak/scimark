@@ -73,22 +73,29 @@ export function extractHighlightRanges(text: string, defaultColor: string): Map<
 
   // Colored highlights ==text=={color} and default highlights ==text==
   // Negative lookbehind excludes CriticMarkup opening {==
+  const criticRanges = result.get('critic') || [];
+  let cPtr = 0;
   const hlRe = /(?<!\{)==([^}=]+)==(?:\{([a-z0-9-]+)\})?/g;
   while ((m = hlRe.exec(text)) !== null) {
-    // Skip if this match is inside a CriticMarkup range
-    const mEnd = m.index + m[0].length;
-    // Content ranges are offset +3/-3 from full match; expand back to full delimiters for overlap check
-    const insideCritic = (result.get('critic') || []).some(r => (r.start - 3) <= m!.index && mEnd <= (r.end + 3));
+    const mStart = m.index;
+    const mEnd = mStart + m[0].length;
+    // Advance critic pointer past ranges whose full span ends before this highlight starts
+    while (cPtr < criticRanges.length && (criticRanges[cPtr].end + 3) < mStart) {
+      cPtr++;
+    }
+    // Check if current critic range contains this highlight
+    const insideCritic = cPtr < criticRanges.length &&
+      (criticRanges[cPtr].start - 3) <= mStart && mEnd <= (criticRanges[cPtr].end + 3);
     if (insideCritic) { continue; }
 
     const colorId = m[2];
     if (colorId && VALID_COLOR_IDS.includes(colorId)) {
-      push(colorId, m.index, mEnd);
+      push(colorId, mStart, mEnd);
     } else if (colorId) {
       // Unrecognized color → configured default if valid, else yellow
-      push(resolvedDefaultColor, m.index, mEnd);
+      push(resolvedDefaultColor, mStart, mEnd);
     } else {
-      push(resolvedDefaultColor, m.index, mEnd);
+      push(resolvedDefaultColor, mStart, mEnd);
     }
   }
 
