@@ -1849,7 +1849,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   }
   
   if (token.type === 'code_block') {
-    const lines = (token.runs[0]?.text || '').split('\n');
+    const lines = (token.runs[0]?.text || '').replace(/\n$/, '').split('\n');
     return lines.map(line => '<w:p>' + pPr + generateRun(line, '<w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr>') + '</w:p>').join('');
   }
   

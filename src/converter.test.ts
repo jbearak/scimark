@@ -2415,6 +2415,13 @@ describe('Code block round-trip', () => {
     expect(result.markdown.trim()).toBe('```python\nprint("a")\n```\n\n```r\ncat("b")\n```');
   });
 
+  test('code block containing backticks uses longer fence on round-trip', async () => {
+    const md = '````\nSome ```backticks``` inside\n````';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('````\nSome ```backticks``` inside\n````');
+  });
+
   test('multi-line code block survives round-trip', async () => {
     const md = '```javascript\nconst x = 1;\nconst y = 2;\nconsole.log(x + y);\n```';
     const docxResult = await convertMdToDocx(md);

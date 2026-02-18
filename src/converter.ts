@@ -2235,9 +2235,8 @@ export function buildMarkdown(
           }
           if (next.type === 'text') {
             lineText += next.text;
-          }
-          // Skip non-para, non-text items within the code block (shouldn't typically happen)
-          if (next.type !== 'para' && next.type !== 'text') {
+          } else {
+            // Non-para, non-text item (shouldn't typically occur inside a code block)
             break;
           }
           i++;
@@ -2252,7 +2251,18 @@ export function buildMarkdown(
           codeLines.pop();
         }
 
-        output.push('```' + lang + '\n' + codeLines.join('\n') + '\n```');
+        // Compute fence length: must exceed any backtick run in the content
+        let maxRun = 0;
+        for (const line of codeLines) {
+          const matches = line.match(/`+/g);
+          if (matches) {
+            for (const m of matches) {
+              if (m.length > maxRun) maxRun = m.length;
+            }
+          }
+        }
+        const fence = '`'.repeat(Math.max(3, maxRun + 1));
+        output.push(fence + lang + '\n' + codeLines.join('\n') + '\n' + fence);
         codeBlockGroupIndex++;
         // Skip the separator para between consecutive code block groups
         // so it doesn't produce extra blank lines in the output.

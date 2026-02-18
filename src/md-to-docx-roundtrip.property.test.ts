@@ -5,7 +5,7 @@ import { convertDocx } from './converter';
 
 function extractPlainText(md: string): string {
   return md
-    .replace(/^```\w*$/gm, '')         // strip code fence markers
+    .replace(/^```[^\n]*$/gm, '')         // strip code fence markers
     .replace(/^#+\s*/gm, '')           // strip heading markers
     .replace(/^(> )+/gm, '')          // strip blockquote markers
     .replace(/^[-*]\s+/gm, '')         // strip bullet markers
