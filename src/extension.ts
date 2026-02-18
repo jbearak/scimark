@@ -971,7 +971,14 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 	if (result.warnings.length > 0) {
 		vscode.window.showWarningMessage('Export completed with warnings: ' + result.warnings.join('; '));
 	}
-	vscode.window.showInformationMessage('Exported to ' + docxUri.fsPath.split(/[/\\]/).pop()!);
+	const filename = docxUri.fsPath.split(/[/\\]/).pop()!;
+	const action = await vscode.window.showInformationMessage(
+		`Exported to "${filename}"`,
+		'Open in Word'
+	);
+	if (action === 'Open in Word') {
+		await vscode.env.openExternal(docxUri);
+	}
 }
 
 export function deactivate(): Thenable<void> | undefined {
