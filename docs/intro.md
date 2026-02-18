@@ -160,7 +160,7 @@ Once you've made some edits, save a snapshot with git:
 
 #### Recommended open-source fonts
 
-Download and install a font on your system first, then type its name directly into the settings field (e.g., type `JetBrains Mono` into the **Editor: Font Family** field).
+Download and install a font on your system first, then type its name directly into the settings field (e.g., type `JetBrains Mono` into the **Editor: Font Family** field, or `Source Serif` into the **Markdown > Preview: Font Family** field).
 
 **For the editor** (monospace):
 
