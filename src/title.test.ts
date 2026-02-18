@@ -72,9 +72,9 @@ describe('extractTitleLines', () => {
   it('extracts title paragraphs from beginning of content', () => {
     const content: ContentItem[] = [
       { type: 'para', isTitle: true },
-      { type: 'text', text: 'My Title', commentIds: new Set(), formatting: { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false } },
+      { type: 'text', text: 'My Title', commentIds: new Set(), formatting: { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false, code: false } },
       { type: 'para' },
-      { type: 'text', text: 'Body text', commentIds: new Set(), formatting: { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false } },
+      { type: 'text', text: 'Body text', commentIds: new Set(), formatting: { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false, code: false } },
     ];
     const titles = extractTitleLines(content);
     expect(titles).toEqual(['My Title']);
@@ -84,7 +84,7 @@ describe('extractTitleLines', () => {
   });
 
   it('extracts multiple consecutive title paragraphs', () => {
-    const fmt = { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false };
+    const fmt = { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false, code: false };
     const content: ContentItem[] = [
       { type: 'para', isTitle: true },
       { type: 'text', text: 'Title Line 1', commentIds: new Set(), formatting: fmt },
@@ -99,7 +99,7 @@ describe('extractTitleLines', () => {
   });
 
   it('returns empty array when no title paragraphs', () => {
-    const fmt = { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false };
+    const fmt = { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false, code: false };
     const content: ContentItem[] = [
       { type: 'para' },
       { type: 'text', text: 'Body', commentIds: new Set(), formatting: fmt },
@@ -110,7 +110,7 @@ describe('extractTitleLines', () => {
   });
 
   it('stops at non-title paragraph', () => {
-    const fmt = { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false };
+    const fmt = { bold: false, italic: false, underline: false, strikethrough: false, highlight: false, superscript: false, subscript: false, code: false };
     const content: ContentItem[] = [
       { type: 'para', isTitle: true },
       { type: 'text', text: 'Title', commentIds: new Set(), formatting: fmt },
