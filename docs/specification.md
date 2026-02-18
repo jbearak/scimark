@@ -12,7 +12,7 @@ title: My Document Title
 author: Jane Smith
 csl: apa
 locale: en-US
-note-type: in-text
+zotero-notes: in-text
 timezone: -05:00
 bibliography: shared/references
 ---
@@ -27,7 +27,7 @@ title: Second Paragraph of Title
 ---
 ```
 
-The frontmatter may also include citation-related fields (`csl`, `locale`, `note-type`) and metadata (`author`, `timezone`). See [converter](converter.md) for details on how these fields are handled during conversion.
+The frontmatter may also include citation-related fields (`csl`, `locale`, `zotero-notes`) and metadata (`author`, `timezone`). See [converter](converter.md) for details on how these fields are handled during conversion.
 
 | Field | Description |
 |-------|-------------|
@@ -35,7 +35,8 @@ The frontmatter may also include citation-related fields (`csl`, `locale`, `note
 | `author` | Document author. Written as `dc:creator` in Document Properties on DOCX export. |
 | `csl` | CSL style short name (e.g., `apa`, `chicago-author-date`) or absolute path to a `.csl` file. Controls citation and bibliography formatting. |
 | `locale` | Locale override for citation formatting (e.g., `en-US`, `en-GB`). Defaults to the style's own locale. |
-| `note-type` | Zotero note type: `in-text` (default), `footnotes`, or `endnotes`. |
+| `zotero-notes` | Zotero note type: `in-text` (default), `footnotes`, or `endnotes`. Legacy alias: `note-type`. |
+| `notes` | Controls footnote/endnote OOXML generation: `footnotes` (default) or `endnotes`. See [Footnotes](#footnotes). |
 | `timezone` | Local timezone offset (e.g., `+05:00`, `-05:00`). Auto-generated on DOCX import for idempotent date roundtripping. |
 | `bibliography` | Path to a `.bib` file for citation resolution. Aliases: `bib`, `bibtex`. The `.bib` extension is optional. Relative paths resolve from the `.md` file directory, then workspace root. `/`-prefixed paths resolve from workspace root, then as absolute OS paths. Falls back to `{basename}.bib` if not found. |
 
@@ -63,6 +64,36 @@ Pandoc-style citations using BibTeX keys:
 - Suppress author: `[-@smith2020]`
 
 Citations reference entries in a companion `.bib` file (see [BibTeX Companion File](#bibtex-companion-file) below).
+
+### Footnotes
+
+Standard Pandoc/PHP Markdown Extra footnote syntax:
+
+- **Reference** (inline): `[^1]` or `[^my-note]` (named labels supported)
+- **Definition** (block, at end of document): `[^1]: Footnote text.`
+- **Multi-paragraph**: continuation lines indented 4 spaces
+
+```markdown
+This has a footnote[^1] and a named one[^my-note].
+
+[^1]: This is a simple footnote.
+
+[^my-note]: This is a named footnote.
+
+    Second paragraph of the named footnote.
+```
+
+The `notes` frontmatter field controls whether footnotes or endnotes are generated in the DOCX output. Default is `footnotes`. Only `endnotes` needs to be specified explicitly:
+
+```yaml
+---
+notes: endnotes
+---
+```
+
+On DOCX import, the `notes` field is auto-detected from whether `word/footnotes.xml` or `word/endnotes.xml` exists. It is only emitted in frontmatter when endnotes are detected (since footnotes is the default).
+
+Named labels (e.g., `[^my-note]`) are preserved through DOCX round-trips via a `MANUSCRIPT_FOOTNOTE_IDS` mapping stored in `docProps/custom.xml`.
 
 ### BibTeX Companion File
 

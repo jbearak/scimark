@@ -14,11 +14,12 @@ The converter supports DOCX → Markdown → DOCX round-tripping. The following 
 - **Comments**: non-overlapping comments use CriticMarkup `{==highlighted text==}{>>author: comment<<}` format; overlapping comments use non-inline ID-based syntax (`{#1}highlighted text{/1}{#1>>alice: comment<<}`) — see [Specification](specification.md#overlapping-comments)
 - **Track changes**: CriticMarkup `{++...++}` and `{--...--}` ↔ Word revisions (`w:ins`/`w:del`)
 - **Citations**: Zotero field codes ↔ Pandoc `[@key]` syntax with BibTeX export. On import, `ZOTERO_BIBL` field codes are detected and omitted (bibliography is regenerated on export).
-- **Zotero document preferences**: CSL style, locale, and note type round-tripped between YAML frontmatter (`csl`, `locale`, `note-type`) and `docProps/custom.xml` (`ZOTERO_PREF_*` properties)
+- **Zotero document preferences**: CSL style, locale, and note type round-tripped between YAML frontmatter (`csl`, `locale`, `zotero-notes`) and `docProps/custom.xml` (`ZOTERO_PREF_*` properties)
 - **Math**: OMML equations ↔ LaTeX (`$inline$` and `$$display$$`)
 - **Hyperlinks**: Markdown links ↔ Word hyperlinks (with proper escaping)
 - **Highlights**: colored highlights ↔ `==text=={color}` syntax
 - **Tables**: DOCX→Markdown import produces HTML tables (`<table>/<tr>/<th>/<td>`) to preserve multi-paragraph cell content; Markdown→DOCX export accepts both HTML tables and pipe-delimited tables (with `colspan` and `rowspan` support)
+- **Footnotes/endnotes**: `[^label]` references and `[^label]: text` definitions ↔ Word footnotes/endnotes. Named labels preserved via `MANUSCRIPT_FOOTNOTE_IDS` custom property. See [Specification](specification.md#footnotes).
 
 ## Citation Key Formats
 
@@ -44,7 +45,6 @@ If output files already exist, you'll be prompted to replace, choose a new name,
 
 - **Complex nested tables**: nested `<table>` elements inside cells are not supported
 - **Images**: Not extracted from DOCX
-- **Footnotes/endnotes**: Not converted
 
 ## Export to Word
 
@@ -66,7 +66,7 @@ When the Markdown file includes YAML frontmatter with a `csl` field, the convert
 ---
 csl: apa
 locale: en-US
-note-type: in-text
+zotero-notes: in-text
 bibliography: shared/references
 ---
 ```
@@ -77,7 +77,8 @@ bibliography: shared/references
 | `author` | Document author. Written as `dc:creator` in Document Properties on export. |
 | `csl` | CSL style short name (e.g., `apa`, `chicago-author-date`, `bmj`) or absolute path to a `.csl` file |
 | `locale` | Optional locale override (e.g., `en-US`, `en-GB`). Defaults to the style's own locale. |
-| `note-type` | Optional Zotero note type: `in-text` (default), `footnotes`, or `endnotes`. Legacy numeric values (0, 1, 2) are still accepted. |
+| `zotero-notes` | Optional Zotero note type: `in-text` (default), `footnotes`, or `endnotes`. Legacy alias: `note-type`. Legacy numeric values (0, 1, 2) are still accepted. |
+| `notes` | Controls footnote/endnote generation: `footnotes` (default) or `endnotes`. Auto-detected on DOCX import. |
 | `timezone` | Local timezone offset (e.g., `+05:00`, `-05:00`). Auto-generated on DOCX import for idempotent date roundtripping. |
 | `bibliography` | Path to a `.bib` file (`.bib` extension optional). Aliases: `bib`, `bibtex`. See [Specification](specification.md#bibtex-companion-file). |
 

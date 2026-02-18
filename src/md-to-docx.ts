@@ -28,7 +28,7 @@ export interface MdTableRow {
 }
 
 export interface MdRun {
-  type: 'text' | 'critic_add' | 'critic_del' | 'critic_sub' | 'critic_highlight' | 'critic_comment' | 'citation' | 'math' | 'softbreak' | 'comment_range_start' | 'comment_range_end' | 'comment_body_with_id';
+  type: 'text' | 'critic_add' | 'critic_del' | 'critic_sub' | 'critic_highlight' | 'critic_comment' | 'citation' | 'math' | 'softbreak' | 'comment_range_start' | 'comment_range_end' | 'comment_body_with_id' | 'footnote_ref';
   text: string;
   bold?: boolean;
   italic?: boolean;
@@ -46,6 +46,7 @@ export interface MdRun {
   date?: string;            // for comments/revisions
   commentText?: string;     // for critic_comment: the comment body
   commentId?: string;       // for comment_range_start/end/body_with_id
+  footnoteLabel?: string;   // for footnote_ref: the [^label] label
   // Citation specific
   keys?: string[];          // citation keys for [@key1; @key2]
   locators?: Map<string, string>; // key -> locator for [@key, p. 20]
@@ -266,6 +267,35 @@ function coloredHighlightRule(state: any, silent: boolean): boolean {
   return true;
 }
 
+function footnoteRefRule(state: any, silent: boolean): boolean {
+  const start = state.pos;
+  const max = state.posMax;
+  const src = state.src;
+
+  if (start + 2 >= max || src.charAt(start) !== '[' || src.charAt(start + 1) !== '^') return false;
+
+  // Find closing ]
+  let end = start + 2;
+  while (end < max && src.charAt(end) !== ']') {
+    if (src.charAt(end) === '\n') return false; // no newlines in label
+    end++;
+  }
+  if (end >= max) return false;
+
+  const label = src.slice(start + 2, end);
+  if (!/^[a-zA-Z0-9_-]+$/.test(label)) return false;
+
+  // Must NOT be followed by : (that would be a definition, not a reference)
+  if (end + 1 < max && src.charAt(end + 1) === ':') return false;
+
+  if (!silent) {
+    const token = state.push('footnote_ref', '', 0);
+    token.footnoteLabel = label;
+  }
+  state.pos = end + 1;
+  return true;
+}
+
 function citationRule(state: any, silent: boolean): boolean {
   const start = state.pos;
   const max = state.posMax;
@@ -372,10 +402,57 @@ function createMarkdownIt(): MarkdownIt {
   md.inline.ruler.before('emphasis', 'comment_range', commentRangeRule);
   md.inline.ruler.before('emphasis', 'colored_highlight', coloredHighlightRule);
   md.inline.ruler.before('emphasis', 'critic_markup', criticMarkupRule);
+  md.inline.ruler.before('emphasis', 'footnote_ref', footnoteRefRule);
   md.inline.ruler.before('emphasis', 'citation', citationRule);
   md.inline.ruler.before('emphasis', 'math', mathRule);
 
   return md;
+}
+
+/** Extract footnote definitions from the markdown source and return cleaned markdown. */
+export function extractFootnoteDefinitions(markdown: string): { cleaned: string; definitions: Map<string, string> } {
+  const definitions = new Map<string, string>();
+  const lines = markdown.split('\n');
+  const cleanedLines: string[] = [];
+  let currentLabel: string | undefined;
+  let currentBody: string[] = [];
+
+  function finishDefinition() {
+    if (currentLabel !== undefined) {
+      definitions.set(currentLabel, currentBody.join('\n'));
+      currentLabel = undefined;
+      currentBody = [];
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const defMatch = line.match(/^\[\^([a-zA-Z0-9_-]+)\]:\s?(.*)/);
+    if (defMatch) {
+      finishDefinition();
+      currentLabel = defMatch[1];
+      currentBody = [defMatch[2]];
+      continue;
+    }
+    // Continuation line: 4-space or tab indent
+    if (currentLabel !== undefined && (line.startsWith('    ') || line.startsWith('\t'))) {
+      currentBody.push(line.replace(/^(?:    |\t)/, ''));
+      continue;
+    }
+    // Blank line within a multi-paragraph footnote
+    if (currentLabel !== undefined && line.trim() === '') {
+      // Peek ahead: if next line is indented, this is a paragraph break within the footnote
+      if (i + 1 < lines.length && (lines[i + 1].startsWith('    ') || lines[i + 1].startsWith('\t'))) {
+        currentBody.push('');
+        continue;
+      }
+    }
+    finishDefinition();
+    cleanedLines.push(line);
+  }
+  finishDefinition();
+
+  return { cleaned: cleanedLines.join('\n'), definitions };
 }
 
 export function parseMd(markdown: string): MdToken[] {
@@ -676,6 +753,15 @@ function processInlineChildren(tokens: any[]): MdRun[] {
           author: token.author,
           date: token.date,
           commentText: token.commentText,
+        });
+        break;
+
+      case 'footnote_ref':
+        runs.push({
+          type: 'footnote_ref',
+          text: '',
+          footnoteLabel: token.footnoteLabel,
+          ...formatStack,
         });
         break;
     }
@@ -997,6 +1083,11 @@ export interface MdToDocxResult {
   warnings: string[];
 }
 
+export interface FootnoteEntry {
+  id: number;
+  bodyXml: string;
+}
+
 export interface DocxGenState {
   commentId: number;
   comments: CommentEntry[];
@@ -1007,6 +1098,12 @@ export interface DocxGenState {
   warnings: string[];
   hasList: boolean;
   hasComments: boolean;
+  hasFootnotes: boolean;
+  hasEndnotes: boolean;
+  footnoteId: number;           // next available note ID (starts at 1)
+  footnoteEntries: FootnoteEntry[];
+  footnoteLabelToId: Map<string, number>;
+  notesMode: 'footnotes' | 'endnotes';
   missingKeys: Set<string>;
   timezone?: string; // UTC offset from frontmatter (e.g. "-05:00")
 }
@@ -1056,7 +1153,7 @@ function stripMillis(iso: string): string {
   return iso.replace(/\.\d{3}Z$/, 'Z');
 }
 
-function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean): string {
+function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n';
   xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n';
@@ -1070,6 +1167,12 @@ function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: bool
   }
   if (hasComments) {
     xml += '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>\n';
+  }
+  if (hasFootnotes) {
+    xml += '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>\n';
+  }
+  if (hasEndnotes) {
+    xml += '<Override PartName="/word/endnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml"/>\n';
   }
   if (hasTheme) {
     xml += '<Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>\n';
@@ -1162,6 +1265,24 @@ function stylesXml(): string {
     '<w:pPr><w:spacing w:before="0" w:after="300"/></w:pPr>\n' +
     '<w:rPr><w:sz w:val="56"/><w:szCs w:val="56"/></w:rPr>\n' +
     '</w:style>\n' +
+    '<w:style w:type="paragraph" w:styleId="FootnoteText">\n' +
+    '<w:name w:val="footnote text"/>\n' +
+    '<w:basedOn w:val="Normal"/>\n' +
+    '<w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>\n' +
+    '</w:style>\n' +
+    '<w:style w:type="character" w:styleId="FootnoteReference">\n' +
+    '<w:name w:val="footnote reference"/>\n' +
+    '<w:rPr><w:vertAlign w:val="superscript"/></w:rPr>\n' +
+    '</w:style>\n' +
+    '<w:style w:type="paragraph" w:styleId="EndnoteText">\n' +
+    '<w:name w:val="endnote text"/>\n' +
+    '<w:basedOn w:val="Normal"/>\n' +
+    '<w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>\n' +
+    '</w:style>\n' +
+    '<w:style w:type="character" w:styleId="EndnoteReference">\n' +
+    '<w:name w:val="endnote reference"/>\n' +
+    '<w:rPr><w:vertAlign w:val="superscript"/></w:rPr>\n' +
+    '</w:style>\n' +
     '</w:styles>';
 }
 
@@ -1197,15 +1318,22 @@ function numberingXml(): string {
     '</w:numbering>';
 }
 
-function settingsXml(): string {
-  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+function settingsXml(hasFootnotes?: boolean, hasEndnotes?: boolean): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w14 w15">\n' +
     '<w:compat>\n' +
     '<w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/>\n' +
     '</w:compat>\n' +
     '<w:defaultTabStop w:val="720"/>\n' +
-    '<w:characterSpacingControl w:val="doNotCompress"/>\n' +
-    '</w:settings>';
+    '<w:characterSpacingControl w:val="doNotCompress"/>\n';
+  if (hasFootnotes) {
+    xml += '<w:footnotePr><w:footnote w:id="-1"/><w:footnote w:id="0"/></w:footnotePr>\n';
+  }
+  if (hasEndnotes) {
+    xml += '<w:endnotePr><w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr>\n';
+  }
+  xml += '</w:settings>';
+  return xml;
 }
 
 function fontTableXml(): string {
@@ -1301,7 +1429,35 @@ function commentIdMappingProps(commentIdMap: Map<string, number>): CustomPropEnt
   return props;
 }
 
-function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean): string {
+function footnoteIdMappingProps(footnoteLabelToId: Map<string, number>): CustomPropEntry[] {
+  if (footnoteLabelToId.size === 0) return [];
+  // Only store mapping if any label is non-numeric (named labels)
+  let hasNamedLabel = false;
+  for (const label of footnoteLabelToId.keys()) {
+    if (!/^\d+$/.test(label)) {
+      hasNamedLabel = true;
+      break;
+    }
+  }
+  if (!hasNamedLabel) return [];
+
+  const mapping: Record<string, string> = {};
+  for (const [label, numericId] of footnoteLabelToId) {
+    mapping[String(numericId)] = label;
+  }
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_FOOTNOTE_IDS_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+
+function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
   xml += '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
@@ -1315,6 +1471,14 @@ function documentRelsXml(relationships: Map<string, string>, hasList: boolean, h
   }
 
   let nextFixed = 4;
+  if (hasFootnotes) {
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>\n';
+    nextFixed++;
+  }
+  if (hasEndnotes) {
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes" Target="endnotes.xml"/>\n';
+    nextFixed++;
+  }
   if (hasTheme) {
     xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>\n';
     nextFixed++;
@@ -1423,6 +1587,20 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
       }
       xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
+    } else if (run.type === 'footnote_ref') {
+      const label = run.footnoteLabel || '';
+      let noteId = state.footnoteLabelToId.get(label);
+      if (noteId === undefined) {
+        noteId = state.footnoteId++;
+        state.footnoteLabelToId.set(label, noteId);
+      }
+      if (state.notesMode === 'endnotes') {
+        xml += '<w:r><w:rPr><w:rStyle w:val="EndnoteReference"/></w:rPr><w:endnoteReference w:id="' + noteId + '"/></w:r>';
+        state.hasEndnotes = true;
+      } else {
+        xml += '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="' + noteId + '"/></w:r>';
+        state.hasFootnotes = true;
+      }
     } else if (run.type === 'citation') {
       const result = generateCitation(run, bibEntries || new Map(), citeprocEngine);
       xml += result.xml;
@@ -1656,6 +1834,34 @@ function commentsXml(comments: CommentEntry[]): string {
   return xml;
 }
 
+function footnotesXml(entries: FootnoteEntry[]): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+  // Separator (id=-1)
+  xml += '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>';
+  // Continuation separator (id=0)
+  xml += '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
+  for (const entry of entries) {
+    xml += '<w:footnote w:id="' + entry.id + '">' + entry.bodyXml + '</w:footnote>';
+  }
+  xml += '</w:footnotes>';
+  return xml;
+}
+
+function endnotesXml(entries: FootnoteEntry[]): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+  // Separator (id=-1)
+  xml += '<w:endnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:endnote>';
+  // Continuation separator (id=0)
+  xml += '<w:endnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:endnote>';
+  for (const entry of entries) {
+    xml += '<w:endnote w:id="' + entry.id + '">' + entry.bodyXml + '</w:endnote>';
+  }
+  xml += '</w:endnotes>';
+  return xml;
+}
+
 export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any, frontmatter?: Frontmatter): string {
   let body = '';
 
@@ -1696,7 +1902,9 @@ export async function convertMdToDocx(
 ): Promise<MdToDocxResult> {
   // Parse frontmatter for CSL style and other metadata
   const { metadata: frontmatter, body } = parseFrontmatter(markdown);
-  const tokens = parseMd(body);
+  // Extract footnote definitions before markdown parsing
+  const { cleaned: bodyWithoutFootnotes, definitions: footnoteDefs } = extractFootnoteDefinitions(body);
+  const tokens = parseMd(bodyWithoutFootnotes);
 
   // Parse BibTeX if provided
   let bibEntries: Map<string, BibtexEntry> | undefined;
@@ -1771,9 +1979,11 @@ export async function convertMdToDocx(
   }
 
   const hasTheme = !!templateParts?.has('word/theme/theme1.xml');
+  const notesMode = frontmatter.notes === 'endnotes' ? 'endnotes' as const : 'footnotes' as const;
 
-  // Reserve rId slots: 1=styles, 2=numbering, 3=comments, 4+=theme/settings/fontTable
-  const rIdOffset = 3 + (hasTheme ? 1 : 0) + 2; // +2 for settings and fontTable (always present)
+  // Reserve rId slots: 1=styles, 2=numbering, 3=comments, 4+=footnotes/endnotes/theme/settings/fontTable
+  // We reserve 2 extra slots for footnotes/endnotes (may not all be used but rIdOffset is max)
+  const rIdOffset = 3 + 2 + (hasTheme ? 1 : 0) + 2; // +2 for footnotes/endnotes, +2 for settings and fontTable (always present)
 
   const state: DocxGenState = {
     commentId: 0,
@@ -1785,11 +1995,56 @@ export async function convertMdToDocx(
     warnings: [...earlyWarnings],
     hasList: false,
     hasComments: false,
+    hasFootnotes: false,
+    hasEndnotes: false,
+    footnoteId: 1,
+    footnoteEntries: [],
+    footnoteLabelToId: new Map(),
+    notesMode,
     missingKeys: new Set(),
     timezone: frontmatter.timezone,
   };
 
   const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
+
+  // Build footnote/endnote body OOXML from definitions
+  const referencedLabels = new Set<string>(state.footnoteLabelToId.keys());
+  for (const [label, bodyText] of footnoteDefs) {
+    const noteId = state.footnoteLabelToId.get(label);
+    if (noteId === undefined) {
+      state.warnings.push(`Footnote definition [^${label}] has no matching reference in the document.`);
+      continue;
+    }
+    // Parse the definition body into tokens and generate OOXML
+    const bodyTokens = parseMd(bodyText);
+    // Generate paragraph OOXML for the note body
+    const selfRefTag = state.notesMode === 'endnotes' ? 'w:endnoteRef' : 'w:footnoteRef';
+    const pStyle = state.notesMode === 'endnotes' ? 'EndnoteText' : 'FootnoteText';
+    const refStyle = state.notesMode === 'endnotes' ? 'EndnoteReference' : 'FootnoteReference';
+    let bodyXml = '';
+    for (let ti = 0; ti < bodyTokens.length; ti++) {
+      const t = bodyTokens[ti];
+      const runs = generateRuns(t.runs, state, options, bibEntries, citeprocEngine);
+      const pPr = '<w:pPr><w:pStyle w:val="' + pStyle + '"/></w:pPr>';
+      if (ti === 0) {
+        // First paragraph: prepend self-reference
+        bodyXml += '<w:p>' + pPr + '<w:r><w:rPr><w:rStyle w:val="' + refStyle + '"/></w:rPr><' + selfRefTag + '/></w:r>' + runs + '</w:p>';
+      } else {
+        bodyXml += '<w:p>' + pPr + runs + '</w:p>';
+      }
+    }
+    if (bodyTokens.length === 0) {
+      bodyXml = '<w:p><w:pPr><w:pStyle w:val="' + pStyle + '"/></w:pPr><w:r><w:rPr><w:rStyle w:val="' + refStyle + '"/></w:rPr><' + selfRefTag + '/></w:r></w:p>';
+    }
+    state.footnoteEntries.push({ id: noteId, bodyXml });
+  }
+
+  // Warn for orphaned references
+  for (const label of referencedLabels) {
+    if (!footnoteDefs.has(label)) {
+      state.warnings.push(`Footnote reference [^${label}] has no matching definition.`);
+    }
+  }
 
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
@@ -1804,7 +2059,7 @@ export async function convertMdToDocx(
 
   // Always use generated settings.xml to guarantee compatibilityMode >= 15
   // (template settings.xml may have compatibilityMode < 15, causing "unreadable content" errors)
-  zip.file('word/settings.xml', settingsXml());
+  zip.file('word/settings.xml', settingsXml(state.hasFootnotes, state.hasEndnotes));
 
   // Always include fontTable.xml
   zip.file('word/fontTable.xml', fontTableXml());
@@ -1827,6 +2082,13 @@ export async function convertMdToDocx(
     zip.file('word/comments.xml', commentsXml(state.comments));
   }
 
+  if (state.hasFootnotes) {
+    zip.file('word/footnotes.xml', footnotesXml(state.footnoteEntries));
+  }
+  if (state.hasEndnotes) {
+    zip.file('word/endnotes.xml', endnotesXml(state.footnoteEntries));
+  }
+
   // Document properties
   zip.file('docProps/core.xml', corePropsXml(frontmatter.author));
   zip.file('docProps/app.xml', appPropsXml());
@@ -1836,14 +2098,15 @@ export async function convertMdToDocx(
     customProps.push(...zoteroCustomProps(frontmatter));
   }
   customProps.push(...commentIdMappingProps(state.commentIdMap));
+  customProps.push(...footnoteIdMappingProps(state.footnoteLabelToId));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));
   }
 
-  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps));
+  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps, state.hasFootnotes, state.hasEndnotes));
   zip.file('_rels/.rels', relsXml(hasCustomProps));
-  zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme));
+  zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme, state.hasFootnotes, state.hasEndnotes));
 
   // Check for comment range markers without corresponding bodies
   for (const [mdId, numericId] of state.commentIdMap) {

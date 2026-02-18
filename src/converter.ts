@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
 import { ommlToLatex } from './omml';
-import { Frontmatter, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
+import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
 
 /** Matches a "Sources" heading (with or without leading `#` markers). */
 const SOURCES_HEADING_RE = /^(?:#+\s*)?Sources\s*$/;
@@ -82,7 +82,13 @@ export type ContentItem =
       listMeta?: ListMeta;     // present if list item
       isTitle?: boolean;       // true if Word "Title" paragraph style
     }
-  | { type: 'math'; latex: string; display: boolean; commentIds: Set<string> };
+  | { type: 'math'; latex: string; display: boolean; commentIds: Set<string> }
+  | { type: 'footnote_ref'; noteId: string; noteKind: 'footnote' | 'endnote'; commentIds: Set<string> };
+export interface FootnoteBody {
+  id: string;
+  content: ContentItem[];
+}
+
 export interface TableRow {
   isHeader: boolean;
   cells: TableCell[];
@@ -581,6 +587,166 @@ export async function extractCommentIdMapping(data: Uint8Array | JSZip): Promise
     return null;
   }
 }
+// Footnote/endnote extraction
+
+export async function extractFootnoteIdMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const parts: Array<{ index: number; value: string }> = [];
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (!name.startsWith('MANUSCRIPT_FOOTNOTE_IDS')) continue;
+
+    let idx = 1;
+    if (name !== 'MANUSCRIPT_FOOTNOTE_IDS') {
+      const chunkMatch = name.match(/^MANUSCRIPT_FOOTNOTE_IDS_(\d+)$/);
+      if (!chunkMatch) continue;
+      idx = parseInt(chunkMatch[1], 10);
+      if (isNaN(idx)) continue;
+    }
+
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const val = nodeText(child['vt:lpwstr'] || []);
+        parts.push({ index: idx, value: val });
+      }
+    }
+  }
+
+  if (parts.length === 0) return null;
+
+  parts.sort((a, b) => a.index - b.index);
+  const mappingJson = parts.map(p => p.value).join('');
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<string, string>();
+    for (const [numericId, originalId] of Object.entries(parsedJson)) {
+      if (typeof originalId !== 'string' || !originalId) continue;
+      mapping.set(String(numericId), originalId);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
+
+async function extractNotes(
+  zip: JSZip,
+  xmlPath: string,
+  tagName: string,
+): Promise<Map<string, FootnoteBody>> {
+  const notes = new Map<string, FootnoteBody>();
+  const parsed = await readZipXml(zip, xmlPath);
+  if (!parsed) return notes;
+
+  for (const node of findAllDeep(parsed, tagName)) {
+    const id = getAttr(node, 'id');
+    if (!id || id === '-1' || id === '0') continue;
+
+    // Skip separator and continuationSeparator types
+    const noteType = getAttr(node, 'type');
+    if (noteType === 'separator' || noteType === 'continuationSeparator') continue;
+
+    const noteChildren = node[tagName];
+    if (!Array.isArray(noteChildren)) continue;
+
+    const content = parseNoteBody(noteChildren, tagName);
+    notes.set(id, { id, content });
+  }
+  return notes;
+}
+
+function parseNoteBody(noteChildren: any[], tagName: string): ContentItem[] {
+  const content: ContentItem[] = [];
+  // Determine self-ref tag: w:footnoteRef or w:endnoteRef
+  const selfRefTag = tagName === 'w:footnote' ? 'w:footnoteRef' : 'w:endnoteRef';
+  let skippedSelfRef = false;
+
+  function walkNoteBody(nodes: any[], currentFormatting: RunFormatting = DEFAULT_FORMATTING): void {
+    for (const node of nodes) {
+      for (const key of Object.keys(node)) {
+        if (key === ':@') continue;
+
+        if (key === selfRefTag && !skippedSelfRef) {
+          skippedSelfRef = true;
+          continue;
+        }
+
+        if (key === 'w:t') {
+          const text = nodeText(node['w:t'] || []);
+          if (text) {
+            content.push({
+              type: 'text',
+              text,
+              commentIds: new Set(),
+              formatting: currentFormatting,
+            });
+          }
+        } else if (key === 'w:br') {
+          const brType = getAttr(node, 'type');
+          if (!brType || brType === 'textWrapping') {
+            content.push({
+              type: 'text',
+              text: '\n',
+              commentIds: new Set(),
+              formatting: currentFormatting,
+            });
+          }
+        } else if (key === 'w:p') {
+          const paraChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
+          let paraFormatting = currentFormatting;
+          for (const child of paraChildren) {
+            if (child['w:pPr']) {
+              const pPrChildren = Array.isArray(child['w:pPr']) ? child['w:pPr'] : [child['w:pPr']];
+              const pRPrElement = pPrChildren.find((c: any) => c['w:rPr'] !== undefined);
+              if (pRPrElement) {
+                const pRPrChildren = Array.isArray(pRPrElement['w:rPr']) ? pRPrElement['w:rPr'] : [pRPrElement['w:rPr']];
+                paraFormatting = parseRunProperties(pRPrChildren, currentFormatting);
+              }
+              break;
+            }
+          }
+          // Push para separator for multi-paragraph notes (skip first)
+          if (content.length > 0) {
+            content.push({ type: 'para' });
+          }
+          walkNoteBody(paraChildren, paraFormatting);
+        } else if (key === 'w:r') {
+          let runFormatting = currentFormatting;
+          const runChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
+          for (const child of runChildren) {
+            if (child['w:rPr']) {
+              const rPrChildren = Array.isArray(child['w:rPr']) ? child['w:rPr'] : [child['w:rPr']];
+              runFormatting = parseRunProperties(rPrChildren, currentFormatting);
+              break;
+            }
+          }
+          walkNoteBody(runChildren, runFormatting);
+        } else if (Array.isArray(node[key])) {
+          walkNoteBody(node[key], currentFormatting);
+        }
+      }
+    }
+  }
+
+  walkNoteBody(noteChildren);
+  return content;
+}
+
+async function extractFootnotes(zip: JSZip): Promise<Map<string, FootnoteBody>> {
+  return extractNotes(zip, 'word/footnotes.xml', 'w:footnote');
+}
+
+async function extractEndnotes(zip: JSZip): Promise<Map<string, FootnoteBody>> {
+  return extractNotes(zip, 'word/endnotes.xml', 'w:endnote');
+}
+
 /** Strip the Zotero styles URL prefix to get a short style name. */
 export function zoteroStyleShortName(styleId: string): string {
   if (styleId.startsWith(ZOTERO_STYLE_PREFIX)) {
@@ -1004,6 +1170,16 @@ export async function extractDocumentContent(
           activeComments.add(getAttr(node, 'id'));
         } else if (key === 'w:commentRangeEnd') {
           activeComments.delete(getAttr(node, 'id'));
+        } else if (key === 'w:footnoteReference') {
+          const noteId = getAttr(node, 'id');
+          if (noteId && noteId !== '0' && noteId !== '-1') {
+            target.push({ type: 'footnote_ref', noteId, noteKind: 'footnote', commentIds: new Set(activeComments) });
+          }
+        } else if (key === 'w:endnoteReference') {
+          const noteId = getAttr(node, 'id');
+          if (noteId && noteId !== '0' && noteId !== '-1') {
+            target.push({ type: 'footnote_ref', noteId, noteKind: 'endnote', commentIds: new Set(activeComments) });
+          }
         } else if (key === 'w:hyperlink') {
           const rId = node?.[':@']?.['@_r:id'] ?? getAttr(node, 'id');
           const prevHref = currentHref;
@@ -1228,7 +1404,7 @@ function mergeConsecutiveRuns(content: ContentItem[]): ContentItem[] {
 function renderInlineSegment(
   segment: ContentItem[],
   comments: Map<string, Comment>,
-  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string> }
+  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string> }
 ): { text: string; deferredComments: string[] } {
   const result = renderInlineRange(segment, 0, comments, undefined, renderOpts);
   return {
@@ -1327,7 +1503,7 @@ function renderInlineRange(
   startIndex: number,
   comments: Map<string, Comment>,
   opts?: { stopBeforeDisplayMath?: boolean },
-  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string> }
+  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string> }
 ): { text: string; nextIndex: number; deferredComments: string[] } {
   let out = '';
   let i = startIndex;
@@ -1342,7 +1518,7 @@ function renderInlineRange(
   const useIds = renderOpts?.alwaysUseCommentIds || hasForcedIdCommentInSegment || hasOverlappingComments(segment.slice(startIndex, segmentEnd));
 
   if (useIds) {
-    return renderInlineRangeWithIds(segment, startIndex, comments, opts, renderOpts?.commentIdRemap, renderOpts?.emittedIdCommentBodies);
+    return renderInlineRangeWithIds(segment, startIndex, comments, opts, renderOpts?.commentIdRemap, renderOpts?.emittedIdCommentBodies, renderOpts?.noteLabels);
   }
 
   while (i < segment.length) {
@@ -1361,6 +1537,14 @@ function renderInlineRange(
 
     if (item.type === 'math') {
       out += item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+      i++;
+      continue;
+    }
+
+    if (item.type === 'footnote_ref') {
+      const noteKey = item.noteKind + ':' + item.noteId;
+      const label = renderOpts?.noteLabels?.get(noteKey) ?? item.noteId;
+      out += `[^${label}]`;
       i++;
       continue;
     }
@@ -1418,7 +1602,8 @@ function renderInlineRangeWithIds(
   comments: Map<string, Comment>,
   opts?: { stopBeforeDisplayMath?: boolean },
   commentIdRemap?: Map<string, string>,
-  emittedIdCommentBodies?: Set<string>
+  emittedIdCommentBodies?: Set<string>,
+  noteLabels?: Map<string, string>
 ): { text: string; nextIndex: number; deferredComments: string[] } {
   let out = '';
   let i = startIndex;
@@ -1487,6 +1672,14 @@ function renderInlineRangeWithIds(
       continue;
     }
 
+    if (item.type === 'footnote_ref') {
+      const noteKey = item.noteKind + ':' + item.noteId;
+      const label = noteLabels?.get(noteKey) ?? item.noteId;
+      out += `[^${label}]`;
+      i++;
+      continue;
+    }
+
     if (item.type !== 'text') {
       i++;
       continue;
@@ -1537,7 +1730,7 @@ function renderInlineRangeWithIds(
   return { text: out, nextIndex: i, deferredComments: deferred.map(d => d.body) };
 }
 
-function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  ', renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string> }): string {
+function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  ', renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string> }): string {
   const i1 = indent;  // tr level
   const i2 = indent + indent;  // td/th level
   const i3 = indent + indent + indent;  // content level
@@ -1569,7 +1762,7 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> } },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -1674,11 +1867,13 @@ export function buildMarkdown(
   }
   detectGlobalOverlaps(mergedContent);
 
+  const noteLabels = options?.notes?.assignedLabels;
   const renderOpts = {
     alwaysUseCommentIds: options?.alwaysUseCommentIds,
     commentIdRemap,
     forceIdCommentIds,
     emittedIdCommentBodies,
+    noteLabels,
   };
 
   const output: string[] = [];
@@ -1750,6 +1945,47 @@ export function buildMarkdown(
       output.push(rendered.text);
     }
     i = rendered.nextIndex;
+  }
+
+  // Append footnote definitions
+  if (options?.notes) {
+    const notesInfo = options.notes;
+    // Sort entries by label (numeric first, then alpha)
+    const entries = [...notesInfo.map.values()].sort((a, b) => {
+      const na = parseInt(a.label, 10);
+      const nb = parseInt(b.label, 10);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.label.localeCompare(b.label);
+    });
+    for (const entry of entries) {
+      output.push('\n\n');
+      const bodyMerged = mergeConsecutiveRuns(entry.body);
+      // Render body, splitting on para markers for multi-paragraph footnotes
+      const bodyParts: string[] = [];
+      let partStart = 0;
+      for (let bi = 0; bi < bodyMerged.length; bi++) {
+        if (bodyMerged[bi].type === 'para') {
+          if (bi > partStart) {
+            const part = renderInlineRange(bodyMerged, partStart, comments, undefined, renderOpts);
+            bodyParts.push(part.text);
+          }
+          partStart = bi + 1;
+        }
+      }
+      if (partStart < bodyMerged.length) {
+        const part = renderInlineRange(bodyMerged, partStart, comments, undefined, renderOpts);
+        bodyParts.push(part.text);
+      }
+      if (bodyParts.length === 0) {
+        bodyParts.push('');
+      }
+      // First line: [^label]: text (trim leading whitespace from note body)
+      output.push(`[^${entry.label}]: ${bodyParts[0].replace(/^\s+/, '')}`);
+      // Continuation paragraphs: indented 4 spaces
+      for (let pi = 1; pi < bodyParts.length; pi++) {
+        output.push('\n\n    ' + bodyParts[pi]);
+      }
+    }
   }
 
   return output.join('');
@@ -1961,16 +2197,56 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
     extractAuthor(zip),
     extractCommentIdMapping(zip),
+    extractFootnoteIdMapping(zip),
   ]);
 
   const keyMap = buildCitationKeyMap(zoteroCitations, format);
-  const { content: docContent, zoteroBiblData } = await extractDocumentContent(zip, zoteroCitations, keyMap);
+  const [{ content: docContent, zoteroBiblData }, footnotes, endnotes] = await Promise.all([
+    extractDocumentContent(zip, zoteroCitations, keyMap),
+    extractFootnotes(zip),
+    extractEndnotes(zip),
+  ]);
+
+  // Build unified notes map with renumbered labels
+  const notesMap = new Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>();
+  let noteCounter = 1;
+  // Collect all footnote_ref items to assign labels in document order
+  const refOrder: { noteId: string; noteKind: 'footnote' | 'endnote' }[] = [];
+  function collectRefs(items: ContentItem[]) {
+    for (const item of items) {
+      if (item.type === 'footnote_ref') {
+        refOrder.push({ noteId: item.noteId, noteKind: item.noteKind });
+      }
+    }
+  }
+  collectRefs(docContent);
+
+  const assignedLabels = new Map<string, string>(); // "kind:noteId" -> label
+  for (const ref of refOrder) {
+    const key = ref.noteKind + ':' + ref.noteId;
+    if (assignedLabels.has(key)) continue;
+    const source = ref.noteKind === 'footnote' ? footnotes : endnotes;
+    const body = source.get(ref.noteId);
+    if (!body) continue;
+    // Check footnote ID mapping for named labels
+    const mappedLabel = footnoteIdMapping?.get(ref.noteId);
+    const label = mappedLabel || String(noteCounter++);
+    if (!mappedLabel) noteCounter; // already incremented
+    assignedLabels.set(key, label);
+    notesMap.set(key, { label, body: body.content, noteKind: ref.noteKind });
+  }
+
+  // Detect which note kind is used for the frontmatter notes field
+  let detectedNotesMode: NotesMode | undefined;
+  if (endnotes.size > 0) {
+    detectedNotesMode = 'endnotes';
+  }
 
   // Extract consecutive Title-styled paragraphs from the beginning of the document
   const titleLines = extractTitleLines(docContent);
@@ -1979,6 +2255,7 @@ export async function convertDocx(
     tableIndent: options?.tableIndent,
     alwaysUseCommentIds: options?.alwaysUseCommentIds,
     commentIdMapping,
+    notes: notesMap.size > 0 ? { map: notesMap, assignedLabels } : undefined,
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
@@ -2002,6 +2279,9 @@ export async function convertDocx(
     fm.csl = zoteroStyleShortName(zoteroPrefs.styleId);
     fm.locale = zoteroPrefs.locale;
     fm.noteType = zoteroPrefs.noteType !== undefined ? noteTypeFromNumber(zoteroPrefs.noteType) : undefined;
+  }
+  if (detectedNotesMode === 'endnotes') {
+    fm.notes = 'endnotes';
   }
   // Store the local timezone so md→docx can reconstruct UTC dates
   const hasCommentDates = [...comments.values()].some(c => !!c.date);

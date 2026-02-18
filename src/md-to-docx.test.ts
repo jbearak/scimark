@@ -2,10 +2,12 @@ import { describe, it, expect } from 'bun:test';
 import {
   generateRPr,
   generateRun,
+  generateRuns,
   generateParagraph,
   generateTable,
   convertMdToDocx,
   parseMd,
+  extractFootnoteDefinitions,
   preprocessCriticMarkup,
   type MdRun,
   type MdToken,
@@ -24,6 +26,12 @@ function makeState(): DocxGenState {
     warnings: [],
     hasList: false,
     hasComments: false,
+    hasFootnotes: false,
+    hasEndnotes: false,
+    footnoteId: 1,
+    footnoteEntries: [],
+    footnoteLabelToId: new Map(),
+    notesMode: 'footnotes',
     missingKeys: new Set(),
   };
 }
@@ -1187,5 +1195,181 @@ describe('parseMd multi-paragraph CriticMarkup', () => {
     expect(addRuns[0].text).not.toContain('\u0000');
     expect(addRuns[0].text).not.toContain('PARA');
     expect(addRuns[0].text).toContain('added\n\nmore');
+  });
+});
+
+describe('Footnote parsing', () => {
+  it('parseMd produces footnote_ref runs for [^1]', () => {
+    const tokens = parseMd('Hello[^1] world');
+    const runs = tokens.flatMap(t => t.runs);
+    const fnRef = runs.find(r => r.type === 'footnote_ref');
+    expect(fnRef).toBeDefined();
+    expect(fnRef!.footnoteLabel).toBe('1');
+  });
+
+  it('parseMd produces footnote_ref runs for named labels', () => {
+    const tokens = parseMd('Text[^my-note] more');
+    const runs = tokens.flatMap(t => t.runs);
+    const fnRef = runs.find(r => r.type === 'footnote_ref');
+    expect(fnRef).toBeDefined();
+    expect(fnRef!.footnoteLabel).toBe('my-note');
+  });
+
+  it('does not parse [^label]: as a footnote reference', () => {
+    // Definition lines are stripped by extractFootnoteDefinitions, not parsed as refs
+    const tokens = parseMd('Some text with a definition marker but not as ref');
+    const runs = tokens.flatMap(t => t.runs);
+    const fnRef = runs.find(r => r.type === 'footnote_ref');
+    expect(fnRef).toBeUndefined();
+  });
+});
+
+describe('extractFootnoteDefinitions', () => {
+  it('extracts single-line definition', () => {
+    const input = 'Body text.\n\n[^1]: This is a footnote.';
+    const { cleaned, definitions } = extractFootnoteDefinitions(input);
+    expect(definitions.get('1')).toBe('This is a footnote.');
+    expect(cleaned).toBe('Body text.\n');
+  });
+
+  it('extracts multi-paragraph definition', () => {
+    const input = 'Text.\n\n[^1]: First paragraph.\n\n    Second paragraph.';
+    const { cleaned, definitions } = extractFootnoteDefinitions(input);
+    expect(definitions.get('1')).toBe('First paragraph.\n\nSecond paragraph.');
+    expect(cleaned).toBe('Text.\n');
+  });
+
+  it('extracts multiple definitions', () => {
+    const input = 'Text.\n\n[^1]: Note one.\n[^2]: Note two.';
+    const { cleaned, definitions } = extractFootnoteDefinitions(input);
+    expect(definitions.size).toBe(2);
+    expect(definitions.get('1')).toBe('Note one.');
+    expect(definitions.get('2')).toBe('Note two.');
+  });
+
+  it('extracts named label definitions', () => {
+    const input = 'Text.\n\n[^my-note]: Named footnote.';
+    const { cleaned, definitions } = extractFootnoteDefinitions(input);
+    expect(definitions.get('my-note')).toBe('Named footnote.');
+  });
+
+  it('returns empty definitions for no footnotes', () => {
+    const input = 'Just plain text.';
+    const { cleaned, definitions } = extractFootnoteDefinitions(input);
+    expect(definitions.size).toBe(0);
+    expect(cleaned).toBe('Just plain text.');
+  });
+});
+
+describe('Footnote OOXML generation', () => {
+  it('generateRuns emits footnoteReference for footnote_ref runs', () => {
+    const state = makeState();
+    const runs: MdRun[] = [{ type: 'footnote_ref', text: '', footnoteLabel: '1' }];
+    const xml = generateRuns(runs, state);
+    expect(xml).toContain('w:footnoteReference');
+    expect(xml).toContain('FootnoteReference');
+    expect(state.hasFootnotes).toBe(true);
+    expect(state.footnoteLabelToId.get('1')).toBe(1);
+  });
+
+  it('generateRuns emits endnoteReference in endnote mode', () => {
+    const state = makeState();
+    state.notesMode = 'endnotes';
+    const runs: MdRun[] = [{ type: 'footnote_ref', text: '', footnoteLabel: '1' }];
+    const xml = generateRuns(runs, state);
+    expect(xml).toContain('w:endnoteReference');
+    expect(xml).toContain('EndnoteReference');
+    expect(state.hasEndnotes).toBe(true);
+  });
+});
+
+describe('Full MD→DOCX footnote generation', () => {
+  it('convertMdToDocx produces DOCX with word/footnotes.xml', async () => {
+    const md = 'Hello[^1] world.\n\n[^1]: A footnote.';
+    const { docx, warnings } = await convertMdToDocx(md);
+    expect(warnings).toEqual([]);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    expect(zip.file('word/footnotes.xml')).not.toBeNull();
+
+    const footnotesXml = await zip.file('word/footnotes.xml')!.async('string');
+    expect(footnotesXml).toContain('w:footnoteRef');
+    expect(footnotesXml).toContain('A footnote.');
+  });
+
+  it('endnote mode via notes: endnotes frontmatter', async () => {
+    const md = '---\nnotes: endnotes\n---\n\nHello[^1] world.\n\n[^1]: An endnote.';
+    const { docx, warnings } = await convertMdToDocx(md);
+    expect(warnings).toEqual([]);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    expect(zip.file('word/endnotes.xml')).not.toBeNull();
+    expect(zip.file('word/footnotes.xml')).toBeNull();
+
+    const endnotesXml = await zip.file('word/endnotes.xml')!.async('string');
+    expect(endnotesXml).toContain('w:endnoteRef');
+    expect(endnotesXml).toContain('An endnote.');
+  });
+
+  it('warns for orphaned footnote reference', async () => {
+    const md = 'Text[^1] without definition.';
+    const { warnings } = await convertMdToDocx(md);
+    expect(warnings.some(w => w.includes('[^1]') && w.includes('no matching definition'))).toBe(true);
+  });
+
+  it('warns for orphaned footnote definition', async () => {
+    const md = 'Text without reference.\n\n[^1]: Orphaned definition.';
+    const { warnings } = await convertMdToDocx(md);
+    expect(warnings.some(w => w.includes('[^1]') && w.includes('no matching reference'))).toBe(true);
+  });
+
+  it('stores MANUSCRIPT_FOOTNOTE_IDS for named labels', async () => {
+    const md = 'Text[^my-note] here.\n\n[^my-note]: Named note.';
+    const { docx } = await convertMdToDocx(md);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const customXml = await zip.file('docProps/custom.xml')!.async('string');
+    expect(customXml).toContain('MANUSCRIPT_FOOTNOTE_IDS');
+    expect(customXml).toContain('my-note');
+  });
+
+  it('does not store MANUSCRIPT_FOOTNOTE_IDS for numeric-only labels', async () => {
+    const md = 'Text[^1] here.\n\n[^1]: Numeric note.';
+    const { docx } = await convertMdToDocx(md);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const customFile = zip.file('docProps/custom.xml');
+    if (customFile) {
+      const customXml = await customFile.async('string');
+      expect(customXml).not.toContain('MANUSCRIPT_FOOTNOTE_IDS');
+    }
+  });
+});
+
+describe('Footnote round-trip', () => {
+  it('MD→DOCX→MD preserves footnotes', async () => {
+    const md = 'Hello[^1] world.\n\n[^1]: A footnote.';
+    const { docx } = await convertMdToDocx(md);
+
+    const { convertDocx } = await import('./converter');
+    const result = await convertDocx(docx);
+
+    expect(result.markdown).toContain('[^1]');
+    expect(result.markdown).toContain('[^1]: A footnote.');
+  });
+
+  it('MD→DOCX→MD preserves named labels via MANUSCRIPT_FOOTNOTE_IDS', async () => {
+    const md = 'Text[^my-note] here.\n\n[^my-note]: Named note content.';
+    const { docx } = await convertMdToDocx(md);
+
+    const { convertDocx } = await import('./converter');
+    const result = await convertDocx(docx);
+
+    expect(result.markdown).toContain('[^my-note]');
+    expect(result.markdown).toContain('[^my-note]: Named note content.');
   });
 });

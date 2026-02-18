@@ -1887,3 +1887,181 @@ describe('w:br line break handling', () => {
   });
 });
 
+// Helpers for footnote tests
+async function buildSyntheticDocxWithParts(documentXml: string, extraParts?: Record<string, string>): Promise<Uint8Array> {
+  const JSZip = (await import('jszip')).default;
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
+  zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+  zip.file('word/document.xml', documentXml);
+  if (extraParts) {
+    for (const [path, content] of Object.entries(extraParts)) {
+      zip.file(path, content);
+    }
+  }
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
+function wrapFootnotesXml(content: string): string {
+  return '<?xml version="1.0"?>'
+    + '<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
+    + '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>'
+    + content
+    + '</w:footnotes>';
+}
+
+function wrapEndnotesXml(content: string): string {
+  return '<?xml version="1.0"?>'
+    + '<w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + '<w:endnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:endnote>'
+    + '<w:endnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:endnote>'
+    + content
+    + '</w:endnotes>';
+}
+
+describe('DOCX footnote extraction', () => {
+  test('extracts footnote references and definitions from DOCX', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Hello world</w:t></w:r>'
+      + '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1">'
+      + '<w:p><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r>'
+      + '<w:r><w:t> This is a footnote.</w:t></w:r></w:p>'
+      + '</w:footnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, { 'word/footnotes.xml': footnotesXml });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('Hello world[^1]');
+    expect(result.markdown).toContain('[^1]: This is a footnote.');
+  });
+
+  test('extracts multiple footnotes in order', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>First</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r>'
+      + '<w:r><w:t> second</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="2"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t> Note one.</w:t></w:r></w:p></w:footnote>'
+      + '<w:footnote w:id="2"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t> Note two.</w:t></w:r></w:p></w:footnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, { 'word/footnotes.xml': footnotesXml });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('First[^1] second[^2]');
+    expect(result.markdown).toContain('[^1]: Note one.');
+    expect(result.markdown).toContain('[^2]: Note two.');
+  });
+
+  test('extracts endnotes and sets notes: endnotes in frontmatter', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:endnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const endnotesXml = wrapEndnotesXml(
+      '<w:endnote w:id="1"><w:p><w:r><w:endnoteRef/></w:r><w:r><w:t> An endnote.</w:t></w:r></w:p></w:endnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, { 'word/endnotes.xml': endnotesXml });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('notes: endnotes');
+    expect(result.markdown).toContain('Text[^1]');
+    expect(result.markdown).toContain('[^1]: An endnote.');
+  });
+
+  test('extracts formatted footnote content (bold/italic)', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r>'
+      + '<w:r><w:t> Some </w:t></w:r>'
+      + '<w:r><w:rPr><w:b/></w:rPr><w:t>bold</w:t></w:r>'
+      + '<w:r><w:t> and </w:t></w:r>'
+      + '<w:r><w:rPr><w:i/></w:rPr><w:t>italic</w:t></w:r>'
+      + '<w:r><w:t> text.</w:t></w:r>'
+      + '</w:p></w:footnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, { 'word/footnotes.xml': footnotesXml });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('[^1]: Some **bold** and *italic* text.');
+  });
+
+  test('extracts multi-paragraph footnotes', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1">'
+      + '<w:p><w:r><w:footnoteRef/></w:r><w:r><w:t> First paragraph.</w:t></w:r></w:p>'
+      + '<w:p><w:r><w:t>Second paragraph.</w:t></w:r></w:p>'
+      + '</w:footnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, { 'word/footnotes.xml': footnotesXml });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('[^1]: First paragraph.');
+    expect(result.markdown).toContain('\n\n    Second paragraph.');
+  });
+
+  test('skips separator and continuationSeparator footnotes', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t> Real note.</w:t></w:r></w:p></w:footnote>'
+    );
+    const buf = await buildSyntheticDocxWithParts(docXml, { 'word/footnotes.xml': footnotesXml });
+    const result = await convertDocx(buf);
+
+    // Should only have the real note, no separator content
+    expect(result.markdown).toContain('[^1]: Real note.');
+    // Separator content should not appear as footnote definitions
+    const defMatches = result.markdown.match(/\[\^\d+\]:/g);
+    expect(defMatches).toHaveLength(1);
+  });
+
+  test('documents without footnotes produce no footnote output', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>No footnotes here.</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(docXml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).not.toContain('[^');
+  });
+
+  test('restores named labels via MANUSCRIPT_FOOTNOTE_IDS mapping', async () => {
+    const docXml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Text</w:t></w:r>'
+      + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+    );
+    const footnotesXml = wrapFootnotesXml(
+      '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t> A note.</w:t></w:r></w:p></w:footnote>'
+    );
+    const customXml = '<?xml version="1.0"?>'
+      + '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+      + '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="MANUSCRIPT_FOOTNOTE_IDS_1">'
+      + '<vt:lpwstr>{"1":"my-note"}</vt:lpwstr>'
+      + '</property>'
+      + '</Properties>';
+    const buf = await buildSyntheticDocxWithParts(docXml, {
+      'word/footnotes.xml': footnotesXml,
+      'docProps/custom.xml': customXml,
+    });
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('Text[^my-note]');
+    expect(result.markdown).toContain('[^my-note]: A note.');
+  });
+});
+

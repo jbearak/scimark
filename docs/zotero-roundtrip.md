@@ -25,7 +25,7 @@ The converter preserves Zotero citation identity through the entire cycle:
 
 At each step:
 
-1. **DOCX → Markdown**: Zotero field codes are parsed. Each citation's item key and URI are saved to BibTeX. Citation text becomes `[@key]` syntax. Document preferences (CSL style, locale, note type) become YAML frontmatter.
+1. **DOCX → Markdown**: Zotero field codes are parsed. Each citation's item key and URI are saved to BibTeX. Citation text becomes `[@key]` syntax. Document preferences (CSL style, locale, Zotero note type) become YAML frontmatter.
 2. **Editing**: You work with standard Pandoc citation syntax in Markdown. The BibTeX file holds the Zotero metadata alongside the bibliographic data.
 3. **Markdown → DOCX**: Citations are reconstructed as Zotero `ADDIN ZOTERO_ITEM` field codes. The CSL style formats visible citation text and bibliography. Document preferences are written back so Zotero recognizes the file.
 
@@ -80,7 +80,7 @@ When a DOCX has Zotero document preferences, the converter extracts them as YAML
 ---
 csl: apa
 locale: en-US
-note-type: in-text
+zotero-notes: in-text
 ---
 ```
 
@@ -88,7 +88,7 @@ note-type: in-text
 |-------|-------------|
 | `csl` | CSL style short name (e.g., `apa`, `chicago-author-date`, `bmj`) or path to a `.csl` file (relative or absolute) |
 | `locale` | Optional locale override (e.g., `en-US`, `en-GB`). Defaults to the style's own locale. |
-| `note-type` | Optional Zotero note type: `in-text` (default), `footnotes`, or `endnotes`. Legacy numeric values (0, 1, 2) are still accepted. |
+| `zotero-notes` | Optional Zotero note type: `in-text` (default), `footnotes`, or `endnotes`. Legacy alias: `note-type`. Legacy numeric values (0, 1, 2) are still accepted. |
 
 You can also add or modify this frontmatter manually. The `csl` field is required for CSL-formatted citation output — without it, citations use a plain-text `(Author Year)` fallback.
 
@@ -131,7 +131,7 @@ csl: /Users/me/styles/custom-journal.csl
 
 When you export back to DOCX with a `csl` field in frontmatter, the converter produces a document that Zotero can recognize and manage:
 
-- **Document preferences**: The `csl`, `locale`, and `note-type` values are written to `docProps/custom.xml` as `ZOTERO_PREF_*` properties (Zotero's dataVersion 4 format). This tells the Zotero Word plugin which citation style and settings the document uses.
+- **Document preferences**: The `csl`, `locale`, and `zotero-notes` values are written to `docProps/custom.xml` as `ZOTERO_PREF_*` properties (Zotero's dataVersion 4 format). This tells the Zotero Word plugin which citation style and settings the document uses.
 - **Citation field codes**: Each citation becomes an `ADDIN ZOTERO_ITEM CSL_CITATION` field code containing full CSL-JSON item data, item URIs, and any locators — the same structure Zotero itself writes.
 - **Bibliography field**: A `ZOTERO_BIBL` field code is appended at the end of the document with the rendered bibliography.
 
