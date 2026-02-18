@@ -35,6 +35,8 @@ function makeState(): DocxGenState {
     missingKeys: new Set(),
     replyRanges: [],
     nextParaId: 1,
+    codeBlockIndex: 0,
+    codeBlockLanguages: new Map(),
   };
 }
 
@@ -297,7 +299,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr><w:t xml:space="preserve">line1</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr><w:t xml:space="preserve">line2</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr><w:t xml:space="preserve">line3</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">line1</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">line2</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">line3</w:t></w:r></w:p>');
   });
 
   it('generates horizontal rule', () => {
@@ -1400,5 +1402,79 @@ describe('generateParagraph blockquoteStyle option', () => {
     const xml = generateParagraph(token, state, { blockquoteStyle: 'IntenseQuote' });
     expect(xml).toContain('w:pStyle w:val="IntenseQuote"');
     expect(xml).not.toContain('w:pStyle w:val="Quote"');
+  });
+});
+
+describe('Code block language tracking', () => {
+  it('records language in state when present', () => {
+    const token: MdToken = {
+      type: 'code_block',
+      language: 'stata',
+      runs: [{ type: 'text', text: 'display "hello"' }]
+    };
+    const state = makeState();
+    generateParagraph(token, state);
+    expect(state.codeBlockIndex).toBe(1);
+    expect(state.codeBlockLanguages.get(0)).toBe('stata');
+  });
+
+  it('increments index without recording when no language', () => {
+    const token: MdToken = {
+      type: 'code_block',
+      runs: [{ type: 'text', text: 'some code' }]
+    };
+    const state = makeState();
+    generateParagraph(token, state);
+    expect(state.codeBlockIndex).toBe(1);
+    expect(state.codeBlockLanguages.size).toBe(0);
+  });
+
+  it('tracks multiple code blocks with mixed languages', () => {
+    const state = makeState();
+    generateParagraph({ type: 'code_block', language: 'python', runs: [{ type: 'text', text: 'print("hi")' }] }, state);
+    generateParagraph({ type: 'code_block', runs: [{ type: 'text', text: 'plain code' }] }, state);
+    generateParagraph({ type: 'code_block', language: 'r', runs: [{ type: 'text', text: 'cat("hi")' }] }, state);
+    expect(state.codeBlockIndex).toBe(3);
+    expect(state.codeBlockLanguages.get(0)).toBe('python');
+    expect(state.codeBlockLanguages.has(1)).toBe(false);
+    expect(state.codeBlockLanguages.get(2)).toBe('r');
+  });
+});
+
+describe('Code block language custom properties', () => {
+  it('stores language mapping in MANUSCRIPT_CODE_BLOCK_LANGS custom property', async () => {
+    const md = '```stata\ndisplay "hello"\n```';
+    const result = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const customXml = await zip.file('docProps/custom.xml')?.async('string');
+    expect(customXml).toBeDefined();
+    expect(customXml).toContain('MANUSCRIPT_CODE_BLOCK_LANGS_1');
+    expect(customXml).toContain('stata');
+  });
+
+  it('does not create custom property when no code block languages', async () => {
+    const md = '```\nplain code\n```';
+    const result = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const customXml = await zip.file('docProps/custom.xml')?.async('string');
+    // No custom.xml at all, or no code block langs property
+    if (customXml) {
+      expect(customXml).not.toContain('MANUSCRIPT_CODE_BLOCK_LANGS');
+    }
+  });
+});
+
+describe('Code block separator between consecutive blocks', () => {
+  it('inserts empty paragraph between consecutive code blocks', async () => {
+    const md = '```python\nprint("a")\n```\n\n```r\ncat("b")\n```';
+    const result = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string');
+    expect(docXml).toBeDefined();
+    // The separator should be an empty <w:p/> between the two code block groups
+    expect(docXml).toContain('<w:p/>');
   });
 });

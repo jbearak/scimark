@@ -18,6 +18,7 @@ import {
   isToggleOn,
   parseHeadingLevel,
   parseBlockquoteLevel,
+  parseCodeBlockStyle,
   parseRunProperties,
   formatLocalIsoMinute,
   getLocalTimezoneOffset,
@@ -2304,6 +2305,128 @@ describe('Blockquote round-trip', () => {
     const buf = await buildSyntheticDocx(xml);
     const result = await convertDocx(buf);
     expect(result.markdown).toContain('> intense');
+  });
+});
+
+describe('parseCodeBlockStyle', () => {
+  test('returns true for CodeBlock style', () => {
+    const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'CodeBlock' } }];
+    expect(parseCodeBlockStyle(children)).toBe(true);
+  });
+
+  test('returns true case-insensitively', () => {
+    const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'codeblock' } }];
+    expect(parseCodeBlockStyle(children)).toBe(true);
+  });
+
+  test('returns false for non-code-block style', () => {
+    const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'Normal' } }];
+    expect(parseCodeBlockStyle(children)).toBe(false);
+  });
+
+  test('returns false when pStyle is absent', () => {
+    expect(parseCodeBlockStyle([])).toBe(false);
+  });
+});
+
+describe('Code block detection in extractDocumentContent', () => {
+  test('detects CodeBlock paragraphs', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr>'
+      + '<w:r><w:t>code line</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(buf);
+    const { content } = await extractDocumentContent(zip, [], new Map());
+    const paraItem = content.find(item => item.type === 'para');
+    expect(paraItem).toBeDefined();
+    expect(paraItem!.type === 'para' && paraItem!.isCodeBlock).toBe(true);
+  });
+});
+
+describe('buildMarkdown code block emission', () => {
+  test('emits basic code fence from code block paragraphs', () => {
+    const content: ContentItem[] = [
+      { type: 'para', isCodeBlock: true },
+      { type: 'text', text: 'line 1', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+      { type: 'para', isCodeBlock: true },
+      { type: 'text', text: 'line 2', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+    ];
+    const md = buildMarkdown(content, new Map());
+    expect(md).toBe('```\nline 1\nline 2\n```');
+  });
+
+  test('emits code fence with language from codeBlockLangs', () => {
+    const content: ContentItem[] = [
+      { type: 'para', isCodeBlock: true },
+      { type: 'text', text: 'print("hi")', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+    ];
+    const langs = new Map([['0', 'python']]);
+    const md = buildMarkdown(content, new Map(), { codeBlockLangs: langs });
+    expect(md).toBe('```python\nprint("hi")\n```');
+  });
+
+  test('trims trailing empty lines', () => {
+    const content: ContentItem[] = [
+      { type: 'para', isCodeBlock: true },
+      { type: 'text', text: 'code', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+      { type: 'para', isCodeBlock: true },
+      { type: 'text', text: '', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+    ];
+    const md = buildMarkdown(content, new Map());
+    expect(md).toBe('```\ncode\n```');
+  });
+
+  test('emits consecutive code blocks with different languages', () => {
+    const content: ContentItem[] = [
+      { type: 'para', isCodeBlock: true },
+      { type: 'text', text: 'print("a")', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+      { type: 'para' },
+      { type: 'para', isCodeBlock: true },
+      { type: 'text', text: 'cat("b")', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+    ];
+    const langs = new Map([['0', 'python'], ['1', 'r']]);
+    const md = buildMarkdown(content, new Map(), { codeBlockLangs: langs });
+    expect(md).toContain('```python\nprint("a")\n```');
+    expect(md).toContain('```r\ncat("b")\n```');
+  });
+});
+
+describe('Code block round-trip', () => {
+  test('single code block with language survives MD→DOCX→MD', async () => {
+    const md = '```stata\ndisplay "hello"\n```';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('```stata\ndisplay "hello"\n```');
+  });
+
+  test('code block without language survives round-trip', async () => {
+    const md = '```\nplain code\n```';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('```\nplain code\n```');
+  });
+
+  test('consecutive code blocks with different languages survive round-trip', async () => {
+    const md = '```python\nprint("a")\n```\n\n```r\ncat("b")\n```';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('```python\nprint("a")\n```\n\n```r\ncat("b")\n```');
+  });
+
+  test('code block containing backticks uses longer fence on round-trip', async () => {
+    const md = '````\nSome ```backticks``` inside\n````';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('````\nSome ```backticks``` inside\n````');
+  });
+
+  test('multi-line code block survives round-trip', async () => {
+    const md = '```javascript\nconst x = 1;\nconst y = 2;\nconsole.log(x + y);\n```';
+    const docxResult = await convertMdToDocx(md);
+    const result = await convertDocx(docxResult.docx);
+    expect(result.markdown.trim()).toBe('```javascript\nconst x = 1;\nconst y = 2;\nconsole.log(x + y);\n```');
   });
 });
 

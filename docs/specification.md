@@ -48,7 +48,7 @@ Manuscript Markdown supports all [CommonMark](https://commonmark.org/) and [GitH
 - **Headings**: `# H1` through `###### H6`
 - **Lists**: bulleted (`- item`), numbered (`1. item`), task lists (`- [ ] item`)
 - **Links**: `[text](url)`
-- **Code blocks**: fenced with triple backticks
+- **Code blocks**: fenced with triple backticks. Optional language annotation (e.g., `` ```stata ``) is preserved on round-trip via the `MANUSCRIPT_CODE_BLOCK_LANGS` custom property in the DOCX. In Word, code blocks use the "Code Block" paragraph style (Consolas, shaded background). Consecutive code blocks are separated by an empty paragraph to prevent merging.
 - **Blockquotes**: `> quoted text`
 - **Tables**: pipe-delimited with alignment support
 
