@@ -495,8 +495,11 @@ export function wrapWithFormatting(text: string, fmt: RunFormatting): string {
       }
     }
     const fence = '`'.repeat(maxRun + 1);
-    // Add padding space if content starts or ends with a backtick
-    const needsPadding = result.startsWith('`') || result.endsWith('`');
+    // Add padding space if content starts/ends with a backtick, or if
+    // content has both leading and trailing spaces (CommonMark §6.1 would
+    // strip one space from each end, losing the original whitespace).
+    const hasLeadingTrailingSpaces = result.startsWith(' ') && result.endsWith(' ') && result.trim().length > 0;
+    const needsPadding = result.startsWith('`') || result.endsWith('`') || hasLeadingTrailingSpaces;
     result = needsPadding ? `${fence} ${result} ${fence}` : `${fence}${result}${fence}`;
   }
 

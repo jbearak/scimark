@@ -2486,6 +2486,16 @@ describe('Inline code import (CodeChar detection)', () => {
     expect(wrapWithFormatting('end`', fmt)).toBe('`` end` ``');
   });
 
+  test('wrapWithFormatting adds padding when text has leading and trailing spaces', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true };
+    expect(wrapWithFormatting(' hello ', fmt)).toBe('`  hello  `');
+  });
+
+  test('wrapWithFormatting does not pad all-space content', () => {
+    const fmt = { ...DEFAULT_FORMATTING, code: true };
+    expect(wrapWithFormatting('   ', fmt)).toBe('`   `');
+  });
+
   test('wrapWithFormatting applies code inside bold', () => {
     const fmt = { ...DEFAULT_FORMATTING, code: true, bold: true };
     expect(wrapWithFormatting('hello', fmt)).toBe('**`hello`**');
