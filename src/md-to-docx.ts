@@ -2008,7 +2008,6 @@ export async function convertMdToDocx(
   const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
 
   // Build footnote/endnote body OOXML from definitions
-  const referencedLabels = new Set<string>(state.footnoteLabelToId.keys());
   for (const [label, bodyText] of footnoteDefs) {
     const noteId = state.footnoteLabelToId.get(label);
     if (noteId === undefined) {
@@ -2039,8 +2038,9 @@ export async function convertMdToDocx(
     state.footnoteEntries.push({ id: noteId, bodyXml });
   }
 
-  // Warn for orphaned references
-  for (const label of referencedLabels) {
+  // Warn for orphaned references (use footnoteLabelToId, not the pre-body-processing
+  // snapshot, so cross-references allocated during footnote body generation are covered)
+  for (const [label] of state.footnoteLabelToId) {
     if (!footnoteDefs.has(label)) {
       state.warnings.push(`Footnote reference [^${label}] has no matching definition.`);
     }
