@@ -136,9 +136,6 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('manuscript-markdown.markSubstitution', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '{~~', '~>~~}', text.length + 5))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.highlight', () => 
-			applyFormatting((text) => formatting.wrapSelection(text, '{==', '==}'))
-		),
 		vscode.commands.registerCommand('manuscript-markdown.comment', () => {
 			const authorName = author.getFormattedAuthorName();
 			const useIds = vscode.workspace.getConfiguration('manuscriptMarkdown').get<boolean>('alwaysUseCommentIds', false);

@@ -55,10 +55,6 @@
         "title": "Substitution"
       },
       {
-        "command": "manuscript-markdown.highlight",
-        "title": "Highlight"
-      },
-      {
         "command": "manuscript-markdown.comment",
         "title": "Comment"
       },
