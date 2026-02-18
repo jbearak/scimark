@@ -354,10 +354,12 @@ describe('Syntax grammar invariants', () => {
     const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf-8'));
 
     const commentRule = grammar?.repository?.comment;
+    expect(commentRule).toBeDefined();
     expect(commentRule.name).toMatch(/^meta\.comment/);
     expect(commentRule.contentName).toMatch(/^meta\.comment/);
 
     const commentWithIdRule = grammar?.repository?.comment_with_id;
+    expect(commentWithIdRule).toBeDefined();
     expect(commentWithIdRule.contentName).toMatch(/^meta\.comment/);
   });
 });
