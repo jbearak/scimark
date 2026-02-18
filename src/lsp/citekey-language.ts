@@ -104,8 +104,29 @@ export function findUsagesForKey(text: string, key: string): CitekeyUsage[] {
 }
 
 export function findCitekeyAtOffset(text: string, offset: number): string | undefined {
-	for (const usage of scanCitationUsages(text)) {
-		if (offset >= usage.keyStart - 1 && offset <= usage.keyEnd) {
+	if (offset < 0 || offset >= text.length) return undefined;
+
+	// Scan backward to find [ or line start
+	let scanStart = offset;
+	while (scanStart > 0 && text[scanStart - 1] !== '[' && text[scanStart - 1] !== '\n') {
+		scanStart--;
+	}
+	// Include the bracket if found
+	if (scanStart > 0 && text[scanStart - 1] === '[') scanStart--;
+
+	// Scan forward to find ] or line end
+	let scanEnd = offset;
+	while (scanEnd < text.length && text[scanEnd] !== ']' && text[scanEnd] !== '\n') {
+		scanEnd++;
+	}
+	// Include the bracket if found
+	if (scanEnd < text.length && text[scanEnd] === ']') scanEnd++;
+
+	const segment = text.slice(scanStart, scanEnd);
+	for (const usage of scanCitationUsages(segment)) {
+		const absStart = usage.keyStart + scanStart;
+		const absEnd = usage.keyEnd + scanStart;
+		if (offset >= absStart - 1 && offset <= absEnd) {
 			return usage.key;
 		}
 	}
