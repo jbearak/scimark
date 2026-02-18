@@ -1022,6 +1022,8 @@ export interface MdToDocxOptions {
   onStyleNotFound?: (styleName: string) => Promise<boolean>;
   /** How to render mixed Zotero/non-Zotero grouped citations. */
   mixedCitationStyle?: 'separate' | 'unified';
+  /** Word paragraph style to use for blockquotes. */
+  blockquoteStyle?: 'Quote' | 'IntenseQuote';
 }
 
 export interface MdToDocxResult {
@@ -1184,6 +1186,12 @@ function stylesXml(): string {
     '<w:name w:val="Quote"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
     '<w:pPr><w:ind w:left="720"/></w:pPr>\n' +
+    '</w:style>\n' +
+    '<w:style w:type="paragraph" w:styleId="IntenseQuote">\n' +
+    '<w:name w:val="Intense Quote"/>\n' +
+    '<w:basedOn w:val="Normal"/>\n' +
+    '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="4" w:color="4472C4"/></w:pBdr><w:ind w:left="720"/></w:pPr>\n' +
+    '<w:rPr><w:i/><w:color w:val="4472C4"/></w:rPr>\n' +
     '</w:style>\n' +
     '<w:style w:type="character" w:styleId="CodeChar">\n' +
     '<w:name w:val="Code Char"/>\n' +
@@ -1600,8 +1608,9 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       state.hasList = true;
       break;
     case 'blockquote':
+      const bqStyle = options?.blockquoteStyle ?? 'Quote';
       const leftIndent = 720 * (token.level || 1);
-      pPr = '<w:pPr><w:pStyle w:val="Quote"/><w:ind w:left="' + leftIndent + '"/></w:pPr>';
+      pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/><w:ind w:left="' + leftIndent + '"/></w:pPr>';
       break;
     case 'code_block':
       pPr = '<w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr>';

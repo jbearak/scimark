@@ -1195,3 +1195,20 @@ describe('parseMd multi-paragraph CriticMarkup', () => {
     expect(addRuns[0].text).toContain('added\n\nmore');
   });
 });
+
+describe('generateParagraph blockquoteStyle option', () => {
+  it('uses Quote style by default', () => {
+    const token: MdToken = { type: 'blockquote', level: 1, runs: [{ type: 'text', text: 'hello' }] };
+    const state = makeState();
+    const xml = generateParagraph(token, state);
+    expect(xml).toContain('w:pStyle w:val="Quote"');
+  });
+
+  it('uses IntenseQuote style when specified', () => {
+    const token: MdToken = { type: 'blockquote', level: 1, runs: [{ type: 'text', text: 'hello' }] };
+    const state = makeState();
+    const xml = generateParagraph(token, state, { blockquoteStyle: 'IntenseQuote' });
+    expect(xml).toContain('w:pStyle w:val="IntenseQuote"');
+    expect(xml).not.toContain('w:pStyle w:val="Quote"');
+  });
+});
