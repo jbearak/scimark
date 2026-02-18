@@ -968,14 +968,16 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 
 	await vscode.workspace.fs.writeFile(docxUri, result.docx);
 
-	if (result.warnings.length > 0) {
-		vscode.window.showWarningMessage('Export completed with warnings: ' + result.warnings.join('; '));
-	}
 	const filename = docxUri.fsPath.split(/[/\\]/).pop()!;
-	const action = await vscode.window.showInformationMessage(
-		`Exported to "${filename}"`,
-		'Open in Word'
-	);
+	const action = result.warnings.length > 0
+		? await vscode.window.showWarningMessage(
+			`Exported to "${filename}" with warnings: ${result.warnings.join('; ')}`,
+			'Open in Word'
+		)
+		: await vscode.window.showInformationMessage(
+			`Exported to "${filename}"`,
+			'Open in Word'
+		);
 	if (action === 'Open in Word') {
 		try {
 			const opened = await vscode.env.openExternal(docxUri);
