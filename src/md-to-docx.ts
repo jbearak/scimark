@@ -46,6 +46,7 @@ export interface MdRun {
   date?: string;            // for comments/revisions
   commentText?: string;     // for critic_comment: the comment body
   commentId?: string;       // for comment_range_start/end/body_with_id
+  replies?: Array<{author?: string; date?: string; text: string}>; // nested replies for comment_body_with_id
   // Citation specific
   keys?: string[];          // citation keys for [@key1; @key2]
   locators?: Map<string, string>; // key -> locator for [@key, p. 20]
@@ -61,10 +62,61 @@ const COLOR_TO_OOXML: Record<string, string> = {
   'dark-yellow': 'darkYellow', 'gray-50': 'darkGray', 'gray-25': 'lightGray',
 };
 
-import { PARA_PLACEHOLDER, preprocessCriticMarkup } from './critic-markup';
+import { PARA_PLACEHOLDER, preprocessCriticMarkup, findMatchingClose } from './critic-markup';
 export { PARA_PLACEHOLDER, preprocessCriticMarkup };
 
 // Custom inline rules
+
+/** Parse author/date/text from comment content string. */
+function parseCommentContent(content: string): { author?: string; date?: string; text: string } {
+  const match = content.match(/^([\s\S]+?)\s+\(([^)]+)\):\s*([\s\S]*)$/);
+  if (match) {
+    return { author: match[1], date: match[2], text: match[3] };
+  }
+  const authorMatch = content.match(/^([^:]+):\s*([\s\S]*)$/);
+  if (authorMatch) {
+    return { author: authorMatch[1].trim(), text: authorMatch[2] };
+  }
+  if (content.trim()) {
+    if (content.includes(':') || content.includes(' ') || /[^a-zA-Z0-9_-]/.test(content)) {
+      return { text: content };
+    }
+    return { author: content, text: '' };
+  }
+  return { text: '' };
+}
+
+/**
+ * Extract nested reply blocks from comment content.
+ * Splits content into the parent text and an array of reply entries.
+ */
+function extractReplies(content: string): { parentText: string; replies: Array<{author?: string; date?: string; text: string}> } {
+  const replies: Array<{author?: string; date?: string; text: string}> = [];
+
+  // Find the first nested {>> to determine where parent text ends
+  const firstReplyIdx = content.indexOf('{>>');
+  if (firstReplyIdx === -1) {
+    return { parentText: content, replies };
+  }
+
+  const parentText = content.slice(0, firstReplyIdx).trimEnd();
+
+  // Extract each {>>...<<} reply block using depth-aware matching
+  let pos = firstReplyIdx;
+  while (pos < content.length) {
+    const openIdx = content.indexOf('{>>', pos);
+    if (openIdx === -1) break;
+    const innerStart = openIdx + 3;
+    const closeIdx = findMatchingClose(content, innerStart);
+    if (closeIdx === -1) break;
+    const replyContent = content.slice(innerStart, closeIdx);
+    const parsed = parseCommentContent(replyContent);
+    replies.push(parsed);
+    pos = closeIdx + 3;
+  }
+
+  return { parentText, replies };
+}
 
 /** Parse {#id}, {/id}, and {#id>>...<<} comment range markers */
 function commentRangeRule(state: any, silent: boolean): boolean {
@@ -87,37 +139,23 @@ function commentRangeRule(state: any, silent: boolean): boolean {
 
     // Check for {#id>>...<<} comment body
     if (idEnd + 1 < max && src.charAt(idEnd) === '>' && src.charAt(idEnd + 1) === '>') {
-      const endMarker = '<<}';
-      const endPos = src.indexOf(endMarker, idEnd + 2);
+      // Find matching <<} accounting for nested {>>...<<} replies
+      const endPos = findMatchingClose(src, idEnd + 2);
       if (endPos === -1) return false;
 
       if (!silent) {
-        const content = src.slice(idEnd + 2, endPos).replaceAll(PARA_PLACEHOLDER, '\n\n');
+        const rawContent = src.slice(idEnd + 2, endPos).replaceAll(PARA_PLACEHOLDER, '\n\n');
         const token = state.push('comment_body_with_id', '', 0);
         token.commentId = id;
 
-        // Parse author (date): text format
-        const match = content.match(/^([\s\S]+?)\s+\(([^)]+)\):\s*([\s\S]*)$/);
-        if (match) {
-          token.author = match[1];
-          token.date = match[2];
-          token.commentText = match[3];
-        } else {
-          // Try author: text format (no date parenthetical)
-          const authorMatch = content.match(/^([^:]+):\s*([\s\S]*)$/);
-          if (authorMatch) {
-            token.author = authorMatch[1].trim();
-            token.commentText = authorMatch[2];
-          } else if (content.trim()) {
-            if (content.includes(':') || content.includes(' ') || /[^a-zA-Z0-9_-]/.test(content)) {
-              token.commentText = content;
-            } else {
-              token.author = content;
-              token.commentText = '';
-            }
-          } else {
-            token.commentText = '';
-          }
+        // Check for nested replies
+        const { parentText, replies } = extractReplies(rawContent);
+        const parsed = parseCommentContent(parentText);
+        token.author = parsed.author;
+        token.date = parsed.date;
+        token.commentText = parsed.text;
+        if (replies.length > 0) {
+          token.replies = replies;
         }
       }
       state.pos = endPos + 3;
@@ -162,13 +200,13 @@ function commentRangeRule(state: any, silent: boolean): boolean {
 function criticMarkupRule(state: any, silent: boolean): boolean {
   const start = state.pos;
   const max = state.posMax;
-  
+
   if (start + 3 >= max || state.src.charAt(start) !== '{') return false;
-  
+
   const marker = state.src.slice(start, start + 3);
   let endMarker: string;
   let type: string;
-  
+
   switch (marker) {
     case '{++': endMarker = '++}'; type = 'critic_add'; break;
     case '{--': endMarker = '--}'; type = 'critic_del'; break;
@@ -177,10 +215,16 @@ function criticMarkupRule(state: any, silent: boolean): boolean {
     case '{>>': endMarker = '<<}'; type = 'critic_comment'; break;
     default: return false;
   }
-  
-  const endPos = state.src.indexOf(endMarker, start + 3);
+
+  let endPos: number;
+  if (type === 'critic_comment') {
+    // Use depth-aware matching for {>>...<<} which may contain nested replies
+    endPos = findMatchingClose(state.src, start + 3);
+  } else {
+    endPos = state.src.indexOf(endMarker, start + 3);
+  }
   if (endPos === -1) return false;
-  
+
   if (!silent) {
     // Replace any paragraph placeholders back to real newlines
     const content = state.src.slice(start + 3, endPos).replaceAll(PARA_PLACEHOLDER, '\n\n');
@@ -188,7 +232,7 @@ function criticMarkupRule(state: any, silent: boolean): boolean {
     token.markup = marker;
     token.content = content;
     token.criticType = type;
-    
+
     if (type === 'critic_sub') {
       const sepPos = content.indexOf('~>');
       if (sepPos !== -1) {
@@ -196,33 +240,19 @@ function criticMarkupRule(state: any, silent: boolean): boolean {
         token.newText = content.slice(sepPos + 2);
       }
     }
-    
+
     if (type === 'critic_comment') {
-      const match = content.match(/^([\s\S]+?)\s+\(([^)]+)\):\s*([\s\S]*)$/);
-      if (match) {
-        token.author = match[1];
-        token.date = match[2];
-        token.commentText = match[3];
-      } else {
-        // Try author: text format (no date parenthetical)
-        const authorMatch = content.match(/^([^:]+):\s*([\s\S]*)$/);
-        if (authorMatch) {
-          token.author = authorMatch[1].trim();
-          token.commentText = authorMatch[2];
-        } else if (content.trim()) {
-          if (content.includes(':') || content.includes(' ') || /[^a-zA-Z0-9_-]/.test(content)) {
-            token.commentText = content;
-          } else {
-            token.author = content;
-            token.commentText = '';
-          }
-        } else {
-          token.commentText = '';
-        }
+      const { parentText, replies } = extractReplies(content);
+      const parsed = parseCommentContent(parentText);
+      token.author = parsed.author;
+      token.date = parsed.date;
+      token.commentText = parsed.text;
+      if (replies.length > 0) {
+        token.replies = replies;
       }
     }
   }
-  
+
   state.pos = endPos + endMarker.length;
   return true;
 }
@@ -595,6 +625,7 @@ function processInlineChildren(tokens: any[]): MdRun[] {
             author: token.author,
             date: token.date,
             commentText: token.commentText,
+            replies: token.replies,
             ...formatStack,
             href: currentHref
           });
@@ -676,6 +707,7 @@ function processInlineChildren(tokens: any[]): MdRun[] {
           author: token.author,
           date: token.date,
           commentText: token.commentText,
+          replies: token.replies,
         });
         break;
     }
@@ -1009,6 +1041,8 @@ export interface DocxGenState {
   hasComments: boolean;
   missingKeys: Set<string>;
   timezone?: string; // UTC offset from frontmatter (e.g. "-05:00")
+  replyRanges: Array<{replyId: number; parentId: number}>;
+  nextParaId: number;
 }
 
 interface CommentEntry {
@@ -1016,6 +1050,8 @@ interface CommentEntry {
   author: string;
   date: string;
   text: string;
+  paraId: string;            // generated 8-hex-char ID
+  parentParaId?: string;     // set for replies
 }
 
 /**
@@ -1056,7 +1092,7 @@ function stripMillis(iso: string): string {
   return iso.replace(/\.\d{3}Z$/, 'Z');
 }
 
-function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean): string {
+function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean, hasCommentsExtended?: boolean): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n';
   xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n';
@@ -1070,6 +1106,9 @@ function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: bool
   }
   if (hasComments) {
     xml += '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>\n';
+  }
+  if (hasCommentsExtended) {
+    xml += '<Override PartName="/word/commentsExtended.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"/>\n';
   }
   if (hasTheme) {
     xml += '<Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>\n';
@@ -1301,7 +1340,7 @@ function commentIdMappingProps(commentIdMap: Map<string, number>): CustomPropEnt
   return props;
 }
 
-function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean): string {
+function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCommentsExtended?: boolean): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
   xml += '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
@@ -1315,6 +1354,10 @@ function documentRelsXml(relationships: Map<string, string>, hasList: boolean, h
   }
 
   let nextFixed = 4;
+  if (hasCommentsExtended) {
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/>\n';
+    nextFixed++;
+  }
   if (hasTheme) {
     xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>\n';
     nextFixed++;
@@ -1395,11 +1438,31 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         const author = nextRun.author || options?.authorName || 'Unknown';
         const date = normalizeToUtcIso(nextRun.date || '', state.timezone);
         const commentBody = nextRun.commentText || '';
-        state.comments.push({ id: commentId, author, date, text: commentBody });
+        const parentParaId = generateParaId(state);
+        state.comments.push({ id: commentId, author, date, text: commentBody, paraId: parentParaId });
         state.hasComments = true;
+        // Generate reply entries
+        const replyEntries: Array<{replyId: number}> = [];
+        if (nextRun.replies && nextRun.replies.length > 0) {
+          for (const reply of nextRun.replies) {
+            const replyId = state.commentId++;
+            const replyParaId = generateParaId(state);
+            const replyAuthor = reply.author || options?.authorName || 'Unknown';
+            const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
+            state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
+            replyEntries.push({ replyId });
+          }
+        }
         xml += '<w:commentRangeStart w:id="' + commentId + '"/>';
+        for (const re of replyEntries) {
+          xml += '<w:commentRangeStart w:id="' + re.replyId + '"/>';
+        }
         const highlightRun = { ...run, type: 'text' as const, highlight: true };
         xml += generateRun(run.text, generateRPr(highlightRun));
+        for (const re of replyEntries) {
+          xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
+          xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + re.replyId + '"/></w:r>';
+        }
         xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
         xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
         ri++; // skip the comment run
@@ -1412,14 +1475,35 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       const author = run.author || options?.authorName || 'Unknown';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
       const commentBody = run.commentText || '';
+      const parentParaId = generateParaId(state);
 
-      state.comments.push({ id: commentId, author, date, text: commentBody });
+      state.comments.push({ id: commentId, author, date, text: commentBody, paraId: parentParaId });
       state.hasComments = true;
+
+      // Generate reply entries
+      const replyEntries: Array<{replyId: number}> = [];
+      if (run.replies && run.replies.length > 0) {
+        for (const reply of run.replies) {
+          const replyId = state.commentId++;
+          const replyParaId = generateParaId(state);
+          const replyAuthor = reply.author || options?.authorName || 'Unknown';
+          const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
+          state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
+          replyEntries.push({ replyId });
+        }
+      }
 
       if (run.text) {
         xml += '<w:commentRangeStart w:id="' + commentId + '"/>';
+        for (const re of replyEntries) {
+          xml += '<w:commentRangeStart w:id="' + re.replyId + '"/>';
+        }
         const highlightRun = { ...run, type: 'text' as const, highlight: true };
         xml += generateRun(run.text, generateRPr(highlightRun));
+        for (const re of replyEntries) {
+          xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
+          xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + re.replyId + '"/></w:r>';
+        }
         xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
       }
       xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
@@ -1440,6 +1524,12 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         state.commentIdMap.set(mdId, numericId);
       }
       xml += '<w:commentRangeStart w:id="' + numericId + '"/>';
+      // Also emit range starts for replies associated with this parent
+      for (const rr of state.replyRanges) {
+        if (rr.parentId === numericId) {
+          xml += '<w:commentRangeStart w:id="' + rr.replyId + '"/>';
+        }
+      }
       state.hasComments = true;
     } else if (run.type === 'comment_range_end') {
       const mdId = run.commentId || '';
@@ -1447,6 +1537,13 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       if (numericId === undefined) {
         state.warnings.push(`Unmatched comment range end marker: {/${mdId}}`);
         continue;
+      }
+      // Emit reply range ends before parent's
+      for (const rr of state.replyRanges) {
+        if (rr.parentId === numericId) {
+          xml += '<w:commentRangeEnd w:id="' + rr.replyId + '"/>';
+          xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + rr.replyId + '"/></w:r>';
+        }
       }
       xml += '<w:commentRangeEnd w:id="' + numericId + '"/>';
       xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + numericId + '"/></w:r>';
@@ -1463,7 +1560,25 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         const author = run.author || options?.authorName || 'Unknown';
         const date = normalizeToUtcIso(run.date || '', state.timezone);
         const commentBody = run.commentText || '';
-        state.comments.push({ id: numericId, author, date, text: commentBody });
+        const parentParaId = generateParaId(state);
+        state.comments.push({ id: numericId, author, date, text: commentBody, paraId: parentParaId });
+
+        // Generate reply comment entries (reply IDs may have been
+        // pre-allocated by the pre-scan in generateDocumentXml)
+        if (run.replies && run.replies.length > 0) {
+          const preAllocated = state.replyRanges.filter(rr => rr.parentId === numericId);
+          for (let i = 0; i < run.replies.length; i++) {
+            const reply = run.replies[i];
+            const replyId = i < preAllocated.length ? preAllocated[i].replyId : state.commentId++;
+            const replyParaId = generateParaId(state);
+            const replyAuthor = reply.author || options?.authorName || 'Unknown';
+            const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
+            state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
+            if (i >= preAllocated.length) {
+              state.replyRanges.push({ replyId, parentId: numericId });
+            }
+          }
+        }
       }
       state.hasComments = true;
     }
@@ -1640,15 +1755,21 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
   return xml;
 }
 
+function generateParaId(state: DocxGenState): string {
+  return (state.nextParaId++).toString(16).toUpperCase().padStart(8, '0');
+}
+
 function commentsXml(comments: CommentEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-  xml += '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+  xml += '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">';
   for (const c of comments) {
     xml += '<w:comment w:id="' + c.id + '" w:author="' + escapeXml(c.author) + '" w:date="' + escapeXml(c.date) + '">';
     // Split on \n\n for paragraph breaks within the comment
     const paragraphs = c.text.split('\n\n');
-    for (const para of paragraphs) {
-      xml += '<w:p><w:r><w:t xml:space="preserve">' + escapeXml(para) + '</w:t></w:r></w:p>';
+    for (let pi = 0; pi < paragraphs.length; pi++) {
+      // Add w14:paraId to the first paragraph
+      const paraIdAttr = pi === 0 ? ' w14:paraId="' + c.paraId + '"' : '';
+      xml += '<w:p' + paraIdAttr + '><w:r><w:t xml:space="preserve">' + escapeXml(paragraphs[pi]) + '</w:t></w:r></w:p>';
     }
     xml += '</w:comment>';
   }
@@ -1656,8 +1777,60 @@ function commentsXml(comments: CommentEntry[]): string {
   return xml;
 }
 
+function commentsExtendedXml(comments: CommentEntry[]): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w15">';
+  for (const c of comments) {
+    if (c.parentParaId) {
+      xml += '<w15:commentEx w15:paraId="' + c.paraId + '" w15:paraIdParent="' + c.parentParaId + '" w15:done="0"/>';
+    } else {
+      xml += '<w15:commentEx w15:paraId="' + c.paraId + '" w15:done="0"/>';
+    }
+  }
+  xml += '</w15:commentsEx>';
+  return xml;
+}
+
 export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any, frontmatter?: Frontmatter): string {
   let body = '';
+
+  // Pre-scan: assign comment IDs and discover reply relationships so that
+  // replyRanges is populated before range start/end markers are emitted.
+  // Without this, replyRanges would be empty when comment_range_start is
+  // processed because comment_body_with_id (which populates replyRanges)
+  // always appears after the range markers in the token stream.
+  const prescanRun = (run: MdRun) => {
+    if (run.type === 'comment_range_start') {
+      const mdId = run.commentId || '';
+      if (!state.commentIdMap.has(mdId)) {
+        state.commentIdMap.set(mdId, state.commentId++);
+      }
+    } else if (run.type === 'comment_body_with_id' && run.replies && run.replies.length > 0) {
+      const mdId = run.commentId || '';
+      const numericId = state.commentIdMap.get(mdId);
+      if (numericId !== undefined && !state.replyRanges.some(rr => rr.parentId === numericId)) {
+        for (const _reply of run.replies) {
+          const replyId = state.commentId++;
+          state.replyRanges.push({ replyId, parentId: numericId });
+        }
+      }
+    }
+  };
+  for (const token of tokens) {
+    for (const run of token.runs) {
+      prescanRun(run);
+    }
+    // Also scan runs inside table cells
+    if (token.rows) {
+      for (const row of token.rows) {
+        for (const cell of row.cells) {
+          for (const run of cell.runs) {
+            prescanRun(run);
+          }
+        }
+      }
+    }
+  }
 
   // Emit title paragraphs from frontmatter before body content
   if (frontmatter?.title) {
@@ -1772,8 +1945,9 @@ export async function convertMdToDocx(
 
   const hasTheme = !!templateParts?.has('word/theme/theme1.xml');
 
-  // Reserve rId slots: 1=styles, 2=numbering, 3=comments, 4+=theme/settings/fontTable
-  const rIdOffset = 3 + (hasTheme ? 1 : 0) + 2; // +2 for settings and fontTable (always present)
+  // Reserve rId slots: 1=styles, 2=numbering, 3=comments, 4+=commentsExtended/theme/settings/fontTable
+  // We don't know hasCommentsExtended yet (depends on state after generation), so reserve an extra slot
+  const rIdOffset = 3 + 1 + (hasTheme ? 1 : 0) + 2; // +1 for commentsExtended, +2 for settings and fontTable
 
   const state: DocxGenState = {
     commentId: 0,
@@ -1787,6 +1961,8 @@ export async function convertMdToDocx(
     hasComments: false,
     missingKeys: new Set(),
     timezone: frontmatter.timezone,
+    replyRanges: [],
+    nextParaId: 1,
   };
 
   const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
@@ -1823,8 +1999,12 @@ export async function convertMdToDocx(
     zip.file('word/theme/theme1.xml', templateParts!.get('word/theme/theme1.xml')!);
   }
 
+  const hasCommentsExtended = state.hasComments && state.comments.some(c => c.parentParaId);
   if (state.hasComments) {
     zip.file('word/comments.xml', commentsXml(state.comments));
+    if (hasCommentsExtended) {
+      zip.file('word/commentsExtended.xml', commentsExtendedXml(state.comments));
+    }
   }
 
   // Document properties
@@ -1841,9 +2021,9 @@ export async function convertMdToDocx(
     zip.file('docProps/custom.xml', customPropsXml(customProps));
   }
 
-  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps));
+  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps, hasCommentsExtended));
   zip.file('_rels/.rels', relsXml(hasCustomProps));
-  zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme));
+  zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme, hasCommentsExtended));
 
   // Check for comment range markers without corresponding bodies
   for (const [mdId, numericId] of state.commentIdMap) {
