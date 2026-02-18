@@ -538,6 +538,14 @@ export function groupCommentThreads(
     replyIds.add(childId);
   }
 
+  // Sort replies by date so ordering is deterministic regardless of
+  // the element order in commentsExtended.xml.
+  for (const comment of comments.values()) {
+    if (comment.replies && comment.replies.length > 1) {
+      comment.replies.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    }
+  }
+
   return replyIds;
 }
 

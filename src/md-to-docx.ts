@@ -1798,20 +1798,33 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
   // Without this, replyRanges would be empty when comment_range_start is
   // processed because comment_body_with_id (which populates replyRanges)
   // always appears after the range markers in the token stream.
+  const prescanRun = (run: MdRun) => {
+    if (run.type === 'comment_range_start') {
+      const mdId = run.commentId || '';
+      if (!state.commentIdMap.has(mdId)) {
+        state.commentIdMap.set(mdId, state.commentId++);
+      }
+    } else if (run.type === 'comment_body_with_id' && run.replies && run.replies.length > 0) {
+      const mdId = run.commentId || '';
+      const numericId = state.commentIdMap.get(mdId);
+      if (numericId !== undefined && !state.replyRanges.some(rr => rr.parentId === numericId)) {
+        for (const _reply of run.replies) {
+          const replyId = state.commentId++;
+          state.replyRanges.push({ replyId, parentId: numericId });
+        }
+      }
+    }
+  };
   for (const token of tokens) {
     for (const run of token.runs) {
-      if (run.type === 'comment_range_start') {
-        const mdId = run.commentId || '';
-        if (!state.commentIdMap.has(mdId)) {
-          state.commentIdMap.set(mdId, state.commentId++);
-        }
-      } else if (run.type === 'comment_body_with_id' && run.replies && run.replies.length > 0) {
-        const mdId = run.commentId || '';
-        const numericId = state.commentIdMap.get(mdId);
-        if (numericId !== undefined && !state.replyRanges.some(rr => rr.parentId === numericId)) {
-          for (const _reply of run.replies) {
-            const replyId = state.commentId++;
-            state.replyRanges.push({ replyId, parentId: numericId });
+      prescanRun(run);
+    }
+    // Also scan runs inside table cells
+    if (token.rows) {
+      for (const row of token.rows) {
+        for (const cell of row.cells) {
+          for (const run of cell.runs) {
+            prescanRun(run);
           }
         }
       }
