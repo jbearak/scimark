@@ -64,8 +64,8 @@ const SAMPLE_BIBTEX = `
 // ============================================================================
 
 describe('parseFrontmatter', () => {
-  test('parses CSL, locale, and note-type fields', () => {
-    const input = '---\ncsl: apa\nlocale: en-US\nnote-type: footnotes\n---\nBody text here.';
+  test('parses CSL, locale, and zotero-notes fields', () => {
+    const input = '---\ncsl: apa\nlocale: en-US\nzotero-notes: footnotes\n---\nBody text here.';
     const { metadata, body } = parseFrontmatter(input);
     expect(metadata.csl).toBe('apa');
     expect(metadata.locale).toBe('en-US');
@@ -73,10 +73,10 @@ describe('parseFrontmatter', () => {
     expect(body).toBe('Body text here.');
   });
 
-  test('parses legacy numeric note-type values', () => {
-    expect(parseFrontmatter('---\nnote-type: 0\n---\n').metadata.noteType).toBe('in-text');
-    expect(parseFrontmatter('---\nnote-type: 1\n---\n').metadata.noteType).toBe('footnotes');
-    expect(parseFrontmatter('---\nnote-type: 2\n---\n').metadata.noteType).toBe('endnotes');
+  test('parses legacy numeric zotero-notes values', () => {
+    expect(parseFrontmatter('---\nzotero-notes: 0\n---\n').metadata.noteType).toBe('in-text');
+    expect(parseFrontmatter('---\nzotero-notes: 1\n---\n').metadata.noteType).toBe('footnotes');
+    expect(parseFrontmatter('---\nzotero-notes: 2\n---\n').metadata.noteType).toBe('endnotes');
   });
 
   test('handles missing frontmatter', () => {
@@ -113,7 +113,7 @@ describe('parseFrontmatter', () => {
 describe('serializeFrontmatter', () => {
   test('serializes all fields', () => {
     const result = serializeFrontmatter({ csl: 'apa', locale: 'en-US', noteType: 'footnotes' });
-    expect(result).toBe('---\ncsl: apa\nlocale: en-US\nnote-type: footnotes\n---\n');
+    expect(result).toBe('---\ncsl: apa\nlocale: en-US\nzotero-notes: footnotes\n---\n');
   });
 
   test('returns empty string for empty metadata', () => {
@@ -124,7 +124,7 @@ describe('serializeFrontmatter', () => {
     const result = serializeFrontmatter({ csl: 'ieee' });
     expect(result).toBe('---\ncsl: ieee\n---\n');
     expect(result).not.toContain('locale');
-    expect(result).not.toContain('note-type');
+    expect(result).not.toContain('zotero-notes');
   });
 });
 

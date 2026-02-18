@@ -25,12 +25,15 @@ export function noteTypeToNumber(nt: NoteType): number {
   return NOTE_TYPE_TO_NUMBER[nt];
 }
 
+export type NotesMode = 'footnotes' | 'endnotes';
+
 export interface Frontmatter {
   title?: string[];
   author?: string;
   csl?: string;
   locale?: string;
   noteType?: NoteType;
+  notes?: NotesMode;
   timezone?: string;
   bibliography?: string;
 }
@@ -74,9 +77,16 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
       case 'locale':
         metadata.locale = value;
         break;
+      case 'zotero-notes':
       case 'note-type': {
         const nt = NOTE_TYPE_NAMES[value];
         if (nt) metadata.noteType = nt;
+        break;
+      }
+      case 'notes': {
+        if (value === 'footnotes' || value === 'endnotes') {
+          metadata.notes = value;
+        }
         break;
       }
       case 'timezone':
@@ -107,7 +117,8 @@ export function serializeFrontmatter(metadata: Frontmatter): string {
   if (metadata.author) lines.push(`author: ${metadata.author}`);
   if (metadata.csl) lines.push(`csl: ${metadata.csl}`);
   if (metadata.locale) lines.push(`locale: ${metadata.locale}`);
-  if (metadata.noteType) lines.push(`note-type: ${metadata.noteType}`);
+  if (metadata.noteType) lines.push(`zotero-notes: ${metadata.noteType}`);
+  if (metadata.notes === 'endnotes') lines.push(`notes: endnotes`);
   if (metadata.timezone) lines.push(`timezone: ${metadata.timezone}`);
   if (metadata.bibliography) lines.push(`bibliography: ${metadata.bibliography}`);
   if (lines.length === 0) return '';
