@@ -13,7 +13,7 @@ The converter supports DOCX → Markdown → DOCX round-tripping. The following 
 - **Lists**: Markdown list syntax ↔ Word numbering (bulleted and numbered with nesting)
 - **Comments**: non-overlapping comments use CriticMarkup `{==highlighted text==}{>>author: comment<<}` format; overlapping comments use non-inline ID-based syntax (`{#1}highlighted text{/1}{#1>>alice: comment<<}`) — see [Specification](specification.md#overlapping-comments)
 - **Track changes**: CriticMarkup `{++...++}` and `{--...--}` ↔ Word revisions (`w:ins`/`w:del`)
-- **Citations**: Zotero field codes ↔ Pandoc `[@key]` syntax with BibTeX export. On import, `ZOTERO_BIBL` field codes are detected and omitted (bibliography is regenerated on export).
+- **Citations**: Zotero field codes ↔ Pandoc `[@key]` syntax with BibTeX export. On import, `ZOTERO_BIBL` field codes are detected and omitted (bibliography is regenerated on export). On export, bibliography is automatically generated and appended as a `ZOTERO_BIBL` field when a CSL style is specified. Mixed Zotero/non-Zotero grouped citations are split — Zotero entries become a field code and non-Zotero entries become plain text. The `manuscriptMarkdown.mixedCitationStyle` setting controls rendering: `"separate"` (default) gives each portion its own parentheses for clean Zotero refresh, while `"unified"` wraps everything in one set of parentheses (see [Zotero Round-Trip](zotero-roundtrip.md#mixedcitationstyle-setting)). Missing keys appear inline as `@citekey` with a post-bibliography note.
 - **Zotero document preferences**: CSL style, locale, and note type round-tripped between YAML frontmatter (`csl`, `locale`, `zotero-notes`) and `docProps/custom.xml` (`ZOTERO_PREF_*` properties)
 - **Math**: OMML equations ↔ LaTeX (`$inline$` and `$$display$$`)
 - **Hyperlinks**: Markdown links ↔ Word hyperlinks (with proper escaping)
@@ -130,15 +130,6 @@ The following 16 styles are bundled and available without downloading:
 `apa`, `bmj`, `chicago-author-date`, `chicago-fullnote-bibliography`, `chicago-note-bibliography`, `modern-language-association`, `ieee`, `nature`, `cell`, `science`, `american-medical-association`, `american-chemical-society`, `american-political-science-association`, `american-sociological-association`, `vancouver`, `harvard-cite-them-right`
 
 If a style is not bundled, you will be prompted to download it from the [CSL styles repository](https://github.com/citation-style-language/styles-distribution). Downloaded styles are cached in VS Code's global storage for reuse across workspaces.
-
-### What's Exported
-
-All [round-trip features](#round-trip-features) are preserved on export. The following additional features are supported:
-
-- **Blockquotes**: indented paragraphs with Quote or Intense Quote style (configurable via `manuscriptMarkdown.blockquoteStyle`)
-- **Code**: inline code with monospace character style, fenced code blocks with shaded paragraph style (language annotations round-tripped via `MANUSCRIPT_CODE_BLOCK_LANGS` custom property)
-- **Bibliography**: automatically generated and appended as a `ZOTERO_BIBL` field when a CSL style is specified
-- **Mixed citations**: Mixed Zotero/non-Zotero grouped citations are split — Zotero entries become a field code and non-Zotero entries become plain text. The `manuscriptMarkdown.mixedCitationStyle` setting controls rendering: `"separate"` (default) gives each portion its own parentheses for clean Zotero refresh, while `"unified"` wraps everything in one set of parentheses (see [Zotero Round-Trip](zotero-roundtrip.md#mixedcitationstyle-setting)). Missing keys appear inline as `@citekey` with a post-bibliography note.
 
 ### Template Support
 
