@@ -2,9 +2,9 @@ import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { promisify } from 'util';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const realpathNativeAsync = promisify(fs.realpath.native);
-import { fileURLToPath, pathToFileURL } from 'url';
 import { BibtexEntry, parseBibtex } from '../bibtex-parser';
 import { computeCodeRegions, isInsideCodeRegion, overlapsCodeRegion } from '../code-regions';
 import { Frontmatter, normalizeBibPath, parseFrontmatter } from '../frontmatter';
