@@ -1,4 +1,21 @@
 import { findMatchingClose } from './critic-markup';
+
+// --- Implementation notes ---
+// - ==text=={color} is unambiguous with CriticMarkup {==text==} (brace is before ==, not after)
+// - Config access: module-level get/set passes VS Code settings to markdown-it plugin
+//   without importing vscode
+// - Fallback hierarchy: configured default → yellow/amber; keep preview/editor aligned
+// - Deletion styling: no explicit foreground; strikethrough only, let theme drive foreground
+// - Comment styling: no explicit foreground; background + italic only
+// - TextMate inline highlight regex: exclude = inside ==...== captures ([^}=]+) for
+//   multi-span tokenization
+// - extractCriticDelimiterRanges(): skip comment/highlight delimiters so decoration
+//   doesn't override TextMate scopes
+// - extractAllDecorationRanges(): preserve extractHighlightRanges() behavior for ==...==
+//   inside any CriticMarkup span
+// - Comment token scope: use meta.comment* not comment.block* — comment.block suppresses
+//   editor features (bracket matching, auto-complete, snippets)
+
 /** Canonical color name → hex value mapping for Word highlight colors */
 export const HIGHLIGHT_COLORS: Record<string, string> = {
   'yellow':      '#FFFF00',
@@ -197,7 +214,7 @@ export function extractHighlightRanges(text: string, defaultColor: string): Map<
   // Colored highlights ==text=={color} and default highlights ==text==
   // Run on masked text so `=` and `}` in CriticMarkup delimiters don't block matches
   const masked = maskCriticDelimiters(text);
-  const hlRe = /(?<!\{)==([^}=]+)==(?:\{([a-z0-9-]+)\})?/g;
+  const hlRe = /(?<!\{)==([^}=]+)==(?:\{([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\})?/g;
   while ((m = hlRe.exec(masked)) !== null) {
     const mStart = m.index;
     const mEnd = mStart + m[0].length;
