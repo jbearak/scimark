@@ -884,4 +884,13 @@ function formatBibEntryHover(entry: BibtexEntry): string {
 	return lines.join('\n\n');
 }
 
-export { updateBibReverseMap as _updateBibReverseMap, removeBibReverseMapEntry as _removeBibReverseMapEntry, getMarkdownUrisForBib as _getMarkdownUrisForBib, bibReverseMap as _bibReverseMap, scheduleValidation as _scheduleValidation, VALIDATION_DEBOUNCE_MS as _VALIDATION_DEBOUNCE_MS, validationTimers as _validationTimers, runValidationPipeline as _runValidationPipeline };
+export {
+	updateBibReverseMap as _updateBibReverseMap,
+	removeBibReverseMapEntry as _removeBibReverseMapEntry,
+	getMarkdownUrisForBib as _getMarkdownUrisForBib,
+	bibReverseMap as _bibReverseMap,
+	scheduleValidation as _scheduleValidation,
+	VALIDATION_DEBOUNCE_MS as _VALIDATION_DEBOUNCE_MS,
+	validationTimers as _validationTimers,
+	runValidationPipeline as _runValidationPipeline,
+};
