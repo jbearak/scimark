@@ -1,6 +1,9 @@
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
+import { promisify } from 'util';
+
+const realpathNativeAsync = promisify(fs.realpath.native);
 import { fileURLToPath, pathToFileURL } from 'url';
 import { BibtexEntry, parseBibtex } from '../bibtex-parser';
 import { computeCodeRegions, isInsideCodeRegion, overlapsCodeRegion } from '../code-regions';
@@ -99,7 +102,7 @@ export async function canonicalizeFsPathAsync(fsPath: string): Promise<string> {
 	const cached = canonicalCache.get(value);
 	if (cached !== undefined) return cached;
 	try {
-		value = await fsp.realpath(value);
+		value = await realpathNativeAsync(value);
 	} catch {
 		// keep resolved path when realpath cannot be resolved
 	}
