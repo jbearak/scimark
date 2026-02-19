@@ -30,7 +30,6 @@ function computeCodeRegionsForTest(text: string): CodeRegion[] {
 	// A fenced code block starts with a line beginning with >=3 backticks or tildes
 	// and ends with a line beginning with >=3 of the same char (>= opening count).
 	const fenceRe = /^(`{3,}|~{3,})[^\n]*$/gm;
-	const fenceStack: { char: string; count: number; start: number } | null = null;
 	let openFence: { char: string; count: number; start: number } | null = null;
 	let fenceMatch: RegExpExecArray | null;
 
