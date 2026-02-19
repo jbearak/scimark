@@ -100,7 +100,11 @@ function scheduleValidation(uri: string): void {
 	validationTimers.set(uri, setTimeout(() => {
 		validationTimers.delete(uri);
 		const doc = documents.get(uri);
-		if (doc) runValidationPipeline(doc);
+		if (doc) {
+			runValidationPipeline(doc).catch(e =>
+				connection.console.error(`Scheduled validation error for ${uri}: ${e instanceof Error ? e.message : String(e)}`)
+			);
+		}
 	}, VALIDATION_DEBOUNCE_MS));
 }
 
@@ -192,7 +196,9 @@ connection.onDidChangeConfiguration((params) => {
 
 documents.onDidOpen((event) => {
 	if (isMarkdownUri(event.document.uri, event.document.languageId)) {
-		runValidationPipeline(event.document);
+		runValidationPipeline(event.document).catch(e =>
+			connection.console.error(`Validation error on open for ${event.document.uri}: ${e instanceof Error ? e.message : String(e)}`)
+		);
 	}
 });
 
