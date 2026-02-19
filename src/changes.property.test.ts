@@ -20,22 +20,13 @@ const combinedPattern = /\{\+\+([\s\S]*?)\+\+\}|\{--([\s\S]*?)--\}|\{\~\~([\s\S]
 
 /** Perform a fresh regex scan on text, returning matched strings. */
 function freshScan(text: string): string[] {
-	const re = new RegExp(combinedPattern.source, combinedPattern.flags);
-	const results: string[] = [];
-	let m;
-	while ((m = re.exec(text)) !== null) {
-		results.push(m[0]);
-	}
 	// Filter contained ranges (same logic as production getAllMatches)
 	const filtered: string[] = [];
-	let lastStart = -1;
-	let lastEnd = -1;
-	let idx = 0;
-	const re2 = new RegExp(combinedPattern.source, combinedPattern.flags);
+	const re = new RegExp(combinedPattern.source, combinedPattern.flags);
 	const offsets: Array<{ start: number; end: number; text: string }> = [];
-	let m2;
-	while ((m2 = re2.exec(text)) !== null) {
-		offsets.push({ start: m2.index, end: m2.index + m2[0].length, text: m2[0] });
+	let m;
+	while ((m = re.exec(text)) !== null) {
+		offsets.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
 	}
 	let lastKept: { start: number; end: number } | undefined;
 	for (const o of offsets) {
