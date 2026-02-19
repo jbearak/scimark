@@ -762,16 +762,20 @@ function processInlineChildren(tokens: any[]): MdRun[] {
           let innerHighlight: boolean | undefined;
           let innerColor: string | undefined;
 
-          const coloredMatch = text.match(/^==([\s\S]*)==\{([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\}$/);
-          const plainMatch = !coloredMatch && text.match(/^==([\s\S]*)==$/);
+          // Only strip inner ==...== from critic_highlight — not critic_add/critic_del
+          // where literal == characters in added/deleted text would be misinterpreted.
+          if (token.criticType === 'critic_highlight') {
+            const coloredMatch = text.match(/^==([\s\S]*)==\{([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\}$/);
+            const plainMatch = !coloredMatch && text.match(/^==([\s\S]*)==$/);
 
-          if (coloredMatch) {
-            text = coloredMatch[1];
-            innerHighlight = true;
-            innerColor = coloredMatch[2];
-          } else if (plainMatch) {
-            text = plainMatch[1];
-            innerHighlight = true;
+            if (coloredMatch) {
+              text = coloredMatch[1];
+              innerHighlight = true;
+              innerColor = coloredMatch[2];
+            } else if (plainMatch) {
+              text = plainMatch[1];
+              innerHighlight = true;
+            }
           }
 
           runs.push({
