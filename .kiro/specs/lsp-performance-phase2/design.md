@@ -184,8 +184,12 @@ export async function resolveBibliographyPathAsync(
   const candidates: string[] = [];
   if (fm.bibliography) {
     const bibFile = normalizeBibPath(fm.bibliography);
-    if (path.isAbsolute(bibFile)) {
-      for (const root of workspaceRootPaths) candidates.push(path.join(root, bibFile));
+    const isRootRelative = bibFile.startsWith('/');
+    if (isRootRelative) {
+      const rel = bibFile.slice(1);
+      for (const root of workspaceRootPaths) candidates.push(path.join(root, rel));
+      candidates.push(bibFile);
+    } else if (path.isAbsolute(bibFile)) {
       candidates.push(bibFile);
     } else {
       candidates.push(path.join(markdownDir, bibFile));
@@ -385,9 +389,9 @@ private debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 **Validates: Requirements 4.1, 4.2**
 
-### Property 5: Empty selections skip word count update
+### Property 5: Selection changes trigger debounced word count update
 
-*For any* selection change event where all selections are empty (cursor movement only), the word count should not be recalculated. *For any* selection change event where at least one selection is non-empty, the update should be debounced.
+*For any* selection change event (whether selections are empty or non-empty), the Word_Count_Controller SHALL schedule a debounced update so the status bar resets to the full-document word count when a selection is cleared. *For any* selection change event where at least one selection is non-empty, the update is likewise debounced.
 
 **Validates: Requirements 4.4, 4.5**
 
