@@ -1344,8 +1344,45 @@ describe('highlightColor extraction', () => {
     ];
 
     const result = buildMarkdown(content, new Map());
-    // Should produce two separate highlight spans, not merged
-    expect(result).toBe('==yellow====cyan==');
+    // Should produce two separate highlight spans: plain yellow + colored cyan→turquoise
+    expect(result).toBe('==yellow====cyan=={turquoise}');
+  });
+});
+
+describe('wrapWithFormatting colored highlights', () => {
+  test('default/yellow highlight produces plain ==text==', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'yellow' }))
+      .toBe('==hello==');
+  });
+
+  test('highlight without highlightColor produces plain ==text==', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true }))
+      .toBe('==hello==');
+  });
+
+  test('OOXML named color (cyan) produces ==text=={turquoise}', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'cyan' }))
+      .toBe('==hello=={turquoise}');
+  });
+
+  test('OOXML named color (green) produces ==text=={green}', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'green' }))
+      .toBe('==hello=={green}');
+  });
+
+  test('hex color from w:shd (00FF00) produces ==text=={green}', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: '00FF00' }))
+      .toBe('==hello=={green}');
+  });
+
+  test('unknown color falls back to plain ==text==', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'unknown' }))
+      .toBe('==hello==');
+  });
+
+  test('hex yellow (FFFF00) produces plain ==text==', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'FFFF00' }))
+      .toBe('==hello==');
   });
 });
 
