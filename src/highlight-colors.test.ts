@@ -6,7 +6,9 @@ import {
   extractHighlightRanges,
   extractCriticDelimiterRanges,
   setDefaultHighlightColor,
-  getDefaultHighlightColor
+  getDefaultHighlightColor,
+  resolveMarkdownColor,
+  OOXML_TO_MARKDOWN
 } from './highlight-colors';
 
 const colorIdGen = fc.constantFrom(...VALID_COLOR_IDS);
@@ -163,5 +165,57 @@ describe('Property 9: Default highlight color respects configuration', () => {
     } finally {
       setDefaultHighlightColor(originalDefault);
     }
+  });
+});
+
+describe('resolveMarkdownColor', () => {
+  it('maps OOXML named colors to markdown names', () => {
+    for (const [ooxml, markdown] of Object.entries(OOXML_TO_MARKDOWN)) {
+      expect(resolveMarkdownColor(ooxml)).toBe(markdown);
+    }
+  });
+
+  it('maps specific OOXML names correctly', () => {
+    expect(resolveMarkdownColor('cyan')).toBe('turquoise');
+    expect(resolveMarkdownColor('magenta')).toBe('pink');
+    expect(resolveMarkdownColor('darkBlue')).toBe('dark-blue');
+    expect(resolveMarkdownColor('darkCyan')).toBe('teal');
+    expect(resolveMarkdownColor('darkMagenta')).toBe('violet');
+    expect(resolveMarkdownColor('darkRed')).toBe('dark-red');
+    expect(resolveMarkdownColor('darkYellow')).toBe('dark-yellow');
+    expect(resolveMarkdownColor('darkGray')).toBe('gray-50');
+    expect(resolveMarkdownColor('lightGray')).toBe('gray-25');
+  });
+
+  it('maps identity colors (same name in both systems)', () => {
+    expect(resolveMarkdownColor('yellow')).toBe('yellow');
+    expect(resolveMarkdownColor('green')).toBe('green');
+    expect(resolveMarkdownColor('blue')).toBe('blue');
+    expect(resolveMarkdownColor('red')).toBe('red');
+    expect(resolveMarkdownColor('black')).toBe('black');
+  });
+
+  it('maps hex values without # prefix', () => {
+    expect(resolveMarkdownColor('00FF00')).toBe('green');
+    expect(resolveMarkdownColor('FFFF00')).toBe('yellow');
+    expect(resolveMarkdownColor('00FFFF')).toBe('turquoise');
+    expect(resolveMarkdownColor('FF0000')).toBe('red');
+  });
+
+  it('maps hex values with # prefix', () => {
+    expect(resolveMarkdownColor('#00FF00')).toBe('green');
+    expect(resolveMarkdownColor('#FFFF00')).toBe('yellow');
+    expect(resolveMarkdownColor('#0000FF')).toBe('blue');
+  });
+
+  it('maps lowercase hex values', () => {
+    expect(resolveMarkdownColor('00ff00')).toBe('green');
+    expect(resolveMarkdownColor('ffff00')).toBe('yellow');
+  });
+
+  it('returns undefined for unknown values', () => {
+    expect(resolveMarkdownColor('unknown')).toBeUndefined();
+    expect(resolveMarkdownColor('FF8C00')).toBeUndefined();
+    expect(resolveMarkdownColor('')).toBeUndefined();
   });
 });

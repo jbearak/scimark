@@ -1344,8 +1344,79 @@ describe('highlightColor extraction', () => {
     ];
 
     const result = buildMarkdown(content, new Map());
-    // Should produce two separate highlight spans, not merged
-    expect(result).toBe('==yellow====cyan==');
+    // Should produce two separate highlight spans: plain yellow + colored cyan→turquoise
+    expect(result).toBe('==yellow====cyan=={turquoise}');
+  });
+});
+
+describe('wrapWithFormatting colored highlights', () => {
+  test('default/yellow highlight produces plain ==text==', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'yellow' }))
+      .toBe('==hello==');
+  });
+
+  test('highlight without highlightColor produces plain ==text==', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true }))
+      .toBe('==hello==');
+  });
+
+  test('OOXML named color (cyan) produces ==text=={turquoise}', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'cyan' }))
+      .toBe('==hello=={turquoise}');
+  });
+
+  test('OOXML named color (green) produces ==text=={green}', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'green' }))
+      .toBe('==hello=={green}');
+  });
+
+  test('hex color from w:shd (00FF00) produces ==text=={green}', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: '00FF00' }))
+      .toBe('==hello=={green}');
+  });
+
+  test('unknown color falls back to plain ==text==', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'unknown' }))
+      .toBe('==hello==');
+  });
+
+  test('hex yellow (FFFF00) produces plain ==text==', () => {
+    expect(wrapWithFormatting('hello', { ...DEFAULT_FORMATTING, highlight: true, highlightColor: 'FFFF00' }))
+      .toBe('==hello==');
+  });
+});
+
+describe('colored highlight round-trip', () => {
+  test('DOCX with green highlight → MD → DOCX → MD preserves ==text=={green}', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:rPr><w:highlight w:val="green"/></w:rPr><w:t>green text</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const pass1 = await convertDocx(buf);
+    expect(pass1.markdown).toContain('==green text=={green}');
+
+    const { docx: docx2 } = await convertMdToDocx(pass1.markdown);
+    const pass2 = await convertDocx(docx2);
+    expect(pass2.markdown).toContain('==green text=={green}');
+  });
+
+  test('DOCX with cyan highlight → MD produces ==text=={turquoise}', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:rPr><w:highlight w:val="cyan"/></w:rPr><w:t>cyan text</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('==cyan text=={turquoise}');
+  });
+
+  test('DOCX with yellow highlight → MD produces plain ==text==', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t>yellow text</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('==yellow text==');
+    expect(result.markdown).not.toContain('==yellow text=={');
   });
 });
 

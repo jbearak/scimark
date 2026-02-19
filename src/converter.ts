@@ -1,6 +1,8 @@
 import JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
 import { ommlToLatex } from './omml';
+import { resolveMarkdownColor } from './highlight-colors';
+import { wrapColoredHighlight } from './formatting';
 import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
 
 /** Matches a "Sources" heading (with or without leading `#` markers). */
@@ -509,7 +511,14 @@ export function wrapWithFormatting(text: string, fmt: RunFormatting): string {
   } else if (fmt.subscript) {
     result = `<sub>${result}</sub>`;
   }
-  if (fmt.highlight) result = `==${result}==`;
+  if (fmt.highlight) {
+    const color = fmt.highlightColor ? resolveMarkdownColor(fmt.highlightColor) : undefined;
+    if (color && color !== 'yellow') {
+      result = wrapColoredHighlight(result, color).newText;
+    } else {
+      result = `==${result}==`;
+    }
+  }
   if (fmt.underline) result = `<u>${result}</u>`;
   if (fmt.strikethrough) result = `~~${result}~~`;
   if (fmt.italic) result = `*${result}*`;

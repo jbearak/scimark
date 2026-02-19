@@ -17,6 +17,39 @@ export const HIGHLIGHT_COLORS: Record<string, string> = {
   'black':       '#000000',
 };
 
+/**
+ * Reverse mapping: OOXML ST_HighlightColor values → Manuscript Markdown color names.
+ * This is the inverse of COLOR_TO_OOXML in md-to-docx.ts.
+ */
+export const OOXML_TO_MARKDOWN: Record<string, string> = {
+  'yellow': 'yellow', 'green': 'green', 'blue': 'blue', 'red': 'red', 'black': 'black',
+  'cyan': 'turquoise', 'magenta': 'pink', 'darkBlue': 'dark-blue',
+  'darkCyan': 'teal', 'darkMagenta': 'violet', 'darkRed': 'dark-red',
+  'darkYellow': 'dark-yellow', 'darkGray': 'gray-50', 'lightGray': 'gray-25',
+};
+
+/** Build a reverse lookup from hex (without #) → markdown color name */
+const HEX_TO_MARKDOWN: Record<string, string> = {};
+for (const [name, hex] of Object.entries(HIGHLIGHT_COLORS)) {
+  HEX_TO_MARKDOWN[hex.slice(1).toUpperCase()] = name;
+}
+
+/**
+ * Resolve a DOCX highlight color value to a Manuscript Markdown color name.
+ * Accepts OOXML ST_HighlightColor names (e.g. "cyan", "darkBlue") or
+ * hex RGB values from w:shd (e.g. "00FF00", "#00FF00").
+ * Returns undefined if the value cannot be mapped.
+ */
+export function resolveMarkdownColor(docxColor: string): string | undefined {
+  // Check OOXML named colors first
+  const named = OOXML_TO_MARKDOWN[docxColor];
+  if (named) return named;
+
+  // Try as hex value (strip optional # prefix)
+  const hex = docxColor.replace(/^#/, '').toUpperCase();
+  return HEX_TO_MARKDOWN[hex];
+}
+
 /** Theme-aware background colors for editor decorations */
 export const HIGHLIGHT_DECORATION_COLORS: Record<string, { light: string; dark: string }> = {
   'yellow':      { light: 'rgba(255, 255, 0, 0.40)',   dark: 'rgba(255, 255, 0, 0.25)' },
