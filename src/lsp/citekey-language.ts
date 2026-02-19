@@ -3,7 +3,7 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { BibtexEntry, parseBibtex } from '../bibtex-parser';
-import { computeCodeRegions, overlapsCodeRegion } from '../code-regions';
+import { computeCodeRegions, isInsideCodeRegion, overlapsCodeRegion } from '../code-regions';
 import { Frontmatter, normalizeBibPath, parseFrontmatter } from '../frontmatter';
 
 const CITATION_SEGMENT_RE = /\[[^\]]*@[^\]]*]/g;
@@ -155,10 +155,14 @@ export function findUsagesForKey(text: string, key: string): CitekeyUsage[] {
 	const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	const segRe = /\[[^\]]*@[^\]]*\]/g;
 	const keyRe = new RegExp(`@${escaped}(?![A-Za-z0-9_:-])`, 'g');
+	const codeRegions = computeCodeRegions(text);
 	const usages: CitekeyUsage[] = [];
 	let segMatch: RegExpExecArray | null;
 	segRe.lastIndex = 0;
 	while ((segMatch = segRe.exec(text)) !== null) {
+		if (overlapsCodeRegion(segMatch.index, segMatch.index + segMatch[0].length, codeRegions)) {
+			continue;
+		}
 		const inner = segMatch[0].slice(1, -1);
 		const segmentOffset = segMatch.index + 1;
 		keyRe.lastIndex = 0;
@@ -173,6 +177,8 @@ export function findUsagesForKey(text: string, key: string): CitekeyUsage[] {
 
 export function findCitekeyAtOffset(text: string, offset: number): string | undefined {
 	if (offset < 0 || offset >= text.length) return undefined;
+	const codeRegions = computeCodeRegions(text);
+	if (isInsideCodeRegion(offset, codeRegions)) return undefined;
 	const maxScanDistance = 500;
 	let scanStart = offset;
 	let scanEnd = offset;

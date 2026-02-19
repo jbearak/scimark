@@ -19,7 +19,7 @@
   - Mark task complete when test is written, run, and failure is documented
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.10_
 
-- [ ] 2. Write preservation property tests (BEFORE implementing fix)
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
   - **Property 2: Preservation** - Non-Code-Region Behavior Unchanged
   - **IMPORTANT**: Follow observation-first methodology
   - **IMPORTANT**: Write this test BEFORE implementing the fix
@@ -37,8 +37,8 @@
   - Mark task complete when tests are written, run, and passing on unfixed code
   - _Requirements: 3.1, 3.2, 3.3, 3.6, 3.7_
 
-- [ ] 3. Implement shared code region detection utility
-  - [ ] 3.1 Create `src/code-regions.ts` with `computeCodeRegions()` and `isInsideCodeRegion()`
+- [x] 3. Implement shared code region detection utility
+  - [x] 3.1 Create `src/code-regions.ts` with `computeCodeRegions()` and `isInsideCodeRegion()`
     - `computeCodeRegions(text: string): Array<{start: number, end: number}>` — returns sorted array of code region ranges
     - Detect fenced code blocks first (lines starting with `` ``` `` or `~~~`, track open/close pairs, include fences in range)
     - Detect inline code spans in remaining text (CommonMark §6.1 backtick string matching — opening backtick string matched with equal-length closing string, include backticks in range)
@@ -50,7 +50,7 @@
     - _Preservation: Only code regions are identified; no false positives for backticks in non-code contexts_
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.10_
 
-  - [ ] 3.2 Write unit tests for `computeCodeRegions()` and `isInsideCodeRegion()`
+  - [x] 3.2 Write unit tests for `computeCodeRegions()` and `isInsideCodeRegion()`
     - Test inline code: `` `code` ``, ``` ``code`` ```, backticks containing CriticMarkup
     - Test fenced code blocks: `` ``` `` and `~~~` delimiters, with and without language tags
     - Test mixed: document with both inline code and fenced blocks
@@ -58,8 +58,8 @@
     - Test `isInsideCodeRegion` at boundary positions (start, end, just inside, just outside)
     - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 4. Fix editor decorations — `extractAllDecorationRanges()`
-  - [ ] 4.1 Add code-region skipping to `extractAllDecorationRanges` in `src/highlight-colors.ts`
+- [x] 4. Fix editor decorations — `extractAllDecorationRanges()`
+  - [x] 4.1 Add code-region skipping to `extractAllDecorationRanges` in `src/highlight-colors.ts`
     - Import `computeCodeRegions` from `./code-regions`
     - Compute code regions at the start of the function
     - In the main `while (i < len)` char-by-char loop: when `i` enters a code region, advance `i` to the end of that region (skip the entire code region)
@@ -69,7 +69,7 @@
     - _Preservation: Decorations outside code regions unchanged_
     - _Requirements: 2.1, 2.2, 2.3, 3.1, 3.2_
 
-  - [ ] 4.2 Write unit tests for decoration skipping
+  - [x] 4.2 Write unit tests for decoration skipping
     - Test `extractAllDecorationRanges` with `` `{++added++}` `` — expect no addition ranges
     - Test with `` `==highlighted==` `` — expect no highlight ranges
     - Test with `` `{>>comment<<}` `` — expect no comment ranges
@@ -78,8 +78,8 @@
     - Test CriticMarkup surrounding a code span (e.g., `{==` `` `code` `` `==}`) — expect decoration ranges preserved (delimiters are outside code)
     - _Requirements: 2.1, 2.2, 2.3, 3.3_
 
-- [ ] 5. Fix navigation — `getAllMatches()`
-  - [ ] 5.1 Add code-region filtering to `getAllMatches` in `src/changes.ts`
+- [x] 5. Fix navigation — `getAllMatches()`
+  - [x] 5.1 Add code-region filtering to `getAllMatches` in `src/changes.ts`
     - Import `computeCodeRegions` from `./code-regions`
     - After the regex scan loop, compute code regions from the document text
     - Filter out any match whose `[match.index, match.index + match[0].length)` range overlaps a code region
@@ -90,14 +90,14 @@
     - _Preservation: Navigation matches outside code regions unchanged_
     - _Requirements: 2.4, 3.1, 3.2_
 
-  - [ ] 5.2 Write unit tests for navigation filtering
+  - [x] 5.2 Write unit tests for navigation filtering
     - Test `getAllMatches` (via test-local scanner replicating the regex + filter logic) with CriticMarkup inside inline code — expect no matches
     - Test with CriticMarkup inside fenced code block — expect no matches
     - Test with CriticMarkup both inside and outside code — expect only outside matches
     - _Requirements: 2.4, 3.1_
 
-- [ ] 6. Fix LSP — `scanCitationUsages()` and `findCitekeyAtOffset()`
-  - [ ] 6.1 Add code-region filtering to `scanCitationUsages` in `src/lsp/citekey-language.ts`
+- [x] 6. Fix LSP — `scanCitationUsages()` and `findCitekeyAtOffset()`
+  - [x] 6.1 Add code-region filtering to `scanCitationUsages` in `src/lsp/citekey-language.ts`
     - Import `computeCodeRegions` from `../code-regions`
     - Compute code regions from the input text
     - Filter out any usage whose `keyStart`–`keyEnd` range overlaps a code region
@@ -106,22 +106,22 @@
     - _Preservation: Citation usages outside code regions unchanged_
     - _Requirements: 2.10, 3.6_
 
-  - [ ] 6.2 Add code-region awareness to `findCitekeyAtOffset` in `src/lsp/citekey-language.ts`
+  - [x] 6.2 Add code-region awareness to `findCitekeyAtOffset` in `src/lsp/citekey-language.ts`
     - Compute code regions from the text
     - If the offset falls inside a code region, return undefined (no citekey at this position)
     - _Bug_Condition: Cursor positioned on `@key` inside a code region_
     - _Expected_Behavior: No completion/hover/reference results for citations inside code_
     - _Requirements: 2.10_
 
-  - [ ] 6.3 Write unit tests for LSP code-region filtering
+  - [x] 6.3 Write unit tests for LSP code-region filtering
     - Test `scanCitationUsages` with `` `[@smith2020]` `` — expect no usages
     - Test with `[@smith2020]` outside code — expect usage returned
     - Test with citations both inside and outside code — expect only outside usages
     - Test `findCitekeyAtOffset` at position inside `` `@key` `` — expect undefined
     - _Requirements: 2.10, 3.6_
 
-- [ ] 7. Fix DOCX→MD converter — formatting stripping and comment boundary expansion
-  - [ ] 7.1 Strip non-code formatting in `wrapWithFormatting` in `src/converter.ts`
+- [x] 7. Fix DOCX→MD converter — formatting stripping and comment boundary expansion
+  - [x] 7.1 Strip non-code formatting in `wrapWithFormatting` in `src/converter.ts`
     - When `fmt.code` is true, skip all other formatting wrapping (highlight, bold, italic, strikethrough, underline, superscript, subscript)
     - Only apply the backtick fence for code runs
     - This ensures DOCX code runs with incidental formatting (e.g., bold code in Word) emit clean `` `code` `` without `**` or `==` wrappers
@@ -130,7 +130,7 @@
     - _Preservation: Non-code runs with formatting continue to emit wrappers as before_
     - _Requirements: 2.6, 3.5_
 
-  - [ ] 7.2 Implement comment boundary expansion for code runs in `src/converter.ts`
+  - [x] 7.2 Implement comment boundary expansion for code runs in `src/converter.ts`
     - During markdown assembly in `buildMarkdown` (or a new helper), detect when a comment boundary (start/end marker) would fall inside a code span
     - Comment fully inside code → expand both boundaries to surround the entire `` `code` `` span, emitting `{==` `` `code` `` `==}{>>comment<<}`
     - Comment end inside code → move end marker to after the closing backtick(s)
@@ -141,7 +141,7 @@
     - _Preservation: Comments outside code regions emit unchanged_
     - _Requirements: 2.7, 2.8, 2.9, 3.5_
 
-  - [ ] 7.3 Write unit tests for DOCX→MD formatting stripping and comment expansion
+  - [x] 7.3 Write unit tests for DOCX→MD formatting stripping and comment expansion
     - Test `wrapWithFormatting('text', { code: true, bold: true })` — expect `` `text` `` (no `**`)
     - Test `wrapWithFormatting('text', { code: true, highlight: true })` — expect `` `text` `` (no `==`)
     - Test `wrapWithFormatting('text', { code: true, italic: true, strikethrough: true })` — expect `` `text` `` (no `*` or `~~`)

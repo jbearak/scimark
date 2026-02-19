@@ -293,3 +293,154 @@ describe('Property 1: Fault Condition — Code Region Inertness', () => {
 		);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Property 2: Preservation — Non-Code-Region Behavior Unchanged
+// ---------------------------------------------------------------------------
+
+// Generator: documents with CriticMarkup/highlight/citation patterns but NO
+// backticks or fenced code blocks. For these texts computeCodeRegions returns [],
+// so the code-region fix has zero effect.
+const documentWithoutCodeRegions = fc
+	.array(
+		fc.oneof(
+			{ weight: 3, arbitrary: safeContent },
+			{ weight: 2, arbitrary: criticAddition },
+			{ weight: 2, arbitrary: criticDeletion },
+			{ weight: 1, arbitrary: criticSubstitution },
+			{ weight: 1, arbitrary: criticComment },
+			{ weight: 2, arbitrary: criticHighlight },
+			{ weight: 2, arbitrary: formatHighlight },
+			{ weight: 1, arbitrary: coloredHighlight },
+			{ weight: 1, arbitrary: citation }
+		),
+		{ minLength: 1, maxLength: 8 }
+	)
+	.map(parts => parts.join(' '));
+
+describe('Property 2: Preservation — Non-Code-Region Behavior Unchanged', () => {
+	test('extractAllDecorationRanges produces non-empty results for texts with CriticMarkup and no code regions', () => {
+		fc.assert(
+			fc.property(
+				fc.oneof(
+					criticAddition,
+					criticDeletion,
+					criticComment,
+					criticHighlight,
+					formatHighlight,
+					coloredHighlight
+				),
+				(pattern) => {
+					// A single CriticMarkup/highlight pattern with no code regions
+					const text = `before ${pattern} after`;
+					const regions = computeCodeRegionsForTest(text);
+					expect(regions.length).toBe(0);
+
+					const result = extractAllDecorationRanges(text, 'yellow');
+
+					// At least one decoration category should be non-empty
+					const totalRanges =
+						result.comments.length +
+						result.additions.length +
+						result.deletions.length +
+						result.substitutionNew.length +
+						result.delimiters.length +
+						[...result.highlights.values()].reduce((sum, arr) => sum + arr.length, 0);
+
+					expect(totalRanges).toBeGreaterThan(0);
+				}
+			),
+			{ numRuns: 300 }
+		);
+	});
+
+	test('navigation scanner produces matches for texts with CriticMarkup and no code regions', () => {
+		fc.assert(
+			fc.property(
+				fc.oneof(
+					criticAddition,
+					criticDeletion,
+					criticComment,
+					criticHighlight,
+					formatHighlight,
+					coloredHighlight
+				),
+				(pattern) => {
+					const text = `before ${pattern} after`;
+					const regions = computeCodeRegionsForTest(text);
+					expect(regions.length).toBe(0);
+
+					const matches = scanNavigation(text);
+					expect(matches.length).toBeGreaterThan(0);
+				}
+			),
+			{ numRuns: 300 }
+		);
+	});
+
+	test('scanCitationUsages produces usages for citation patterns with no code regions', () => {
+		fc.assert(
+			fc.property(citation, (cit) => {
+				const text = `some text ${cit} more text`;
+				const regions = computeCodeRegionsForTest(text);
+				expect(regions.length).toBe(0);
+
+				const usages = scanCitationUsages(text);
+				expect(usages.length).toBeGreaterThan(0);
+			}),
+			{ numRuns: 300 }
+		);
+	});
+
+	test('extractAllDecorationRanges on mixed no-code-region documents returns consistent results', () => {
+		fc.assert(
+			fc.property(documentWithoutCodeRegions, (text) => {
+				const regions = computeCodeRegionsForTest(text);
+				// No code regions should be found (no backticks in generators)
+				expect(regions.length).toBe(0);
+
+				// Call twice — results should be identical (idempotence)
+				const result1 = extractAllDecorationRanges(text, 'yellow');
+				const result2 = extractAllDecorationRanges(text, 'yellow');
+
+				expect(result1.comments).toEqual(result2.comments);
+				expect(result1.additions).toEqual(result2.additions);
+				expect(result1.deletions).toEqual(result2.deletions);
+				expect(result1.substitutionNew).toEqual(result2.substitutionNew);
+				expect(result1.delimiters).toEqual(result2.delimiters);
+				expect([...result1.highlights.entries()]).toEqual([...result2.highlights.entries()]);
+			}),
+			{ numRuns: 300 }
+		);
+	});
+
+	test('navigation scanner on mixed no-code-region documents returns consistent results', () => {
+		fc.assert(
+			fc.property(documentWithoutCodeRegions, (text) => {
+				const regions = computeCodeRegionsForTest(text);
+				expect(regions.length).toBe(0);
+
+				const matches1 = scanNavigation(text);
+				const matches2 = scanNavigation(text);
+
+				expect(matches1).toEqual(matches2);
+			}),
+			{ numRuns: 300 }
+		);
+	});
+
+	test('scanCitationUsages on mixed no-code-region documents returns consistent results', () => {
+		fc.assert(
+			fc.property(documentWithoutCodeRegions, (text) => {
+				const regions = computeCodeRegionsForTest(text);
+				expect(regions.length).toBe(0);
+
+				const usages1 = scanCitationUsages(text);
+				const usages2 = scanCitationUsages(text);
+
+				expect(usages1).toEqual(usages2);
+			}),
+			{ numRuns: 300 }
+		);
+	});
+});
