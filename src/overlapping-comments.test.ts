@@ -182,7 +182,7 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     expect(result).toContain(`{#2>>bob (${date2}): reply<<}`);
   });
 
-  test('highlight formatting is stripped in ID-based mode', () => {
+  test('highlight formatting is preserved in ID-based mode', () => {
     const comments = new Map([
       ['c1', { author: 'alice', text: 'note', date: '' }],
       ['c2', { author: 'bob', text: 'reply', date: '' }],
@@ -202,10 +202,25 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
       },
     ];
     const result = buildMarkdown(content, comments);
-    // In ID mode, highlight should be stripped (it was just for Word's comment indication)
-    expect(result).not.toContain('{==');
-    expect(result).toContain('highlighted');
-    expect(result).toContain(' both');
+    expect(result).toContain('==highlighted==');
+    expect(result).toContain('== both==');
+  });
+
+  test('highlighted text inside non-overlapping comment produces {====text====}', () => {
+    const comments = new Map([
+      ['c1', { author: 'alice', text: 'note', date: '' }],
+    ]);
+    const content = [
+      {
+        type: 'text' as const,
+        text: 'text',
+        commentIds: new Set(['c1']),
+        formatting: { ...DEFAULT_FORMATTING, highlight: true },
+      },
+    ];
+    const result = buildMarkdown(content, comments);
+    expect(result).toContain('{====text====}');
+    expect(result).toContain('{>>alice: note<<}');
   });
 
   test('table-only comments are remapped to 1-indexed IDs', () => {
@@ -346,6 +361,44 @@ describe('Overlapping comments: md-to-docx (parseMd)', () => {
     const ends = firstParaRuns!.filter(r => r.type === 'comment_range_end');
     expect(starts.length).toBe(2);
     expect(ends.length).toBe(2);
+  });
+
+  test('{====text====} parses as critic_highlight with highlight=true', () => {
+    const tokens = parseMd('{====text====}{>>alice: note<<}');
+    const runs = tokens[0]?.runs;
+    expect(runs).toBeDefined();
+    const hl = runs!.find(r => r.type === 'critic_highlight' && r.text === 'text');
+    expect(hl).toBeDefined();
+    expect(hl!.highlight).toBe(true);
+  });
+
+  test('{====text=={green}==} parses as critic_highlight with highlight and color', () => {
+    const tokens = parseMd('{====text=={green}==}{>>alice: note<<}');
+    const runs = tokens[0]?.runs;
+    expect(runs).toBeDefined();
+    const hl = runs!.find(r => r.type === 'critic_highlight' && r.text === 'text');
+    expect(hl).toBeDefined();
+    expect(hl!.highlight).toBe(true);
+    expect(hl!.highlightColor).toBe('green');
+  });
+
+  test('=={==text==}== parses as critic_highlight with highlight=true', () => {
+    const tokens = parseMd('=={==text==}==');
+    const runs = tokens[0]?.runs;
+    expect(runs).toBeDefined();
+    const hl = runs!.find(r => r.type === 'critic_highlight' && r.text === 'text');
+    expect(hl).toBeDefined();
+    expect(hl!.highlight).toBe(true);
+  });
+
+  test('=={==text==}=={green} parses as critic_highlight with highlight and color', () => {
+    const tokens = parseMd('=={==text==}=={green}');
+    const runs = tokens[0]?.runs;
+    expect(runs).toBeDefined();
+    const hl = runs!.find(r => r.type === 'critic_highlight' && r.text === 'text');
+    expect(hl).toBeDefined();
+    expect(hl!.highlight).toBe(true);
+    expect(hl!.highlightColor).toBe('green');
   });
 });
 
@@ -489,6 +542,20 @@ describe('Overlapping comments: round-trip', () => {
     expect(customXml).toBeDefined();
     expect(customXml || '').toContain('MANUSCRIPT_COMMENT_IDS_1');
     expect(customXml || '').toContain('&quot;0&quot;:&quot;intro-note&quot;');
+  });
+
+  test('{====text====} round-trips with highlighted text in comment', async () => {
+    const md = '{====text====}{>>alice: note<<}';
+    const { docx } = await convertMdToDocx(md, { authorName: 'test' });
+    const roundtrip = await convertDocx(docx);
+    expect(roundtrip.markdown).toContain('{====text====}');
+  });
+
+  test('=={==text==}== round-trips as highlighted text', async () => {
+    const md = '=={==text==}==';
+    const { docx } = await convertMdToDocx(md, { authorName: 'test' });
+    const roundtrip = await convertDocx(docx);
+    expect(roundtrip.markdown).toContain('==text==');
   });
 });
 

@@ -129,15 +129,9 @@ function formatHrefForMarkdown(href: string): string {
 
 When text runs fall inside a comment range (`commentIds` is non-empty), `buildMarkdown()` groups adjacent runs by identical `commentIds` — even when their `RunFormatting` differs — and emits a single `{==...==}` CriticMarkup block followed by one annotation sequence.
 
-**Critical detail:** Per-run `highlight` formatting is cleared (set to `false`) inside the comment block to avoid producing `{====...====}` (doubled `==` delimiters). The CriticMarkup `{==...==}` wrapper already provides the highlight semantics, so the inner `==` from `RunFormatting.highlight` would be redundant and produce invalid output.
+**Nested highlight syntax:** When text inside a comment range has `highlight: true`, the output produces `{====text====}` — the outer `{==...==}` represents the comment range and the inner `==...==` represents the format highlight. The MD→DOCX parser handles this via `findClosingHighlightMarker` (depth-aware `==` matching) and inner-delimiter stripping in token processing. All four nesting patterns are supported: `{====text====}`, `{====text=={color}==}`, `=={==text==}==`, `=={==text==}=={color}`.
 
-```typescript
-// Inside the comment grouping loop:
-const fmtForComment: RunFormatting = { ...seg.formatting, highlight: false };
-let segText = wrapWithFormatting(seg.text, fmtForComment);
-```
-
-> **AGENTS.md learning:** Group adjacent text runs by identical `commentIds` even when run formatting differs, emit one `{==...==}` block + one annotation sequence, and clear per-run `highlight` inside that block to avoid `{====...====}` output.
+> **AGENTS.md learning:** Group adjacent text runs by identical `commentIds` even when run formatting differs, emit one `{==...==}` block + one annotation sequence. Highlighted text inside a comment produces nested `{====text====}` syntax that round-trips correctly.
 
 ### Heading and List Handling
 
