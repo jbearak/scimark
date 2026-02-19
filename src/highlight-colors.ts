@@ -472,6 +472,17 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
         // When we skip CriticMarkup spans, we also fully process them (record their
         // ranges, delimiters, and nested format highlights) since the main loop will
         // jump past the entire format highlight match.
+        //
+        // Snapshot array lengths so we can roll back any CriticMarkup ranges pushed
+        // during the scan if no valid closing == is found.
+        const snapComments = comments.length;
+        const snapAdditions = additions.length;
+        const snapDeletions = deletions.length;
+        const snapDelimiters = delimiters.length;
+        const snapSubNew = substitutionNew.length;
+        const snapHighlightSizes = new Map<string, number>();
+        for (const [key, arr] of highlights) snapHighlightSizes.set(key, arr.length);
+
         const contentStart = i + 2;
         let k = contentStart;
         let hasContent = false; // at least 1 non-delimiter char
@@ -568,7 +579,22 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
           i = matchEnd;
           continue;
         }
-        // No valid closing == found, advance past the opening ==
+        // No valid closing == found. Roll back any CriticMarkup ranges that were
+        // pushed during this scan — the main loop will re-encounter and process
+        // those spans normally when it reaches them.
+        comments.length = snapComments;
+        additions.length = snapAdditions;
+        deletions.length = snapDeletions;
+        delimiters.length = snapDelimiters;
+        substitutionNew.length = snapSubNew;
+        for (const [key, arr] of highlights) {
+          const snap = snapHighlightSizes.get(key);
+          if (snap !== undefined) arr.length = snap;
+          // Keys added during the scan (not in snapshot) must be removed entirely
+        }
+        for (const key of [...highlights.keys()]) {
+          if (!snapHighlightSizes.has(key)) highlights.delete(key);
+        }
         i = contentStart;
         continue;
       }
