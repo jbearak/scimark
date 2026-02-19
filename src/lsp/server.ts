@@ -111,7 +111,7 @@ async function runValidationPipeline(doc: TextDocument): Promise<void> {
 		const { metadata } = parseFrontmatter(text);
 		await updateBibReverseMap(doc.uri, text, metadata);
 		await validateCitekeys(doc, metadata);
-		await validateCslField(doc, metadata);
+		await validateCslField(doc);
 	} catch (error) {
 		connection.console.error(
 			`Validation pipeline error for ${doc.uri}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`
@@ -423,7 +423,7 @@ connection.onHover(async (params: HoverParams): Promise<Hover | null> => {
 documents.listen(connection);
 connection.listen();
 
-async function validateCslField(doc: TextDocument, metadata?: Frontmatter): Promise<void> {
+async function validateCslField(doc: TextDocument): Promise<void> {
 	try {
 		const text = doc.getText();
 		const fieldInfo = getCslFieldInfo(text);
