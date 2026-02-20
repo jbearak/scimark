@@ -238,15 +238,16 @@ function findAllChildren(children: any[], tag: string): any[][] {
  */
 function isSoleContent(children: any[], tag: string): boolean {
   if (!Array.isArray(children)) return false;
+  let tagFound = false;
   for (const child of children) {
     for (const key of Object.keys(child)) {
       if (key === ':@') continue;
-      if (key === tag) continue;
+      if (key === tag) { tagFound = true; continue; }
       if (SKIP_TAGS.has(key)) continue;
       return false;
     }
   }
-  return true;
+  return tagFound;
 }
 
 /**
@@ -600,7 +601,7 @@ function translateEqArray(children: any[]): string {
   for (const rowChildren of rows) {
     const rowLatex = ommlToLatex(rowChildren);
     rowStrings.push(rowLatex);
-    if (rowLatex.includes('&')) hasAlignment = true;
+    if (/(?<!\\)&/.test(rowLatex)) hasAlignment = true;
   }
 
   const envName = hasAlignment ? 'aligned' : 'gathered';
