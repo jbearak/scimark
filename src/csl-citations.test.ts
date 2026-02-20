@@ -582,9 +582,9 @@ describe('Mixed citation groups in pipeline', () => {
     expect(result.warnings.some(w => w.includes('noSuchKey'))).toBe(true);
   });
 
-  test('mixed group produces single field code regardless of mixedCitationStyle', async () => {
+  test('mixed group produces single unified field code', async () => {
     const md = '---\ncsl: apa\n---\n\nText [@zotEntry; @plainEntry].\n';
-    const result = await convertMdToDocx(md, { bibtex: MIXED_BIBTEX, mixedCitationStyle: 'unified' });
+    const result = await convertMdToDocx(md, { bibtex: MIXED_BIBTEX });
 
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(result.docx);
