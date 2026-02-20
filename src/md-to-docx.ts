@@ -2516,6 +2516,36 @@ export async function convertMdToDocx(
     citedKeys: new Set(),
   };
 
+  // Pre-scan footnote definitions for citation keys so the bibliography
+  // (generated inside generateDocumentXml) includes footnote-only citations.
+  if (bibEntries && footnoteDefs.size > 0) {
+    for (const [, bodyText] of footnoteDefs) {
+      const bodyTokens = parseMd(bodyText);
+      for (const token of bodyTokens) {
+        for (const run of token.runs) {
+          if (run.type === 'citation' && run.keys) {
+            for (const k of run.keys) {
+              if (bibEntries.has(k)) state.citedKeys.add(k);
+            }
+          }
+        }
+        if (token.rows) {
+          for (const row of token.rows) {
+            for (const cell of row.cells) {
+              for (const run of cell.runs) {
+                if (run.type === 'citation' && run.keys) {
+                  for (const k of run.keys) {
+                    if (bibEntries.has(k)) state.citedKeys.add(k);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
 
   // Build footnote/endnote body OOXML from definitions

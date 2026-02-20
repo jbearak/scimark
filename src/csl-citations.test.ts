@@ -587,3 +587,50 @@ describe('Mixed citation groups in pipeline', () => {
   });
 
 });
+
+// ============================================================================
+// Footnote/endnote citations in bibliography
+// ============================================================================
+
+describe('Footnote/endnote citations in bibliography', () => {
+  test('footnote-only citation appears in bibliography', async () => {
+    const md = '---\ncsl: apa\n---\n\nSome text.[^fn1]\n\n[^fn1]: See [@davis2021advances].\n';
+    const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string');
+
+    // The bibliography should include the footnote-only entry
+    expect(docXml).toContain('Davis');
+    expect(docXml).toContain('Advances in renewable energy systems');
+  });
+
+  test('both main-body and footnote-only citations appear in bibliography', async () => {
+    const md = '---\ncsl: apa\n---\n\nMain body text [@smith2020effects].[^fn1]\n\n[^fn1]: Footnote cites [@jones2019urban].\n';
+    const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string');
+
+    // Both entries should appear in the bibliography
+    expect(docXml).toContain('Smith');
+    expect(docXml).toContain('Effects of climate on agriculture');
+    expect(docXml).toContain('Jones');
+    expect(docXml).toContain('Urban planning and public health');
+  });
+
+  test('endnote-only citation appears in bibliography', async () => {
+    const md = '---\ncsl: apa\nnotes: endnotes\n---\n\nSome text.[^en1]\n\n[^en1]: See [@davis2021advances].\n';
+    const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string');
+
+    // The bibliography should include the endnote-only entry
+    expect(docXml).toContain('Davis');
+    expect(docXml).toContain('Advances in renewable energy systems');
+  });
+});
