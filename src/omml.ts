@@ -29,6 +29,7 @@ const UNICODE_LATEX_MAP: Map<string, string> = new Map([
   ['∀', '\\forall'], ['∃', '\\exists'], ['¬', '\\neg'],
   ['∧', '\\land'], ['∨', '\\lor'], ['⊕', '\\oplus'], ['⊗', '\\otimes'],
   ['·', '\\cdot'], ['…', '\\ldots'], ['⋯', '\\cdots'],
+  ['⋱', '\\ddots'], ['⋮', '\\vdots'],
 ]);
 
 const ACCENT_MAP: Map<string, string> = new Map([
@@ -70,8 +71,9 @@ const KNOWN_FUNCTIONS = new Set([
 const SKIP_TAGS = new Set([
   'm:rPr', 'm:ctrlPr', 'm:fPr', 'm:sSupPr', 'm:sSubPr',
   'm:sSubSupPr', 'm:radPr', 'm:naryPr', 'm:dPr', 'm:accPr',
-  'm:mPr', 'm:funcPr', 'w:rPr', 'w:bookmarkStart',
-  'w:bookmarkEnd', 'w:proofErr',
+  'm:mPr', 'm:funcPr', 'm:borderBoxPr', 'm:barPr', 'm:groupChrPr',
+  'm:limLowPr', 'm:limUppPr', 'm:eqArrPr', 'm:sPrePr', 'm:phantPr',
+  'w:rPr', 'w:bookmarkStart', 'w:bookmarkEnd', 'w:proofErr',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -230,7 +232,58 @@ function findAllChildren(children: any[], tag: string): any[][] {
   return results;
 }
 
+/**
+ * Check if the children array contains only the given tag as meaningful content.
+ * Ignores :@ attributes and SKIP_TAGS entries.
+ */
+function isSoleContent(children: any[], tag: string): boolean {
+  if (!Array.isArray(children)) return false;
+  for (const child of children) {
+    for (const key of Object.keys(child)) {
+      if (key === ':@') continue;
+      if (key === tag) continue;
+      if (SKIP_TAGS.has(key)) continue;
+      return false;
+    }
+  }
+  return true;
+}
 
+/**
+ * Determine matrix environment name from delimiter characters.
+ * Returns null if the delimiter pair doesn't match a known matrix variant.
+ */
+function getMatrixEnvName(begChr: string, endChr: string): string | null {
+  if (begChr === '(' && endChr === ')') return 'pmatrix';
+  if (begChr === '[' && endChr === ']') return 'bmatrix';
+  if (begChr === '{' && endChr === '}') return 'Bmatrix';
+  if (begChr === '|' && endChr === '|') return 'vmatrix';
+  if ((begChr === '‖' || begChr === '||') && (endChr === '‖' || endChr === '||')) return 'Vmatrix';
+  return null;
+}
+
+/**
+ * Check if a fraction's children indicate a noBar type (used for binomial).
+ */
+function isNoBarFraction(fracChildren: any[]): boolean {
+  const pr = findChild(fracChildren, 'm:fPr');
+  const typeNode = findChildNode(pr, 'm:type');
+  return typeNode !== undefined && getOmmlAttr(typeNode, 'val') === 'noBar';
+}
+
+/**
+ * Translate matrix content with a specific environment name.
+ */
+function translateMatrixAsEnv(matrixChildren: any[], envName: string): string {
+  const rows = findAllChildren(matrixChildren, 'm:mr');
+  const rowStrings: string[] = [];
+  for (const rowChildren of rows) {
+    const cells = findAllChildren(rowChildren, 'm:e');
+    const cellStrings = cells.map(cell => ommlToLatex(cell));
+    rowStrings.push(cellStrings.join(' & '));
+  }
+  return `\\begin{${envName}} ${rowStrings.join(' \\\\ ')} \\end{${envName}}`;
+}
 
 // ---------------------------------------------------------------------------
 // Fallback placeholder
@@ -430,6 +483,42 @@ function translateDelimiter(children: any[]): string {
   const sepChr = sepChrNode !== undefined ? getOmmlAttr(sepChrNode, 'val') : '|';
 
   const elements = findAllChildren(children, 'm:e');
+
+  // Check for special patterns when single m:e element
+  if (elements.length === 1) {
+    const eChildren = elements[0];
+
+    // Cases: { + empty end + single eqArr
+    if (begChr === '{' && endChr === '') {
+      const eqArrChildren = findChild(eChildren, 'm:eqArr');
+      if (eqArrChildren.length > 0 && isSoleContent(eChildren, 'm:eqArr')) {
+        const rows = findAllChildren(eqArrChildren, 'm:e');
+        const rowStrings = rows.map(rowChildren => ommlToLatex(rowChildren));
+        return `\\begin{cases} ${rowStrings.join(' \\\\ ')} \\end{cases}`;
+      }
+    }
+
+    // Matrix variants: delimiter wrapping single m:m
+    const matrixChildren = findChild(eChildren, 'm:m');
+    if (matrixChildren.length > 0 && isSoleContent(eChildren, 'm:m')) {
+      const envName = getMatrixEnvName(begChr, endChr);
+      if (envName) {
+        return translateMatrixAsEnv(matrixChildren, envName);
+      }
+    }
+
+    // Binom: parens wrapping single noBar fraction
+    if (begChr === '(' && endChr === ')') {
+      const fracChildren = findChild(eChildren, 'm:f');
+      if (fracChildren.length > 0 && isSoleContent(eChildren, 'm:f') && isNoBarFraction(fracChildren)) {
+        const num = findChild(fracChildren, 'm:num');
+        const den = findChild(fracChildren, 'm:den');
+        return `\\binom{${ommlToLatex(num)}}{${ommlToLatex(den)}}`;
+      }
+    }
+  }
+
+  // Default behavior
   const inner = elements.map(e => ommlToLatex(e)).join(sepChr);
   return `${begChr}${inner}${endChr}`;
 }
@@ -492,6 +581,93 @@ function translateFunction(children: any[]): string {
 }
 
 
+/**
+ * Translate an m:eqArr (equation array) element to LaTeX.
+ * Detects & alignment markers to choose between aligned and gathered.
+ */
+function translateEqArray(children: any[]): string {
+  const rows = findAllChildren(children, 'm:e');
+  const rowStrings: string[] = [];
+  let hasAlignment = false;
+
+  for (const rowChildren of rows) {
+    const rowLatex = ommlToLatex(rowChildren);
+    rowStrings.push(rowLatex);
+    if (rowLatex.includes('&')) hasAlignment = true;
+  }
+
+  const envName = hasAlignment ? 'aligned' : 'gathered';
+  return `\\begin{${envName}} ${rowStrings.join(' \\\\ ')} \\end{${envName}}`;
+}
+
+
+/**
+ * Translate an m:borderBox element to LaTeX.
+ * Emits \boxed{content}.
+ */
+function translateBorderBox(children: any[]): string {
+  const content = ommlToLatex(findChild(children, 'm:e'));
+  return `\\boxed{${content}}`;
+}
+
+
+/**
+ * Translate an m:limLow (lower limit) element to LaTeX.
+ * Emits \underset{lim}{base}.
+ */
+function translateLimLow(children: any[]): string {
+  const base = ommlToLatex(findChild(children, 'm:e'));
+  const lim = ommlToLatex(findChild(children, 'm:lim'));
+  return `\\underset{${lim}}{${base}}`;
+}
+
+
+/**
+ * Translate an m:limUpp (upper limit) element to LaTeX.
+ * Emits \overset{lim}{base}.
+ */
+function translateLimUpp(children: any[]): string {
+  const base = ommlToLatex(findChild(children, 'm:e'));
+  const lim = ommlToLatex(findChild(children, 'm:lim'));
+  return `\\overset{${lim}}{${base}}`;
+}
+
+
+/**
+ * Translate an m:bar element to LaTeX.
+ * Checks m:barPr/m:pos for position: bot → \underline, default → \overline.
+ */
+function translateBar(children: any[]): string {
+  const pr = findChild(children, 'm:barPr');
+  const posNode = findChildNode(pr, 'm:pos');
+  const pos = getOmmlAttr(posNode, 'val');
+  const content = ommlToLatex(findChild(children, 'm:e'));
+  if (pos === 'bot') {
+    return `\\underline{${content}}`;
+  }
+  return `\\overline{${content}}`;
+}
+
+
+/**
+ * Translate an m:groupChr element to LaTeX.
+ * Checks chr and pos to determine overbrace vs underbrace.
+ */
+function translateGroupChr(children: any[]): string {
+  const pr = findChild(children, 'm:groupChrPr');
+  const chrNode = findChildNode(pr, 'm:chr');
+  const chr = chrNode ? getOmmlAttr(chrNode, 'val') : '\u23DE';
+  const posNode = findChildNode(pr, 'm:pos');
+  const pos = getOmmlAttr(posNode, 'val');
+  const content = ommlToLatex(findChild(children, 'm:e'));
+
+  if (chr === '\u23DF' || pos === 'bot') {
+    return `\\underbrace{${content}}`;
+  }
+  return `\\overbrace{${content}}`;
+}
+
+
 // ---------------------------------------------------------------------------
 // Node dispatch
 // ---------------------------------------------------------------------------
@@ -505,18 +681,24 @@ function translateNode(node: any): string {
     const children = node[key];
 
     switch (key) {
-      case 'm:f':       result += translateFraction(children); break;
-      case 'm:sSup':    result += translateSuperscript(children); break;
-      case 'm:sSub':    result += translateSubscript(children); break;
-      case 'm:sSubSup': result += translateSubSup(children); break;
-      case 'm:rad':     result += translateRadical(children); break;
-      case 'm:nary':    result += translateNary(children); break;
-      case 'm:d':       result += translateDelimiter(children); break;
-      case 'm:acc':     result += translateAccent(children); break;
-      case 'm:m':       result += translateMatrix(children); break;
-      case 'm:func':    result += translateFunction(children); break;
-      case 'm:r':       result += translateRun(children); break;
-      case 'm:t':       result += extractText(children); break;
+      case 'm:f':         result += translateFraction(children); break;
+      case 'm:sSup':      result += translateSuperscript(children); break;
+      case 'm:sSub':      result += translateSubscript(children); break;
+      case 'm:sSubSup':   result += translateSubSup(children); break;
+      case 'm:rad':       result += translateRadical(children); break;
+      case 'm:nary':      result += translateNary(children); break;
+      case 'm:d':         result += translateDelimiter(children); break;
+      case 'm:acc':       result += translateAccent(children); break;
+      case 'm:m':         result += translateMatrix(children); break;
+      case 'm:func':      result += translateFunction(children); break;
+      case 'm:eqArr':     result += translateEqArray(children); break;
+      case 'm:borderBox': result += translateBorderBox(children); break;
+      case 'm:limLow':    result += translateLimLow(children); break;
+      case 'm:limUpp':    result += translateLimUpp(children); break;
+      case 'm:bar':       result += translateBar(children); break;
+      case 'm:groupChr':  result += translateGroupChr(children); break;
+      case 'm:r':         result += translateRun(children); break;
+      case 'm:t':         result += extractText(children); break;
       default:
         if (SKIP_TAGS.has(key)) {
           // Silently skip property/control tags

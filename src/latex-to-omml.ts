@@ -34,6 +34,8 @@ const LATEX_UNICODE_MAP: Map<string, string> = new Map([
   ['\\forall', '∀'], ['\\exists', '∃'], ['\\neg', '¬'],
   ['\\land', '∧'], ['\\lor', '∨'], ['\\oplus', '⊕'], ['\\otimes', '⊗'],
   ['\\cdot', '·'], ['\\ldots', '…'], ['\\cdots', '⋯'],
+  ['\\dots', '…'], ['\\dotsc', '…'], ['\\dotsb', '…'], ['\\dotsm', '…'], ['\\dotsi', '…'],
+  ['\\ddots', '⋱'], ['\\vdots', '⋮'],
 ]);
 
 const LATEX_ACCENT_MAP: Map<string, string> = new Map([
@@ -323,6 +325,140 @@ class Parser {
         // This should be handled by nary parsing, but if encountered alone, ignore
         return '';
 
+      // Fraction variants (same output as \frac)
+      case '\\dfrac':
+      case '\\tfrac':
+      case '\\cfrac': {
+        const fnum = this.parseGroup();
+        const fden = this.parseGroup();
+        return '<m:f><m:num>' + fnum + '</m:num><m:den>' + fden + '</m:den></m:f>';
+      }
+
+      // Binomial coefficients
+      case '\\binom':
+      case '\\dbinom':
+      case '\\tbinom': {
+        const bnum = this.parseGroup();
+        const bden = this.parseGroup();
+        return '<m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/></m:dPr><m:e>' +
+          '<m:f><m:fPr><m:type m:val="noBar"/></m:fPr><m:num>' + bnum + '</m:num><m:den>' + bden + '</m:den></m:f>' +
+          '</m:e></m:d>';
+      }
+
+      // \text{} — same as \mathrm
+      case '\\text': {
+        const textContent = this.parseGroup();
+        return makeStyledRun(this.extractText(textContent));
+      }
+
+      // \boxed{}
+      case '\\boxed': {
+        const boxContent = this.parseGroup();
+        return '<m:borderBox><m:e>' + boxContent + '</m:e></m:borderBox>';
+      }
+
+      // \overset{top}{base}
+      case '\\overset': {
+        const overTop = this.parseGroup();
+        const overBase = this.parseGroup();
+        return '<m:limUpp><m:e>' + overBase + '</m:e><m:lim>' + overTop + '</m:lim></m:limUpp>';
+      }
+
+      // \underset{bottom}{base}
+      case '\\underset': {
+        const underBottom = this.parseGroup();
+        const underBase = this.parseGroup();
+        return '<m:limLow><m:e>' + underBase + '</m:e><m:lim>' + underBottom + '</m:lim></m:limLow>';
+      }
+
+      // \overline{} and \underline{}
+      case '\\overline': {
+        const olContent = this.parseGroup();
+        return '<m:bar><m:barPr><m:pos m:val="top"/></m:barPr><m:e>' + olContent + '</m:e></m:bar>';
+      }
+
+      case '\\underline': {
+        const ulContent = this.parseGroup();
+        return '<m:bar><m:barPr><m:pos m:val="bot"/></m:barPr><m:e>' + ulContent + '</m:e></m:bar>';
+      }
+
+      // \overbrace{} and \underbrace{}
+      case '\\overbrace': {
+        const obContent = this.parseGroup();
+        return '<m:groupChr><m:groupChrPr><m:chr m:val="\u23DE"/><m:pos m:val="top"/></m:groupChrPr><m:e>' + obContent + '</m:e></m:groupChr>';
+      }
+
+      case '\\underbrace': {
+        const ubContent = this.parseGroup();
+        return '<m:groupChr><m:groupChrPr><m:chr m:val="\u23DF"/><m:pos m:val="bot"/></m:groupChrPr><m:e>' + ubContent + '</m:e></m:groupChr>';
+      }
+
+      // Tags and labels (silently consumed)
+      case '\\tag': {
+        // Handle \tag* variant
+        if (this.peek()?.type === 'text' && this.peek()?.value.startsWith('*')) {
+          const starToken = this.consume()!;
+          const remaining = starToken.value.slice(1);
+          if (remaining) {
+            this.tokens.splice(this.pos, 0, { type: 'text', value: remaining, pos: starToken.pos });
+          }
+        }
+        this.parseGroup();
+        return '';
+      }
+
+      case '\\label': {
+        this.parseGroup();
+        return '';
+      }
+
+      case '\\notag':
+      case '\\nonumber':
+        return '';
+
+      // Style commands (silently consumed)
+      case '\\displaystyle':
+      case '\\textstyle':
+        return '';
+
+      // Intertext
+      case '\\intertext':
+      case '\\shortintertext': {
+        const itContent = this.parseGroup();
+        return makeStyledRun(this.extractText(itContent));
+      }
+
+      // Shove commands — emit inner content
+      case '\\shoveleft':
+      case '\\shoveright':
+        return this.parseGroup();
+
+      // Spacing
+      case '\\,':
+        return makeRun('\u2009');
+      case '\\:':
+        return makeRun('\u205F');
+      case '\\;':
+        return makeRun('\u2004');
+      case '\\!':
+        return '';
+      case '\\ ':
+        return makeRun(' ');
+      case '\\quad':
+        return makeRun('\u2003');
+      case '\\qquad':
+        return makeRun('\u2003\u2003');
+
+      // Mod commands
+      case '\\pmod': {
+        const modArg = this.parseGroup();
+        return '<m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/></m:dPr><m:e>' +
+          makeStyledRun('mod') + makeRun('\u2005') + modArg + '</m:e></m:d>';
+      }
+
+      case '\\bmod':
+        return makeStyledRun('mod');
+
       default:
         // Unsupported command - fallback
         return makeRun(cmd);
@@ -445,15 +581,88 @@ class Parser {
     const envToken = this.parseGroup();
     const envName = this.extractText(envToken);
 
-    if (envName === 'matrix') {
-      const content = this.parseMatrixContent();
-      // Consume \end{matrix}
-      this.consumeEnd('matrix');
-      return '<m:m>' + content + '</m:m>';
-    }
+    switch (envName) {
+      case 'matrix':
+      case 'smallmatrix': {
+        const content = this.parseMatrixContent();
+        this.consumeEnd(envName);
+        return '<m:m>' + content + '</m:m>';
+      }
 
-    // Unsupported environment
-    return makeRun('\\begin{' + envName + '}');
+      case 'pmatrix': {
+        const content = this.parseMatrixContent();
+        this.consumeEnd(envName);
+        return '<m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/></m:dPr><m:e><m:m>' + content + '</m:m></m:e></m:d>';
+      }
+
+      case 'bmatrix': {
+        const content = this.parseMatrixContent();
+        this.consumeEnd(envName);
+        return '<m:d><m:dPr><m:begChr m:val="["/><m:endChr m:val="]"/></m:dPr><m:e><m:m>' + content + '</m:m></m:e></m:d>';
+      }
+
+      case 'Bmatrix': {
+        const content = this.parseMatrixContent();
+        this.consumeEnd(envName);
+        return '<m:d><m:dPr><m:begChr m:val="{"/><m:endChr m:val="}"/></m:dPr><m:e><m:m>' + content + '</m:m></m:e></m:d>';
+      }
+
+      case 'vmatrix': {
+        const content = this.parseMatrixContent();
+        this.consumeEnd(envName);
+        return '<m:d><m:dPr><m:begChr m:val="|"/><m:endChr m:val="|"/></m:dPr><m:e><m:m>' + content + '</m:m></m:e></m:d>';
+      }
+
+      case 'Vmatrix': {
+        const content = this.parseMatrixContent();
+        this.consumeEnd(envName);
+        return '<m:d><m:dPr><m:begChr m:val="\u2016"/><m:endChr m:val="\u2016"/></m:dPr><m:e><m:m>' + content + '</m:m></m:e></m:d>';
+      }
+
+      case 'cases': {
+        const content = this.parseEqArrayContent();
+        this.consumeEnd(envName);
+        return '<m:d><m:dPr><m:begChr m:val="{"/><m:endChr m:val=""/></m:dPr><m:e><m:eqArr>' + content + '</m:eqArr></m:e></m:d>';
+      }
+
+      case 'align':
+      case 'align*':
+      case 'aligned':
+      case 'gather':
+      case 'gather*':
+      case 'gathered':
+      case 'split':
+      case 'multline':
+      case 'multline*':
+      case 'flalign':
+      case 'flalign*': {
+        const content = this.parseEqArrayContent();
+        this.consumeEnd(envName);
+        return '<m:eqArr>' + content + '</m:eqArr>';
+      }
+
+      case 'alignat':
+      case 'alignat*': {
+        // Consume {n} column count argument
+        if (this.peek()?.type === 'lbrace') {
+          this.parseGroup();
+        }
+        const content = this.parseEqArrayContent();
+        this.consumeEnd(envName);
+        return '<m:eqArr>' + content + '</m:eqArr>';
+      }
+
+      case 'equation':
+      case 'equation*':
+      case 'subequations': {
+        const content = this.parseUntilEnd();
+        this.consumeEnd(envName);
+        return content;
+      }
+
+      default:
+        return makeRun('\\begin{' + envName + '}');
+    }
   }
 
   private parseMatrixContent(): string {
@@ -483,6 +692,89 @@ class Parser {
     }
 
     return rows;
+  }
+
+  private parseEqArrayContent(): string {
+    const rows: string[] = [];
+    const atoms: string[] = [];
+
+    while (this.peek() && !(this.peek()?.type === 'command' && this.peek()?.value === '\\end')) {
+      const token = this.peek()!;
+
+      if (token.type === 'command' && token.value === '\\\\') {
+        this.consume();
+        rows.push('<m:e>' + atoms.join('') + '</m:e>');
+        atoms.length = 0;
+      } else if (token.type === 'command' && (token.value === '\\tag' || token.value === '\\label')) {
+        this.consume();
+        // Handle \tag* variant
+        if (token.value === '\\tag' && this.peek()?.type === 'text' && this.peek()?.value.startsWith('*')) {
+          const starToken = this.consume()!;
+          const remaining = starToken.value.slice(1);
+          if (remaining) {
+            this.tokens.splice(this.pos, 0, { type: 'text', value: remaining, pos: starToken.pos });
+          }
+        }
+        this.parseGroup(); // consume argument, emit nothing
+      } else if (token.type === 'command' && (token.value === '\\notag' || token.value === '\\nonumber')) {
+        this.consume();
+      } else if (token.type === 'ampersand') {
+        this.consume();
+        atoms.push(makeRun('&'));
+      } else if (token.type === 'caret' || token.type === 'underscore') {
+        if (atoms.length === 0) {
+          const consumed = this.consume()!;
+          atoms.push(this.parseToken(consumed));
+        } else {
+          const base = atoms.pop()!;
+          atoms.push(this.parseScriptsForBase(base));
+        }
+      } else {
+        const consumed = this.consume()!;
+        if (consumed.type === 'text' && consumed.value.length > 1) {
+          for (const ch of consumed.value) {
+            atoms.push(makeRun(ch));
+          }
+        } else {
+          atoms.push(this.parseToken(consumed));
+        }
+      }
+    }
+
+    if (atoms.length > 0) {
+      rows.push('<m:e>' + atoms.join('') + '</m:e>');
+    }
+
+    return rows.join('');
+  }
+
+  private parseUntilEnd(): string {
+    const atoms: string[] = [];
+
+    while (this.peek() && !(this.peek()?.type === 'command' && this.peek()?.value === '\\end')) {
+      const token = this.peek()!;
+
+      if (token.type === 'caret' || token.type === 'underscore') {
+        if (atoms.length === 0) {
+          const consumed = this.consume()!;
+          atoms.push(this.parseToken(consumed));
+        } else {
+          const base = atoms.pop()!;
+          atoms.push(this.parseScriptsForBase(base));
+        }
+      } else {
+        const consumed = this.consume()!;
+        if (consumed.type === 'text' && consumed.value.length > 1) {
+          for (const ch of consumed.value) {
+            atoms.push(makeRun(ch));
+          }
+        } else {
+          atoms.push(this.parseToken(consumed));
+        }
+      }
+    }
+
+    return atoms.join('');
   }
 
   private consumeEnd(envName: string): void {

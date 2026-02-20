@@ -149,4 +149,216 @@ describe('latexToOmml', () => {
     expect(result).toContain('<m:rad>');
     expect(result).toContain('<m:sSup>');
   });
+
+  // --- amsmath environments ---
+
+  test('pmatrix', () => {
+    const result = latexToOmml('\\begin{pmatrix}a & b\\\\c & d\\end{pmatrix}');
+    expect(result).toContain('<m:d>');
+    expect(result).toContain('<m:begChr m:val="("/>');
+    expect(result).toContain('<m:endChr m:val=")"/>');
+    expect(result).toContain('<m:m>');
+    expect(result).toContain('<m:mr>');
+  });
+
+  test('bmatrix', () => {
+    const result = latexToOmml('\\begin{bmatrix}a & b\\\\c & d\\end{bmatrix}');
+    expect(result).toContain('<m:begChr m:val="["/>');
+    expect(result).toContain('<m:endChr m:val="]"/>');
+    expect(result).toContain('<m:m>');
+  });
+
+  test('Bmatrix', () => {
+    const result = latexToOmml('\\begin{Bmatrix}a & b\\\\c & d\\end{Bmatrix}');
+    expect(result).toContain('<m:begChr m:val="{"/>');
+    expect(result).toContain('<m:endChr m:val="}"/>');
+    expect(result).toContain('<m:m>');
+  });
+
+  test('vmatrix', () => {
+    const result = latexToOmml('\\begin{vmatrix}a & b\\\\c & d\\end{vmatrix}');
+    expect(result).toContain('<m:begChr m:val="|"/>');
+    expect(result).toContain('<m:endChr m:val="|"/>');
+    expect(result).toContain('<m:m>');
+  });
+
+  test('Vmatrix', () => {
+    const result = latexToOmml('\\begin{Vmatrix}a & b\\\\c & d\\end{Vmatrix}');
+    expect(result).toContain('<m:begChr m:val="\u2016"/>');
+    expect(result).toContain('<m:endChr m:val="\u2016"/>');
+    expect(result).toContain('<m:m>');
+  });
+
+  test('cases', () => {
+    const result = latexToOmml('\\begin{cases}x+1 & x > 0\\\\0 & x \\leq 0\\end{cases}');
+    expect(result).toContain('<m:d>');
+    expect(result).toContain('<m:begChr m:val="{"/>');
+    expect(result).toContain('<m:endChr m:val=""/>');
+    expect(result).toContain('<m:eqArr>');
+    expect(result).toContain('<m:e>');
+  });
+
+  test('aligned', () => {
+    const result = latexToOmml('\\begin{aligned}a &= b\\\\c &= d\\end{aligned}');
+    expect(result).toContain('<m:eqArr>');
+    expect(result).toContain('<m:e>');
+    // Should have two rows (two <m:e> elements)
+    const eCount = (result.match(/<m:e>/g) || []).length;
+    expect(eCount).toBe(2);
+  });
+
+  test('gathered', () => {
+    const result = latexToOmml('\\begin{gathered}a + b\\\\c + d\\end{gathered}');
+    expect(result).toContain('<m:eqArr>');
+  });
+
+  test('align maps to eqArr', () => {
+    const result = latexToOmml('\\begin{align}a &= b\\end{align}');
+    expect(result).toContain('<m:eqArr>');
+  });
+
+  test('equation strips wrapper', () => {
+    const result = latexToOmml('\\begin{equation}E=mc^2\\end{equation}');
+    expect(result).not.toContain('equation');
+    expect(result).toContain('<m:r>');
+  });
+
+  test('alignat consumes column count', () => {
+    const result = latexToOmml('\\begin{alignat}{2}a &= b & c &= d\\end{alignat}');
+    expect(result).toContain('<m:eqArr>');
+    // Column count {2} should be consumed, not in output
+    expect(result).not.toContain('2');
+  });
+
+  test('equation array with \\tag and \\label', () => {
+    const result = latexToOmml('\\begin{align}a &= b \\tag{1} \\label{eq1}\\end{align}');
+    expect(result).toContain('<m:eqArr>');
+    // Tags and labels should be silently consumed
+    expect(result).not.toContain('tag');
+    expect(result).not.toContain('label');
+    expect(result).not.toContain('eq1');
+  });
+
+  // --- amsmath commands ---
+
+  test('\\text{} produces styled run', () => {
+    const result = latexToOmml('\\text{hello}');
+    expect(result).toContain('<m:sty m:val="p"/>');
+    expect(result).toContain('hello');
+  });
+
+  test('\\boxed{}', () => {
+    const result = latexToOmml('\\boxed{x}');
+    expect(result).toContain('<m:borderBox>');
+    expect(result).toContain('<m:e>');
+    expect(result).toContain('x');
+  });
+
+  test('\\dfrac is same as \\frac', () => {
+    const frac = latexToOmml('\\frac{a}{b}');
+    const dfrac = latexToOmml('\\dfrac{a}{b}');
+    expect(dfrac).toBe(frac);
+  });
+
+  test('\\binom produces noBar fraction in parens', () => {
+    const result = latexToOmml('\\binom{n}{k}');
+    expect(result).toContain('<m:d>');
+    expect(result).toContain('<m:f>');
+    expect(result).toContain('<m:type m:val="noBar"/>');
+    expect(result).toContain('<m:num>');
+    expect(result).toContain('<m:den>');
+  });
+
+  test('\\overset{top}{base}', () => {
+    const result = latexToOmml('\\overset{\\sim}{=}');
+    expect(result).toContain('<m:limUpp>');
+    expect(result).toContain('<m:lim>');
+    expect(result).toContain('<m:e>');
+  });
+
+  test('\\underset{bot}{base}', () => {
+    const result = latexToOmml('\\underset{n}{\\max}');
+    expect(result).toContain('<m:limLow>');
+    expect(result).toContain('<m:lim>');
+  });
+
+  test('\\tag is silently consumed', () => {
+    const result = latexToOmml('x \\tag{1}');
+    expect(result).not.toContain('tag');
+    expect(result).not.toContain('1');
+    expect(result).toContain('x');
+  });
+
+  test('\\label is silently consumed', () => {
+    const result = latexToOmml('x \\label{eq1}');
+    expect(result).not.toContain('label');
+    expect(result).toContain('x');
+  });
+
+  test('\\displaystyle is silently consumed', () => {
+    const result = latexToOmml('\\displaystyle x');
+    expect(result).not.toContain('displaystyle');
+    expect(result).toContain('x');
+  });
+
+  test('spacing commands', () => {
+    expect(latexToOmml('a\\,b')).toContain('\u2009');
+    expect(latexToOmml('a\\:b')).toContain('\u205F');
+    expect(latexToOmml('a\\;b')).toContain('\u2004');
+    expect(latexToOmml('a\\quad b')).toContain('\u2003');
+    expect(latexToOmml('a\\qquad b')).toContain('\u2003\u2003');
+  });
+
+  test('\\dots and variants map to ellipsis', () => {
+    expect(latexToOmml('\\dots')).toContain('…');
+    expect(latexToOmml('\\dotsc')).toContain('…');
+    expect(latexToOmml('\\dotsb')).toContain('…');
+    expect(latexToOmml('\\ddots')).toContain('⋱');
+    expect(latexToOmml('\\vdots')).toContain('⋮');
+  });
+
+  test('\\overline and \\underline', () => {
+    const ol = latexToOmml('\\overline{x}');
+    expect(ol).toContain('<m:bar>');
+    expect(ol).toContain('<m:pos m:val="top"/>');
+
+    const ul = latexToOmml('\\underline{x}');
+    expect(ul).toContain('<m:bar>');
+    expect(ul).toContain('<m:pos m:val="bot"/>');
+  });
+
+  test('\\overbrace and \\underbrace', () => {
+    const ob = latexToOmml('\\overbrace{x+y}');
+    expect(ob).toContain('<m:groupChr>');
+    expect(ob).toContain('\u23DE');
+
+    const ub = latexToOmml('\\underbrace{x+y}');
+    expect(ub).toContain('<m:groupChr>');
+    expect(ub).toContain('\u23DF');
+  });
+
+  test('\\pmod', () => {
+    const result = latexToOmml('\\pmod{p}');
+    expect(result).toContain('<m:d>');
+    expect(result).toContain('mod');
+    expect(result).toContain('p');
+  });
+
+  test('\\bmod', () => {
+    const result = latexToOmml('a \\bmod b');
+    expect(result).toContain('mod');
+    expect(result).toContain('<m:sty m:val="p"/>');
+  });
+
+  test('\\shoveleft emits inner content', () => {
+    const result = latexToOmml('\\shoveleft{x}');
+    expect(result).toContain('x');
+    expect(result).not.toContain('shoveleft');
+  });
+
+  test('smallmatrix treated as matrix', () => {
+    const result = latexToOmml('\\begin{smallmatrix}a & b\\\\c & d\\end{smallmatrix}');
+    expect(result).toContain('<m:m>');
+    expect(result).toContain('<m:mr>');
+  });
 });

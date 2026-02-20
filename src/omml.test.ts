@@ -655,8 +655,8 @@ function verifyStructuralFidelity(tree: any[], latex: string): true | string {
   if (types.has('radical') && !latex.includes('\\sqrt')) {
     return 'radical: expected \\sqrt in output';
   }
-  if (types.has('matrix') && !latex.includes('\\begin{matrix}')) {
-    return 'matrix: expected \\begin{matrix} in output';
+  if (types.has('matrix') && !/\\begin\{(p|b|B|v|V)?matrix\}/.test(latex)) {
+    return 'matrix: expected \\begin{*matrix} in output';
   }
 
   // N-ary: check that each operator character maps to its LaTeX command
@@ -992,6 +992,268 @@ describe('Unit tests: OMML construct translation', () => {
       const node = { 'm:xyz': [{ '#text': 'hello' }] };
       const result = ommlToLatex([node]);
       expect(result).toContain('[UNSUPPORTED: xyz]');
+    });
+  });
+
+  // --- Equation array (m:eqArr) ---
+  describe('Equation array (m:eqArr)', () => {
+    it('translates m:eqArr with & alignment to \\begin{aligned}', () => {
+      const node = {
+        'm:eqArr': [
+          { 'm:e': [makeRun('a'), makeRun('&'), makeRun('='), makeRun('b')] },
+          { 'm:e': [makeRun('c'), makeRun('&'), makeRun('='), makeRun('d')] },
+        ],
+      };
+      const result = ommlToLatex([node]);
+      expect(result).toContain('\\begin{aligned}');
+      expect(result).toContain('\\end{aligned}');
+      expect(result).toContain('&');
+      expect(result).toContain('\\\\');
+    });
+
+    it('translates m:eqArr without & to \\begin{gathered}', () => {
+      const node = {
+        'm:eqArr': [
+          { 'm:e': [makeRun('a'), makeRun('+'), makeRun('b')] },
+          { 'm:e': [makeRun('c'), makeRun('+'), makeRun('d')] },
+        ],
+      };
+      const result = ommlToLatex([node]);
+      expect(result).toContain('\\begin{gathered}');
+      expect(result).toContain('\\end{gathered}');
+    });
+  });
+
+  // --- Delimiter-wrapped matrix variants ---
+  describe('Delimiter-wrapped matrix variants', () => {
+    it('parens + m:m → \\begin{pmatrix}', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '(' } },
+            { 'm:endChr': [], ':@': { '@_m:val': ')' } },
+          ]},
+          { 'm:e': [{
+            'm:m': [
+              { 'm:mr': [{ 'm:e': [makeRun('a')] }, { 'm:e': [makeRun('b')] }] },
+              { 'm:mr': [{ 'm:e': [makeRun('c')] }, { 'm:e': [makeRun('d')] }] },
+            ],
+          }] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}');
+    });
+
+    it('brackets + m:m → \\begin{bmatrix}', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '[' } },
+            { 'm:endChr': [], ':@': { '@_m:val': ']' } },
+          ]},
+          { 'm:e': [{
+            'm:m': [
+              { 'm:mr': [{ 'm:e': [makeRun('1')] }, { 'm:e': [makeRun('0')] }] },
+            ],
+          }] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('\\begin{bmatrix} 1 & 0 \\end{bmatrix}');
+    });
+
+    it('braces + m:m → \\begin{Bmatrix}', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '{' } },
+            { 'm:endChr': [], ':@': { '@_m:val': '}' } },
+          ]},
+          { 'm:e': [{
+            'm:m': [
+              { 'm:mr': [{ 'm:e': [makeRun('x')] }] },
+            ],
+          }] },
+        ],
+      };
+      expect(ommlToLatex([node])).toContain('\\begin{Bmatrix}');
+    });
+
+    it('pipes + m:m → \\begin{vmatrix}', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '|' } },
+            { 'm:endChr': [], ':@': { '@_m:val': '|' } },
+          ]},
+          { 'm:e': [{
+            'm:m': [
+              { 'm:mr': [{ 'm:e': [makeRun('a')] }, { 'm:e': [makeRun('b')] }] },
+            ],
+          }] },
+        ],
+      };
+      expect(ommlToLatex([node])).toContain('\\begin{vmatrix}');
+    });
+
+    it('double-bar + m:m → \\begin{Vmatrix}', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '\u2016' } },
+            { 'm:endChr': [], ':@': { '@_m:val': '\u2016' } },
+          ]},
+          { 'm:e': [{
+            'm:m': [
+              { 'm:mr': [{ 'm:e': [makeRun('a')] }] },
+            ],
+          }] },
+        ],
+      };
+      expect(ommlToLatex([node])).toContain('\\begin{Vmatrix}');
+    });
+  });
+
+  // --- Cases pattern detection ---
+  describe('Cases pattern detection', () => {
+    it('lbrace + empty end + eqArr → \\begin{cases}', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '{' } },
+            { 'm:endChr': [], ':@': { '@_m:val': '' } },
+          ]},
+          { 'm:e': [{
+            'm:eqArr': [
+              { 'm:e': [makeRun('x+1'), makeRun('&'), makeRun('x>0')] },
+              { 'm:e': [makeRun('0'), makeRun('&'), makeRun('otherwise')] },
+            ],
+          }] },
+        ],
+      };
+      const result = ommlToLatex([node]);
+      expect(result).toContain('\\begin{cases}');
+      expect(result).toContain('\\end{cases}');
+      expect(result).toContain('\\\\');
+    });
+  });
+
+  // --- Binom (noBar fraction in parens) ---
+  describe('Binom pattern detection', () => {
+    it('parens + noBar fraction → \\binom{}{}', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '(' } },
+            { 'm:endChr': [], ':@': { '@_m:val': ')' } },
+          ]},
+          { 'm:e': [{
+            'm:f': [
+              { 'm:fPr': [{ 'm:type': [], ':@': { '@_m:val': 'noBar' } }] },
+              { 'm:num': [makeRun('n')] },
+              { 'm:den': [makeRun('k')] },
+            ],
+          }] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('\\binom{n}{k}');
+    });
+  });
+
+  // --- borderBox (m:borderBox → \boxed{}) ---
+  describe('BorderBox (m:borderBox)', () => {
+    it('translates m:borderBox to \\boxed{}', () => {
+      const node = {
+        'm:borderBox': [
+          { 'm:e': [makeRun('E'), makeRun('='), makeRun('m'), {
+            'm:sSup': [
+              { 'm:e': [makeRun('c')] },
+              { 'm:sup': [makeRun('2')] },
+            ],
+          }] },
+        ],
+      };
+      const result = ommlToLatex([node]);
+      expect(result).toContain('\\boxed{');
+      expect(result).toContain('E');
+    });
+  });
+
+  // --- limLow (m:limLow → \underset{}{}) ---
+  describe('LimLow (m:limLow)', () => {
+    it('translates m:limLow to \\underset{}{}', () => {
+      const node = {
+        'm:limLow': [
+          { 'm:e': [makeRun('A')] },
+          { 'm:lim': [makeRun('n')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('\\underset{n}{A}');
+    });
+  });
+
+  // --- limUpp (m:limUpp → \overset{}{}) ---
+  describe('LimUpp (m:limUpp)', () => {
+    it('translates m:limUpp to \\overset{}{}', () => {
+      const node = {
+        'm:limUpp': [
+          { 'm:e': [makeRun('=')] },
+          { 'm:lim': [makeRun('?')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('\\overset{?}{=}');
+    });
+  });
+
+  // --- bar (m:bar → \overline{} / \underline{}) ---
+  describe('Bar (m:bar)', () => {
+    it('translates m:bar with default pos to \\overline{}', () => {
+      const node = {
+        'm:bar': [
+          { 'm:e': [makeRun('x')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('\\overline{x}');
+    });
+
+    it('translates m:bar with pos=bot to \\underline{}', () => {
+      const node = {
+        'm:bar': [
+          { 'm:barPr': [{ 'm:pos': [], ':@': { '@_m:val': 'bot' } }] },
+          { 'm:e': [makeRun('x')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('\\underline{x}');
+    });
+  });
+
+  // --- groupChr (m:groupChr → \overbrace{} / \underbrace{}) ---
+  describe('GroupChr (m:groupChr)', () => {
+    it('translates m:groupChr with ⏞ to \\overbrace{}', () => {
+      const node = {
+        'm:groupChr': [
+          { 'm:groupChrPr': [
+            { 'm:chr': [], ':@': { '@_m:val': '\u23DE' } },
+            { 'm:pos': [], ':@': { '@_m:val': 'top' } },
+          ]},
+          { 'm:e': [makeRun('x'), makeRun('+'), makeRun('y')] },
+        ],
+      };
+      const result = ommlToLatex([node]);
+      expect(result).toContain('\\overbrace{');
+    });
+
+    it('translates m:groupChr with ⏟ to \\underbrace{}', () => {
+      const node = {
+        'm:groupChr': [
+          { 'm:groupChrPr': [
+            { 'm:chr': [], ':@': { '@_m:val': '\u23DF' } },
+            { 'm:pos': [], ':@': { '@_m:val': 'bot' } },
+          ]},
+          { 'm:e': [makeRun('a'), makeRun('+'), makeRun('b')] },
+        ],
+      };
+      const result = ommlToLatex([node]);
+      expect(result).toContain('\\underbrace{');
     });
   });
 });
