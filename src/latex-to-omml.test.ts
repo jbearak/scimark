@@ -115,6 +115,14 @@ describe('latexToOmml', () => {
     expect(result).toContain('<m:e>');
   });
 
+  test('matrix cells support scripts', () => {
+    const result = latexToOmml('\\begin{matrix}x^2 & y_i\\end{matrix}');
+    expect(result).toContain('<m:sSup>');
+    expect(result).toContain('<m:sSub>');
+    expect(result).not.toContain('<m:t>^</m:t>');
+    expect(result).not.toContain('<m:t>_</m:t>');
+  });
+
   test('functions', () => {
     const result = latexToOmml('\\sin{x}');
     expect(result).toBe('<m:func><m:fName><m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>sin</m:t></m:r></m:fName><m:e><m:r><m:t>x</m:t></m:r></m:e></m:func>');

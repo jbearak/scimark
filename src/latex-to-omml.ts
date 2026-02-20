@@ -667,27 +667,46 @@ class Parser {
 
   private parseMatrixContent(): string {
     let rows = '';
-    let currentCell = '';
+    let atoms: string[] = [];
     let currentRowCells = '';
 
+    const flushCell = () => {
+      currentRowCells += '<m:e>' + atoms.join('') + '</m:e>';
+      atoms = [];
+    };
+
     while (this.peek() && !(this.peek()?.type === 'command' && this.peek()?.value === '\\end')) {
-      const token = this.consume()!;
-      
+      const token = this.peek()!;
+
       if (token.type === 'ampersand') {
-        currentRowCells += '<m:e>' + currentCell + '</m:e>';
-        currentCell = '';
+        this.consume();
+        flushCell();
       } else if (token.type === 'command' && token.value === '\\\\') {
-        currentRowCells += '<m:e>' + currentCell + '</m:e>';
+        this.consume();
+        flushCell();
         rows += '<m:mr>' + currentRowCells + '</m:mr>';
-        currentCell = '';
         currentRowCells = '';
+      } else if (token.type === 'caret' || token.type === 'underscore') {
+        if (atoms.length === 0) {
+          atoms.push(this.parseToken(this.consume()!));
+        } else {
+          const base = atoms.pop()!;
+          atoms.push(this.parseScriptsForBase(base));
+        }
       } else {
-        currentCell += this.parseToken(token);
+        const consumed = this.consume()!;
+        if (consumed.type === 'text' && consumed.value.length > 1) {
+          for (const ch of consumed.value) {
+            atoms.push(makeRun(ch));
+          }
+        } else {
+          atoms.push(this.parseToken(consumed));
+        }
       }
     }
 
-    if (currentCell || currentRowCells) {
-      currentRowCells += '<m:e>' + currentCell + '</m:e>';
+    if (atoms.length > 0 || currentRowCells) {
+      flushCell();
       rows += '<m:mr>' + currentRowCells + '</m:mr>';
     }
 
