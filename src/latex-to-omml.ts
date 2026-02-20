@@ -553,18 +553,29 @@ class Parser {
     return '<m:d><m:dPr><m:begChr m:val="' + escapeXmlChars(begChr) + '"/><m:endChr m:val="' + escapeXmlChars(endChr) + '"/></m:dPr><m:e>' + content + '</m:e></m:d>';
   }
 
-  private parseUntilRight(): string {
+  /**
+   * Core atom-parsing loop: accumulate OMML atoms with script-binding
+   * and multi-char text splitting. Shared by all expression/content parsers.
+   *
+   * @param shouldStop - Return true when the loop should exit (peek-based)
+   * @param onSpecialToken - Optional callback for domain-specific tokens
+   *   (ampersand, \\, \tag, etc.). Return true if handled, false for default.
+   */
+  private parseAtoms(
+    shouldStop: () => boolean,
+    onSpecialToken?: (token: Token, atoms: string[]) => boolean,
+  ): string[] {
     const atoms: string[] = [];
-    while (this.peek() && !(this.peek()?.type === 'command' && this.peek()?.value === '\\right')) {
-      const token = this.peek();
-      if (token?.type === 'caret' || token?.type === 'underscore') {
+    while (this.peek() && !shouldStop()) {
+      const token = this.peek()!;
+      if (onSpecialToken && onSpecialToken(token, atoms)) continue;
+      if (token.type === 'caret' || token.type === 'underscore') {
         if (atoms.length === 0) {
-          const consumed = this.consume()!;
-          atoms.push(this.parseToken(consumed));
-          continue;
+          atoms.push(this.parseToken(this.consume()!));
+        } else {
+          const base = atoms.pop()!;
+          atoms.push(this.parseScriptsForBase(base));
         }
-        const base = atoms.pop()!;
-        atoms.push(this.parseScriptsForBase(base));
       } else {
         const consumed = this.consume()!;
         if (consumed.type === 'text' && consumed.value.length > 1) {
@@ -576,7 +587,13 @@ class Parser {
         }
       }
     }
-    return atoms.join('');
+    return atoms;
+  }
+
+  private parseUntilRight(): string {
+    return this.parseAtoms(
+      () => this.peek()?.type === 'command' && this.peek()?.value === '\\right',
+    ).join('');
   }
 
   private parseEnvironment(): string {
@@ -669,46 +686,31 @@ class Parser {
 
   private parseMatrixContent(): string {
     let rows = '';
-    let atoms: string[] = [];
     let currentRowCells = '';
 
-    const flushCell = () => {
-      currentRowCells += '<m:e>' + atoms.join('') + '</m:e>';
-      atoms = [];
-    };
-
-    while (this.peek() && !(this.peek()?.type === 'command' && this.peek()?.value === '\\end')) {
-      const token = this.peek()!;
-
-      if (token.type === 'ampersand') {
-        this.consume();
-        flushCell();
-      } else if (token.type === 'command' && token.value === '\\\\') {
-        this.consume();
-        flushCell();
-        rows += '<m:mr>' + currentRowCells + '</m:mr>';
-        currentRowCells = '';
-      } else if (token.type === 'caret' || token.type === 'underscore') {
-        if (atoms.length === 0) {
-          atoms.push(this.parseToken(this.consume()!));
-        } else {
-          const base = atoms.pop()!;
-          atoms.push(this.parseScriptsForBase(base));
+    const remaining = this.parseAtoms(
+      () => this.peek()?.type === 'command' && this.peek()?.value === '\\end',
+      (token, atoms) => {
+        if (token.type === 'ampersand') {
+          this.consume();
+          currentRowCells += '<m:e>' + atoms.join('') + '</m:e>';
+          atoms.length = 0;
+          return true;
         }
-      } else {
-        const consumed = this.consume()!;
-        if (consumed.type === 'text' && consumed.value.length > 1) {
-          for (const ch of consumed.value) {
-            atoms.push(makeRun(ch));
-          }
-        } else {
-          atoms.push(this.parseToken(consumed));
+        if (token.type === 'command' && token.value === '\\\\') {
+          this.consume();
+          currentRowCells += '<m:e>' + atoms.join('') + '</m:e>';
+          atoms.length = 0;
+          rows += '<m:mr>' + currentRowCells + '</m:mr>';
+          currentRowCells = '';
+          return true;
         }
-      }
-    }
+        return false;
+      },
+    );
 
-    if (atoms.length > 0 || currentRowCells) {
-      flushCell();
+    if (remaining.length > 0 || currentRowCells) {
+      currentRowCells += '<m:e>' + remaining.join('') + '</m:e>';
       rows += '<m:mr>' + currentRowCells + '</m:mr>';
     }
 
@@ -717,85 +719,53 @@ class Parser {
 
   private parseEqArrayContent(): string {
     const rows: string[] = [];
-    const atoms: string[] = [];
 
-    while (this.peek() && !(this.peek()?.type === 'command' && this.peek()?.value === '\\end')) {
-      const token = this.peek()!;
-
-      if (token.type === 'command' && token.value === '\\\\') {
-        this.consume();
-        rows.push('<m:e>' + atoms.join('') + '</m:e>');
-        atoms.length = 0;
-      } else if (token.type === 'command' && (token.value === '\\tag' || token.value === '\\label')) {
-        this.consume();
-        // Handle \tag* variant
-        if (token.value === '\\tag' && this.peek()?.type === 'text' && this.peek()?.value.startsWith('*')) {
-          const starToken = this.consume()!;
-          const remaining = starToken.value.slice(1);
-          if (remaining) {
-            this.tokens.splice(this.pos, 0, { type: 'text', value: remaining, pos: starToken.pos });
+    const remaining = this.parseAtoms(
+      () => this.peek()?.type === 'command' && this.peek()?.value === '\\end',
+      (token, atoms) => {
+        if (token.type === 'command' && token.value === '\\\\') {
+          this.consume();
+          rows.push('<m:e>' + atoms.join('') + '</m:e>');
+          atoms.length = 0;
+          return true;
+        }
+        if (token.type === 'command' && (token.value === '\\tag' || token.value === '\\label')) {
+          this.consume();
+          // Handle \tag* variant
+          if (token.value === '\\tag' && this.peek()?.type === 'text' && this.peek()?.value.startsWith('*')) {
+            const starToken = this.consume()!;
+            const rest = starToken.value.slice(1);
+            if (rest) {
+              this.tokens.splice(this.pos, 0, { type: 'text', value: rest, pos: starToken.pos });
+            }
           }
+          this.parseGroup(); // consume argument, emit nothing
+          return true;
         }
-        this.parseGroup(); // consume argument, emit nothing
-      } else if (token.type === 'command' && (token.value === '\\notag' || token.value === '\\nonumber')) {
-        this.consume();
-      } else if (token.type === 'ampersand') {
-        this.consume();
-        atoms.push(makeRun('&'));
-      } else if (token.type === 'caret' || token.type === 'underscore') {
-        if (atoms.length === 0) {
-          const consumed = this.consume()!;
-          atoms.push(this.parseToken(consumed));
-        } else {
-          const base = atoms.pop()!;
-          atoms.push(this.parseScriptsForBase(base));
+        if (token.type === 'command' && (token.value === '\\notag' || token.value === '\\nonumber')) {
+          this.consume();
+          return true;
         }
-      } else {
-        const consumed = this.consume()!;
-        if (consumed.type === 'text' && consumed.value.length > 1) {
-          for (const ch of consumed.value) {
-            atoms.push(makeRun(ch));
-          }
-        } else {
-          atoms.push(this.parseToken(consumed));
+        if (token.type === 'ampersand') {
+          this.consume();
+          atoms.push(makeRun('&'));
+          return true;
         }
-      }
-    }
+        return false;
+      },
+    );
 
-    if (atoms.length > 0) {
-      rows.push('<m:e>' + atoms.join('') + '</m:e>');
+    if (remaining.length > 0) {
+      rows.push('<m:e>' + remaining.join('') + '</m:e>');
     }
 
     return rows.join('');
   }
 
   private parseUntilEnd(): string {
-    const atoms: string[] = [];
-
-    while (this.peek() && !(this.peek()?.type === 'command' && this.peek()?.value === '\\end')) {
-      const token = this.peek()!;
-
-      if (token.type === 'caret' || token.type === 'underscore') {
-        if (atoms.length === 0) {
-          const consumed = this.consume()!;
-          atoms.push(this.parseToken(consumed));
-        } else {
-          const base = atoms.pop()!;
-          atoms.push(this.parseScriptsForBase(base));
-        }
-      } else {
-        const consumed = this.consume()!;
-        if (consumed.type === 'text' && consumed.value.length > 1) {
-          for (const ch of consumed.value) {
-            atoms.push(makeRun(ch));
-          }
-        } else {
-          atoms.push(this.parseToken(consumed));
-        }
-      }
-    }
-
-    return atoms.join('');
+    return this.parseAtoms(
+      () => this.peek()?.type === 'command' && this.peek()?.value === '\\end',
+    ).join('');
   }
 
   private consumeEnd(envName: string): void {
@@ -819,39 +789,7 @@ class Parser {
   }
 
   parseExpression(): string {
-    const atoms: string[] = [];
-    
-    while (this.peek()) {
-      const token = this.peek();
-      
-      if (token?.type === 'rbrace') {
-        break;
-      }
-
-      if (token?.type === 'caret' || token?.type === 'underscore') {
-        // Handle superscript/subscript - need a base first
-        if (atoms.length === 0) {
-          // No base, treat as regular text
-          const consumed = this.consume()!;
-          atoms.push(this.parseToken(consumed));
-          continue;
-        }
-
-        const base = atoms.pop()!;
-        atoms.push(this.parseScriptsForBase(base));
-      } else {
-        const consumed = this.consume()!;
-        if (consumed.type === 'text' && consumed.value.length > 1) {
-          for (const ch of consumed.value) {
-            atoms.push(makeRun(ch));
-          }
-        } else {
-          atoms.push(this.parseToken(consumed));
-        }
-      }
-    }
-    
-    return atoms.join('');
+    return this.parseAtoms(() => this.peek()?.type === 'rbrace').join('');
   }
 }
 
