@@ -192,6 +192,9 @@ class Parser {
         this.consume(); // consume '}'
       }
       return content;
+    } else if (token?.type === 'rbrace') {
+      // Don't consume — closing brace belongs to the enclosing group
+      return '';
     } else {
       // Single token
       const next = this.consume();
@@ -506,7 +509,7 @@ class Parser {
     } else if (leftToken.type === 'command') {
       switch (leftToken.value) {
         case '\\{': begChr = '{'; break;
-        case '\\|': begChr = '|'; break;
+        case '\\|': begChr = '\u2016'; break;
         case '\\[': begChr = '['; break;
         default: begChr = leftToken.value.slice(1); break;
       }
@@ -540,7 +543,7 @@ class Parser {
     } else if (delimToken.type === 'command') {
       switch (delimToken.value) {
         case '\\}': endChr = '}'; break;
-        case '\\|': endChr = '|'; break;
+        case '\\|': endChr = '\u2016'; break;
         case '\\]': endChr = ']'; break;
         default: endChr = delimToken.value.slice(1); break;
       }

@@ -126,7 +126,7 @@ export function unicodeToLatex(text: string): string {
       result += ch;
     }
   }
-  return result.trimEnd();
+  return result.replace(/ +$/, '');
 }
 
 /**

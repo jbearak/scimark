@@ -288,6 +288,7 @@ describe('latexToOmml', () => {
     const result = latexToOmml('\\underset{n}{\\max}');
     expect(result).toContain('<m:limLow>');
     expect(result).toContain('<m:lim>');
+    expect(result).toContain('<m:e><m:func>');
   });
 
   test('\\tag is silently consumed', () => {
@@ -368,6 +369,12 @@ describe('latexToOmml', () => {
     const result = latexToOmml('\\begin{smallmatrix}a & b\\\\c & d\\end{smallmatrix}');
     expect(result).toContain('<m:m>');
     expect(result).toContain('<m:mr>');
+  });
+
+  test('\\left\\| produces double-bar delimiter', () => {
+    const result = latexToOmml('\\left\\|x\\right\\|');
+    expect(result).toContain('<m:begChr m:val="\u2016"/>');
+    expect(result).toContain('<m:endChr m:val="\u2016"/>');
   });
 
   // --- null delimiter tests ---

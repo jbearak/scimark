@@ -93,6 +93,14 @@ describe('Feature: docx-equation-conversion, Property 5: Unicode-to-LaTeX mappin
     );
   });
 
+  it('preserves Unicode math spaces', () => {
+    expect(unicodeToLatex('\u2009')).toBe('\u2009');  // thin space (\,)
+    expect(unicodeToLatex('\u205F')).toBe('\u205F');  // medium space (\:)
+    expect(unicodeToLatex('\u2004')).toBe('\u2004');  // 3-per-em (\;)
+    expect(unicodeToLatex('\u2003')).toBe('\u2003');  // em space (\quad)
+    expect(unicodeToLatex('\u2005')).toBe('\u2005');  // 4-per-em (\pmod)
+  });
+
   it('unmapped characters pass through unchanged', () => {
     // Use non-whitespace ASCII chars that are NOT in the mapping table
     const unmappedChar = asciiPrintable.filter(ch => !MAPPED_CHARS.has(ch));
