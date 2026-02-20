@@ -3,6 +3,56 @@ import * as fc from 'fast-check';
 import { parseBibtex, serializeBibtex, BibtexEntry } from './bibtex-parser';
 
 describe('BibTeX Parser Property Tests', () => {
+  /**
+   * Property 1 (Fault Condition): For any string s containing no braces,
+   * parsing @article{k, title = {{s}}} yields s as the stored title.
+   * Validates: Requirements 2.1, 2.2, 2.3
+   */
+  it('Property 1: double-braced field value is stripped to plain content', () => {
+    // Exclude braces (would break the double-brace structure), quotes and backslashes
+    // (would confuse the fieldRegex quote-delimiter and escape branches).
+    const noBraceString = fc.string({ minLength: 0, maxLength: 40 })
+      .filter(s => !s.includes('{') && !s.includes('}') && !s.includes('"') && !s.includes('\\'));
+
+    fc.assert(
+      fc.property(noBraceString, (s) => {
+        const bibtex = '@article{k, title = {{' + s + '}}}';
+        const result = parseBibtex(bibtex);
+        const stored = result.get('k')?.fields.get('title');
+        if (stored !== s) {
+          throw new Error('Expected "' + s + '" but got "' + stored + '"');
+        }
+        return true;
+      }),
+      { numRuns: 200 }
+    );
+  });
+
+  /**
+   * Property 2 (Preservation): For any string s that does not start with { or end with },
+   * parsing @article{k, title = {s}} yields s unchanged (single-brace path unaffected).
+   * Validates: Requirements 3.1, 3.4
+   */
+  it('Property 2 (Preservation): single-braced field value is unchanged', () => {
+    const safeSingleBraceString = fc.string({ minLength: 1, maxLength: 40 })
+      .filter(s =>
+        !s.includes('}') && !s.includes('"') && !s.includes('{') && !s.includes('\\')
+      );
+
+    fc.assert(
+      fc.property(safeSingleBraceString, (s) => {
+        const bibtex = '@article{k, title = {' + s + '}}';
+        const result = parseBibtex(bibtex);
+        const stored = result.get('k')?.fields.get('title');
+        if (stored !== s) {
+          throw new Error('Expected "' + s + '" but got "' + stored + '"');
+        }
+        return true;
+      }),
+      { numRuns: 200 }
+    );
+  });
+
   it('Property 2: BibTeX parser round-trip', () => {
     const bibtexEntryArb = fc.record({
       type: fc.constantFrom('article', 'book', 'misc', 'inproceedings'),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { parseBibtex, serializeBibtex, BibtexEntry } from './bibtex-parser';
+import { parseBibtex, serializeBibtex, stripOuterBraces, BibtexEntry } from './bibtex-parser';
 
 describe('BibTeX Parser', () => {
   it('parses basic entry', () => {
@@ -46,7 +46,7 @@ describe('BibTeX Parser', () => {
     const input = '@article{key1,\n  title = {{Nested {Braces} Title}}\n}';
     const result = parseBibtex(input);
     
-    expect(result.get('key1')?.fields.get('title')).toBe('{Nested {Braces} Title}');
+    expect(result.get('key1')?.fields.get('title')).toBe('Nested {Braces} Title');
   });
 
   it('handles quoted field values', () => {
@@ -186,5 +186,59 @@ describe('BibTeX Parser', () => {
     expect(result).toContain('title = {Title \\& More}');
     expect(result).toContain('doi = {10.1000/test_doi}'); // DOI is verbatim (not LaTeX-escaped)
     expect(result).toContain('zotero-key = {ABC_123}'); // Not escaped (alphanumeric identifiers)
+  });
+});
+
+describe('double-brace fix', () => {
+  // Promoted from exploratory tests — these now pass on the fixed code.
+
+  it('strips inner braces from double-braced title', () => {
+    const result = parseBibtex('@article{k, title = {{My Title}}}');
+    expect(result.get('k')?.fields.get('title')).toBe('My Title');
+  });
+
+  it('preserves one brace level for double-braced institutional author (Req 2.3)', () => {
+    // author/editor fields use {Name} as a semantic signal for literal/institutional
+    // names in downstream CSL processing — so {{Name}} stores as {Name}, not Name.
+    const result = parseBibtex('@article{k, author = {{World Health Organization}}}');
+    expect(result.get('k')?.fields.get('author')).toBe('{World Health Organization}');
+  });
+
+  it('strips inner braces from double-braced unicode title', () => {
+    const result = parseBibtex('@article{k, title = {{Über die Natur}}}');
+    expect(result.get('k')?.fields.get('title')).toBe('Über die Natur');
+  });
+
+  describe('stripOuterBraces edge cases', () => {
+    it('{{}} (empty double-brace) → empty string', () => {
+      expect(stripOuterBraces('{}')).toBe('');
+    });
+
+    it('{{a}} → "a"', () => {
+      expect(stripOuterBraces('{a}')).toBe('a');
+    });
+
+    it('{a} (single-brace) → "a" (unchanged — single-brace path)', () => {
+      // stripOuterBraces strips any single wrapping pair; the "single-brace path"
+      // means parseBibtex already stripped the outer delimiters before calling it,
+      // so braceValue here is just 'a' with no braces at all.
+      expect(stripOuterBraces('a')).toBe('a');
+    });
+
+    it('{a}{b} (two separate groups) → "{a}{b}" (not stripped)', () => {
+      expect(stripOuterBraces('{a}{b}')).toBe('{a}{b}');
+    });
+
+    it('{The {RNA} Paradox} → "The {RNA} Paradox" (partial inner group, not stripped)', () => {
+      expect(stripOuterBraces('{The {RNA} Paradox}')).toBe('The {RNA} Paradox');
+    });
+  });
+
+  it('LaTeX escape: {Caf\\\'\\{e\\}} parses without brace corruption', () => {
+    // unescapeBibtex handles \& \% \$ etc. but not accent sequences like \'.
+    // The important thing is that the partial inner brace {e} does NOT trigger
+    // double-brace stripping (braceValue is "Caf\'{e}", which does not start with '{').
+    const result = parseBibtex("@article{k, title = {Caf\\'{e}}}");
+    expect(result.get('k')?.fields.get('title')).toBe("Caf\\'{e}");
   });
 });

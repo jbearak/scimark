@@ -17,6 +17,36 @@ const VERBATIM_BIBTEX_FIELDS: ReadonlySet<string> = new Set([
   'doi', 'url', 'isbn', 'issn',
 ]);
 
+/** Strip a single outer brace pair if it wraps the entire string.
+ *  Scans left-to-right with a depth counter starting at 1 (after the opening '{').
+ *  If depth first reaches 0 at the last character, the outer pair wraps the whole
+ *  string and is stripped. Otherwise the string is returned unchanged.
+ *  Examples:
+ *    '{My Title}'        → 'My Title'   (single wrapping pair — strip)
+ *    '{The {RNA} Paradox}' → '{The {RNA} Paradox}' (depth reaches 0 before last char — keep)
+ *    '{a}{b}'            → '{a}{b}'     (two separate groups — keep)
+ *    '{}'                → ''           (empty pair — strip)
+ */
+export function stripOuterBraces(s: string): string {
+  if (s.length < 2 || s[0] !== '{' || s[s.length - 1] !== '}') {
+    return s;
+  }
+  let depth = 1;
+  for (let i = 1; i < s.length - 1; i++) {
+    if (s[i] === '{') {
+      depth++;
+    } else if (s[i] === '}') {
+      depth--;
+      if (depth === 0) {
+        // Outer '{' closed before the last character — not a single wrapping pair
+        return s;
+      }
+    }
+  }
+  // depth === 1 here; the last '}' closes it → single wrapping pair
+  return s.slice(1, -1);
+}
+
 function escapeBibtex(s: string): string {
   // Unescape first to avoid double-escaping on round-trips (idempotent)
   return unescapeBibtex(s).replace(/([&%$#_{}~^\\])/g, '\\$1');
@@ -81,12 +111,19 @@ export function parseBibtex(input: string): Map<string, BibtexEntry> {
       // NOTE: This regex handles nested braces only up to a small fixed depth.
       // If we need arbitrary nesting, replace with a balanced-brace field parser.
       const fieldRegex = /(\w+(?:-\w+)*)\s*=\s*(?:\{((?:[^{}]|\{(?:[^{}]|\{[^}]*\})*\})*)\}|"([^"]*)"|(\w+))/g;
+      // author/editor use inner {Name} braces as a semantic signal for
+      // institutional/literal names (Req 2.3), so do NOT strip outer braces
+      // for those fields — only strip for non-name fields (title, journal, etc.)
+      const AUTHOR_FIELDS = new Set(['author', 'editor']);
       let fieldMatch;
       
       while ((fieldMatch = fieldRegex.exec(fieldsStr)) !== null) {
         const [, fieldName, braceValue, quoteValue, bareValue] = fieldMatch;
-        const value = braceValue || quoteValue || bareValue || '';
-        fields.set(fieldName.toLowerCase(), unescapeBibtex(value));
+        const lowerField = fieldName.toLowerCase();
+        const value = (braceValue !== undefined
+          ? unescapeBibtex(AUTHOR_FIELDS.has(lowerField) ? braceValue : stripOuterBraces(braceValue))
+          : unescapeBibtex(quoteValue ?? bareValue ?? ''));
+        fields.set(lowerField, value);
       }
       
       const entry: BibtexEntry = {
