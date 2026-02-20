@@ -34,6 +34,8 @@ const LATEX_UNICODE_MAP: Map<string, string> = new Map([
   ['\\forall', '∀'], ['\\exists', '∃'], ['\\neg', '¬'],
   ['\\land', '∧'], ['\\lor', '∨'], ['\\oplus', '⊕'], ['\\otimes', '⊗'],
   ['\\cdot', '·'], ['\\ldots', '…'], ['\\cdots', '⋯'],
+  ['\\dots', '…'], ['\\dotsc', '…'], ['\\dotsb', '…'], ['\\dotsm', '…'], ['\\dotsi', '…'],
+  ['\\ddots', '⋱'], ['\\vdots', '⋮'],
 ]);
 
 const LATEX_ACCENT_MAP: Map<string, string> = new Map([
@@ -190,6 +192,9 @@ class Parser {
         this.consume(); // consume '}'
       }
       return content;
+    } else if (token?.type === 'rbrace') {
+      // Don't consume — closing brace belongs to the enclosing group
+      return '';
     } else {
       // Single token
       const next = this.consume();
@@ -314,6 +319,9 @@ class Parser {
       }
 
       case '\\operatorname': {
+        // Intentionally consumes a following group as the function argument,
+        // mirroring KNOWN_FUNCTIONS (e.g. \sin{x}) for round-trip fidelity
+        // with the OMML→LaTeX direction which emits \operatorname{name}{arg}.
         const name = this.parseGroup();
         const funcArg = this.parseGroup();
         return '<m:func><m:fName>' + makeStyledRun(this.extractText(name)) + '</m:fName><m:e>' + funcArg + '</m:e></m:func>';
@@ -322,6 +330,133 @@ class Parser {
       case '\\limits':
         // This should be handled by nary parsing, but if encountered alone, ignore
         return '';
+
+      // Fraction variants (same output as \frac)
+      case '\\dfrac':
+      case '\\tfrac':
+      case '\\cfrac': {
+        const fnum = this.parseGroup();
+        const fden = this.parseGroup();
+        return '<m:f><m:num>' + fnum + '</m:num><m:den>' + fden + '</m:den></m:f>';
+      }
+
+      // Binomial coefficients
+      case '\\binom':
+      case '\\dbinom':
+      case '\\tbinom': {
+        const bnum = this.parseGroup();
+        const bden = this.parseGroup();
+        return '<m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/></m:dPr><m:e>' +
+          '<m:f><m:fPr><m:type m:val="noBar"/></m:fPr><m:num>' + bnum + '</m:num><m:den>' + bden + '</m:den></m:f>' +
+          '</m:e></m:d>';
+      }
+
+      // \text{} — same as \mathrm
+      case '\\text': {
+        const textContent = this.parseGroup();
+        return makeStyledRun(this.extractText(textContent));
+      }
+
+      // \boxed{}
+      case '\\boxed': {
+        const boxContent = this.parseGroup();
+        return '<m:borderBox><m:e>' + boxContent + '</m:e></m:borderBox>';
+      }
+
+      // \overset{top}{base}
+      case '\\overset': {
+        const overTop = this.parseGroup();
+        const overBase = this.parseGroup();
+        return '<m:limUpp><m:e>' + overBase + '</m:e><m:lim>' + overTop + '</m:lim></m:limUpp>';
+      }
+
+      // \underset{bottom}{base}
+      case '\\underset': {
+        const underBottom = this.parseGroup();
+        const underBase = this.parseGroup();
+        return '<m:limLow><m:e>' + underBase + '</m:e><m:lim>' + underBottom + '</m:lim></m:limLow>';
+      }
+
+      // \overline{} and \underline{}
+      case '\\overline': {
+        const olContent = this.parseGroup();
+        return '<m:bar><m:barPr><m:pos m:val="top"/></m:barPr><m:e>' + olContent + '</m:e></m:bar>';
+      }
+
+      case '\\underline': {
+        const ulContent = this.parseGroup();
+        return '<m:bar><m:barPr><m:pos m:val="bot"/></m:barPr><m:e>' + ulContent + '</m:e></m:bar>';
+      }
+
+      // \overbrace{} and \underbrace{}
+      case '\\overbrace': {
+        const obContent = this.parseGroup();
+        return '<m:groupChr><m:groupChrPr><m:chr m:val="\u23DE"/><m:pos m:val="top"/></m:groupChrPr><m:e>' + obContent + '</m:e></m:groupChr>';
+      }
+
+      case '\\underbrace': {
+        const ubContent = this.parseGroup();
+        return '<m:groupChr><m:groupChrPr><m:chr m:val="\u23DF"/><m:pos m:val="bot"/></m:groupChrPr><m:e>' + ubContent + '</m:e></m:groupChr>';
+      }
+
+      // Tags and labels (silently consumed)
+      case '\\tag': {
+        this.consumeStarVariant();
+        this.parseGroup();
+        return '';
+      }
+
+      case '\\label': {
+        this.parseGroup();
+        return '';
+      }
+
+      case '\\notag':
+      case '\\nonumber':
+        return '';
+
+      // Style commands (silently consumed)
+      case '\\displaystyle':
+      case '\\textstyle':
+        return '';
+
+      // Intertext
+      case '\\intertext':
+      case '\\shortintertext': {
+        const itContent = this.parseGroup();
+        return makeStyledRun(this.extractText(itContent));
+      }
+
+      // Shove commands — emit inner content
+      case '\\shoveleft':
+      case '\\shoveright':
+        return this.parseGroup();
+
+      // Spacing
+      case '\\,':
+        return makeRun('\u2009');
+      case '\\:':
+        return makeRun('\u205F');
+      case '\\;':
+        return makeRun('\u2004');
+      case '\\!':
+        return '';
+      case '\\ ':
+        return makeRun(' ');
+      case '\\quad':
+        return makeRun('\u2003');
+      case '\\qquad':
+        return makeRun('\u2003\u2003');
+
+      // Mod commands
+      case '\\pmod': {
+        const modArg = this.parseGroup();
+        return '<m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/></m:dPr><m:e>' +
+          makeStyledRun('mod') + makeRun('\u2005') + modArg + '</m:e></m:d>';
+      }
+
+      case '\\bmod':
+        return makeStyledRun('mod');
 
       default:
         // Unsupported command - fallback
@@ -366,6 +501,7 @@ class Parser {
     if (leftToken.type === 'text') {
       // The delimiter and content might be combined in one token like "(x"
       begChr = leftToken.value.charAt(0);
+      if (begChr === '.') begChr = ''; // \left. → invisible delimiter
       const remaining = leftToken.value.slice(1);
       if (remaining) {
         this.tokens.splice(this.pos, 0, { type: 'text', value: remaining, pos: leftToken.pos });
@@ -373,7 +509,7 @@ class Parser {
     } else if (leftToken.type === 'command') {
       switch (leftToken.value) {
         case '\\{': begChr = '{'; break;
-        case '\\|': begChr = '|'; break;
+        case '\\|': begChr = '\u2016'; break;
         case '\\[': begChr = '['; break;
         default: begChr = leftToken.value.slice(1); break;
       }
@@ -399,6 +535,7 @@ class Parser {
     let endChr = ')';
     if (delimToken.type === 'text') {
       endChr = delimToken.value.charAt(0);
+      if (endChr === '.') endChr = ''; // \right. → invisible delimiter
       const remaining = delimToken.value.slice(1);
       if (remaining) {
         this.tokens.splice(this.pos, 0, { type: 'text', value: remaining, pos: delimToken.pos });
@@ -406,7 +543,7 @@ class Parser {
     } else if (delimToken.type === 'command') {
       switch (delimToken.value) {
         case '\\}': endChr = '}'; break;
-        case '\\|': endChr = '|'; break;
+        case '\\|': endChr = '\u2016'; break;
         case '\\]': endChr = ']'; break;
         default: endChr = delimToken.value.slice(1); break;
       }
@@ -415,18 +552,48 @@ class Parser {
     return '<m:d><m:dPr><m:begChr m:val="' + escapeXmlChars(begChr) + '"/><m:endChr m:val="' + escapeXmlChars(endChr) + '"/></m:dPr><m:e>' + content + '</m:e></m:d>';
   }
 
-  private parseUntilRight(): string {
+  /** Consume a `*` prefix from the next text token (for `\tag*` variants). */
+  private consumeStarVariant(): void {
+    if (this.peek()?.type === 'text' && this.peek()?.value.startsWith('*')) {
+      const starToken = this.consume()!;
+      const rest = starToken.value.slice(1);
+      if (rest) {
+        this.tokens.splice(this.pos, 0, { type: 'text', value: rest, pos: starToken.pos });
+      }
+    }
+  }
+
+  /**
+   * Core atom-parsing loop: accumulate OMML atoms with script-binding
+   * and multi-char text splitting. Shared by all expression/content parsers.
+   *
+   * Returns the **live** `atoms` array (not a copy). Callers that use
+   * `onSpecialToken` to drain atoms mid-parse (via `atoms.length = 0`)
+   * rely on this aliasing — do not copy on return.
+   *
+   * @param shouldStop - Receives the current token; return true to exit.
+   * @param onSpecialToken - Optional callback for domain-specific tokens
+   *   (ampersand, \\, \tag, etc.). Return true if handled, false for
+   *   default processing. The callback receives the live `atoms` array
+   *   and may read or mutate it (e.g. `atoms.length = 0` to flush).
+   *   **Must consume the triggering token before returning true**;
+   *   failing to do so causes an infinite loop.
+   */
+  private parseAtoms(
+    shouldStop: (token: Token) => boolean,
+    onSpecialToken?: (token: Token, atoms: string[]) => boolean,
+  ): string[] {
     const atoms: string[] = [];
-    while (this.peek() && !(this.peek()?.type === 'command' && this.peek()?.value === '\\right')) {
-      const token = this.peek();
-      if (token?.type === 'caret' || token?.type === 'underscore') {
+    let token: Token | undefined;
+    while ((token = this.peek()) && !shouldStop(token)) {
+      if (onSpecialToken && onSpecialToken(token, atoms)) continue;
+      if (token.type === 'caret' || token.type === 'underscore') {
         if (atoms.length === 0) {
-          const consumed = this.consume()!;
-          atoms.push(this.parseToken(consumed));
-          continue;
+          atoms.push(this.parseToken(this.consume()!));
+        } else {
+          const base = atoms.pop()!;
+          atoms.push(this.parseScriptsForBase(base));
         }
-        const base = atoms.pop()!;
-        atoms.push(this.parseScriptsForBase(base));
       } else {
         const consumed = this.consume()!;
         if (consumed.type === 'text' && consumed.value.length > 1) {
@@ -438,51 +605,165 @@ class Parser {
         }
       }
     }
-    return atoms.join('');
+    return atoms;
+  }
+
+  private parseUntilRight(): string {
+    return this.parseAtoms(
+      (t) => t.type === 'command' && t.value === '\\right',
+    ).join('');
   }
 
   private parseEnvironment(): string {
     const envToken = this.parseGroup();
     const envName = this.extractText(envToken);
 
-    if (envName === 'matrix') {
-      const content = this.parseMatrixContent();
-      // Consume \end{matrix}
-      this.consumeEnd('matrix');
-      return '<m:m>' + content + '</m:m>';
-    }
+    switch (envName) {
+      case 'matrix':
+      case 'smallmatrix': {
+        const content = this.parseMatrixContent();
+        this.consumeEnd(envName);
+        return '<m:m>' + content + '</m:m>';
+      }
 
-    // Unsupported environment
-    return makeRun('\\begin{' + envName + '}');
+      case 'pmatrix':
+        return this.parseDelimitedMatrix(envName, '(', ')');
+      case 'bmatrix':
+        return this.parseDelimitedMatrix(envName, '[', ']');
+      case 'Bmatrix':
+        return this.parseDelimitedMatrix(envName, '{', '}');
+      case 'vmatrix':
+        return this.parseDelimitedMatrix(envName, '|', '|');
+      case 'Vmatrix':
+        return this.parseDelimitedMatrix(envName, '\u2016', '\u2016');
+
+      case 'cases': {
+        const content = this.parseEqArrayContent();
+        this.consumeEnd(envName);
+        return '<m:d><m:dPr><m:begChr m:val="{"/><m:endChr m:val=""/></m:dPr><m:e><m:eqArr>' + content + '</m:eqArr></m:e></m:d>';
+      }
+
+      case 'align':
+      case 'align*':
+      case 'aligned':
+      case 'gather':
+      case 'gather*':
+      case 'gathered':
+      case 'split':
+      case 'multline':
+      case 'multline*':
+      case 'flalign':
+      case 'flalign*': {
+        const content = this.parseEqArrayContent();
+        this.consumeEnd(envName);
+        return '<m:eqArr>' + content + '</m:eqArr>';
+      }
+
+      case 'alignat':
+      case 'alignat*': {
+        // Consume {n} column count argument
+        if (this.peek()?.type === 'lbrace') {
+          this.parseGroup();
+        }
+        const content = this.parseEqArrayContent();
+        this.consumeEnd(envName);
+        return '<m:eqArr>' + content + '</m:eqArr>';
+      }
+
+      case 'equation':
+      case 'equation*':
+      case 'subequations': {
+        const content = this.parseUntilEnd();
+        this.consumeEnd(envName);
+        return content;
+      }
+
+      default:
+        return makeRun('\\begin{' + envName + '}');
+    }
+  }
+
+  private parseDelimitedMatrix(envName: string, begChr: string, endChr: string): string {
+    const content = this.parseMatrixContent();
+    this.consumeEnd(envName);
+    return '<m:d><m:dPr><m:begChr m:val="' + escapeXmlChars(begChr) + '"/><m:endChr m:val="' + escapeXmlChars(endChr) + '"/></m:dPr><m:e><m:m>' + content + '</m:m></m:e></m:d>';
   }
 
   private parseMatrixContent(): string {
     let rows = '';
-    let currentCell = '';
     let currentRowCells = '';
 
-    while (this.peek() && !(this.peek()?.type === 'command' && this.peek()?.value === '\\end')) {
-      const token = this.consume()!;
-      
-      if (token.type === 'ampersand') {
-        currentRowCells += '<m:e>' + currentCell + '</m:e>';
-        currentCell = '';
-      } else if (token.type === 'command' && token.value === '\\\\') {
-        currentRowCells += '<m:e>' + currentCell + '</m:e>';
-        rows += '<m:mr>' + currentRowCells + '</m:mr>';
-        currentCell = '';
-        currentRowCells = '';
-      } else {
-        currentCell += this.parseToken(token);
-      }
-    }
+    const remaining = this.parseAtoms(
+      (t) => t.type === 'command' && t.value === '\\end',
+      (token, atoms) => {
+        if (token.type === 'ampersand') {
+          this.consume();
+          currentRowCells += '<m:e>' + atoms.join('') + '</m:e>';
+          atoms.length = 0;
+          return true;
+        }
+        if (token.type === 'command' && token.value === '\\\\') {
+          this.consume();
+          currentRowCells += '<m:e>' + atoms.join('') + '</m:e>';
+          atoms.length = 0;
+          rows += '<m:mr>' + currentRowCells + '</m:mr>';
+          currentRowCells = '';
+          return true;
+        }
+        return false;
+      },
+    );
 
-    if (currentCell || currentRowCells) {
-      currentRowCells += '<m:e>' + currentCell + '</m:e>';
+    if (remaining.length > 0 || currentRowCells) {
+      currentRowCells += '<m:e>' + remaining.join('') + '</m:e>';
       rows += '<m:mr>' + currentRowCells + '</m:mr>';
     }
 
     return rows;
+  }
+
+  private parseEqArrayContent(): string {
+    const rows: string[] = [];
+
+    const remaining = this.parseAtoms(
+      (t) => t.type === 'command' && t.value === '\\end',
+      (token, atoms) => {
+        if (token.type === 'command' && token.value === '\\\\') {
+          this.consume();
+          rows.push('<m:e>' + atoms.join('') + '</m:e>');
+          atoms.length = 0;
+          return true;
+        }
+        if (token.type === 'command' && (token.value === '\\tag' || token.value === '\\label')) {
+          this.consume();
+          if (token.value === '\\tag') this.consumeStarVariant();
+          this.parseGroup(); // consume argument, emit nothing
+          return true;
+        }
+        if (token.type === 'command' && (token.value === '\\notag' || token.value === '\\nonumber')) {
+          this.consume();
+          return true;
+        }
+        if (token.type === 'ampersand') {
+          this.consume();
+          atoms.push(makeRun('&'));
+          return true;
+        }
+        return false;
+      },
+    );
+
+    if (remaining.length > 0) {
+      rows.push('<m:e>' + remaining.join('') + '</m:e>');
+    }
+
+    return rows.join('');
+  }
+
+  private parseUntilEnd(): string {
+    return this.parseAtoms(
+      (t) => t.type === 'command' && t.value === '\\end',
+    ).join('');
   }
 
   private consumeEnd(envName: string): void {
@@ -506,39 +787,7 @@ class Parser {
   }
 
   parseExpression(): string {
-    const atoms: string[] = [];
-    
-    while (this.peek()) {
-      const token = this.peek();
-      
-      if (token?.type === 'rbrace') {
-        break;
-      }
-
-      if (token?.type === 'caret' || token?.type === 'underscore') {
-        // Handle superscript/subscript - need a base first
-        if (atoms.length === 0) {
-          // No base, treat as regular text
-          const consumed = this.consume()!;
-          atoms.push(this.parseToken(consumed));
-          continue;
-        }
-
-        const base = atoms.pop()!;
-        atoms.push(this.parseScriptsForBase(base));
-      } else {
-        const consumed = this.consume()!;
-        if (consumed.type === 'text' && consumed.value.length > 1) {
-          for (const ch of consumed.value) {
-            atoms.push(makeRun(ch));
-          }
-        } else {
-          atoms.push(this.parseToken(consumed));
-        }
-      }
-    }
-    
-    return atoms.join('');
+    return this.parseAtoms((t) => t.type === 'rbrace').join('');
   }
 }
 
