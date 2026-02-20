@@ -443,8 +443,8 @@ export interface BibFieldLink {
 
 const BIB_FIELD_LINK_RE = /^\s*(doi|isbn|issn)\s*=\s*[{"]\s*([^}"]+?)\s*[}"]/i;
 
-// DOIs: digits, letters, dots, slashes, hyphens, underscores, colons, semicolons
-const VALID_DOI_RE = /^10\.\d{4,}[/.][A-Za-z0-9./_\-:;]+$/;
+// DOIs: digits, letters, dots, slashes, hyphens, underscores, colons, semicolons, parens
+const VALID_DOI_RE = /^10\.\d{4,}[/.][A-Za-z0-9./_\-:;()]+$/;
 // ISBNs: digits and hyphens (ISBN-10 or ISBN-13)
 const VALID_ISBN_RE = /^[\d-]{10,17}[\dXx]?$/;
 // ISSNs: 4 digits, hyphen, 3 digits, check digit (digit or X)
@@ -455,7 +455,7 @@ export function findBibFieldLinkAtLine(lineText: string): BibFieldLink | undefin
 	if (!match) return undefined;
 
 	const fieldName = match[1].toLowerCase();
-	const value = match[2].trim();
+	const value = match[2].trim().replace(/^\{+|\}+$/g, '').trim();
 	if (!value) return undefined;
 
 	switch (fieldName) {
@@ -463,7 +463,7 @@ export function findBibFieldLinkAtLine(lineText: string): BibFieldLink | undefin
 			if (!VALID_DOI_RE.test(value)) {
 				return { fieldName, value, label: `Invalid DOI: ${value}`, invalid: true };
 			}
-			return { fieldName, value, url: `https://doi.org/${value}`, label: 'Access via DOI' };
+			return { fieldName, value, url: `https://doi.org/${value.replace(/[()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())}`, label: 'Access via DOI' };
 		case 'isbn':
 			if (!VALID_ISBN_RE.test(value)) {
 				return { fieldName, value, label: `Invalid ISBN: ${value}`, invalid: true };

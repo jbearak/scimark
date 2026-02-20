@@ -280,10 +280,11 @@ describe('findBibFieldLinkAtLine', () => {
 		expect(result!.label).toContain('Invalid DOI');
 	});
 
-	test('returns invalid for DOI with Markdown-breaking characters', () => {
-		const result = findBibFieldLinkAtLine('  doi = {10.1234/x)(evil},');
+	test('accepts DOI with parentheses and percent-encodes them in URL', () => {
+		const result = findBibFieldLinkAtLine('  doi = {10.1002/(SICI)1097-0258},');
 		expect(result).toBeDefined();
-		expect(result!.invalid).toBe(true);
+		expect(result!.invalid).toBeUndefined();
+		expect(result!.url).toBe('https://doi.org/10.1002/%28SICI%291097-0258');
 	});
 
 	test('returns invalid for malformed ISBN', () => {
@@ -307,6 +308,14 @@ describe('findBibFieldLinkAtLine', () => {
 		expect(result).toBeDefined();
 		expect(result!.invalid).toBeUndefined();
 		expect(result!.url).toBe('https://portal.issn.org/resource/ISSN/12345678');
+	});
+
+	test('handles doubly-braced DOI value', () => {
+		const result = findBibFieldLinkAtLine('  doi = {{10.1234/test}},');
+		expect(result).toBeDefined();
+		expect(result!.invalid).toBeUndefined();
+		expect(result!.value).toBe('10.1234/test');
+		expect(result!.url).toBe('https://doi.org/10.1234/test');
 	});
 
 	test('accepts ISBN-10', () => {
