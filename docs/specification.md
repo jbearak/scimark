@@ -138,8 +138,8 @@ Five annotation operations for tracking changes. See [CriticMarkup Syntax](criti
 - Comment: `{>>text<<}`
 - Highlight: `{==text==}`
 
-[!NOTE]
-We use CriticMarkup's `{==text==}` highlight syntax to denote text associated with a comment. To colorize text without commenting on it, see [color highlights](#color-highlights) below.
+> [!NOTE]
+> We use CriticMarkup's `{==text==}` highlight syntax to denote text associated with a comment. To colorize text without commenting on it, see [color highlights](#color-highlights) below.
 
 ## Manuscript Extensions
 

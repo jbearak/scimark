@@ -33,9 +33,9 @@ a^{n+1}      % multi-character superscript (use braces)
 
 ```latex
 \frac{a}{b}        % fraction: a/b
-\dfrac{a}{b}       % display-style fraction (same OMML output)
-\tfrac{a}{b}       % text-style fraction (same OMML output)
-\cfrac{a}{b}       % continued fraction (same OMML output)
+\dfrac{a}{b}       % display-style fraction (all become \frac on re-import)
+\tfrac{a}{b}       % text-style fraction (all become \frac on re-import)
+\cfrac{a}{b}       % continued fraction (all become \frac on re-import)
 \sqrt{x}           % square root
 \sqrt[3]{x}        % cube root
 \sqrt[n]{x}        % nth root
@@ -208,6 +208,8 @@ The converter supports standard amsmath environments for multi-line equations:
 | `alignat`, `alignat*` | Aligned with explicit column count |
 | `subequations` | Wrapper (content passed through) |
 
+These environments are converted to OMML equation arrays on export. On re-import, the original environment name is not preserved: arrays with `&` markers become `aligned`, those without become `gathered`.
+
 Within these environments, `\tag{...}`, `\tag*{...}`, `\label{...}`, `\notag`, and `\nonumber` are consumed silently (OMML has no equivalent). `\intertext{...}` and `\shortintertext{...}` are emitted as plain text. `\shoveleft{...}` and `\shoveright{...}` emit their inner content.
 
 ### Aligned equations (with `&` alignment points)
@@ -250,8 +252,8 @@ f(x) = \begin{cases}
 
 ```latex
 \binom{n}{k}       % binomial coefficient
-\dbinom{n}{k}      % display-style binomial (same OMML output)
-\tbinom{n}{k}      % text-style binomial (same OMML output)
+\dbinom{n}{k}      % display-style binomial (all become \binom on re-import)
+\tbinom{n}{k}      % text-style binomial (all become \binom on re-import)
 ```
 
 ## Boxed Equations
