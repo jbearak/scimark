@@ -557,17 +557,25 @@ class Parser {
    * Core atom-parsing loop: accumulate OMML atoms with script-binding
    * and multi-char text splitting. Shared by all expression/content parsers.
    *
-   * @param shouldStop - Return true when the loop should exit (peek-based)
+   * Returns the **live** `atoms` array (not a copy). Callers that use
+   * `onSpecialToken` to drain atoms mid-parse (via `atoms.length = 0`)
+   * rely on this aliasing — do not copy on return.
+   *
+   * @param shouldStop - Receives the current token; return true to exit.
    * @param onSpecialToken - Optional callback for domain-specific tokens
-   *   (ampersand, \\, \tag, etc.). Return true if handled, false for default.
+   *   (ampersand, \\, \tag, etc.). Return true if handled, false for
+   *   default processing. The callback receives the live `atoms` array
+   *   and may read or mutate it (e.g. `atoms.length = 0` to flush).
+   *   **Must consume the triggering token before returning true**;
+   *   failing to do so causes an infinite loop.
    */
   private parseAtoms(
-    shouldStop: () => boolean,
+    shouldStop: (token: Token) => boolean,
     onSpecialToken?: (token: Token, atoms: string[]) => boolean,
   ): string[] {
     const atoms: string[] = [];
-    while (this.peek() && !shouldStop()) {
-      const token = this.peek()!;
+    let token: Token | undefined;
+    while ((token = this.peek()) && !shouldStop(token)) {
       if (onSpecialToken && onSpecialToken(token, atoms)) continue;
       if (token.type === 'caret' || token.type === 'underscore') {
         if (atoms.length === 0) {
@@ -592,7 +600,7 @@ class Parser {
 
   private parseUntilRight(): string {
     return this.parseAtoms(
-      () => this.peek()?.type === 'command' && this.peek()?.value === '\\right',
+      (t) => t.type === 'command' && t.value === '\\right',
     ).join('');
   }
 
@@ -689,7 +697,7 @@ class Parser {
     let currentRowCells = '';
 
     const remaining = this.parseAtoms(
-      () => this.peek()?.type === 'command' && this.peek()?.value === '\\end',
+      (t) => t.type === 'command' && t.value === '\\end',
       (token, atoms) => {
         if (token.type === 'ampersand') {
           this.consume();
@@ -721,7 +729,7 @@ class Parser {
     const rows: string[] = [];
 
     const remaining = this.parseAtoms(
-      () => this.peek()?.type === 'command' && this.peek()?.value === '\\end',
+      (t) => t.type === 'command' && t.value === '\\end',
       (token, atoms) => {
         if (token.type === 'command' && token.value === '\\\\') {
           this.consume();
@@ -764,7 +772,7 @@ class Parser {
 
   private parseUntilEnd(): string {
     return this.parseAtoms(
-      () => this.peek()?.type === 'command' && this.peek()?.value === '\\end',
+      (t) => t.type === 'command' && t.value === '\\end',
     ).join('');
   }
 
@@ -789,7 +797,7 @@ class Parser {
   }
 
   parseExpression(): string {
-    return this.parseAtoms(() => this.peek()?.type === 'rbrace').join('');
+    return this.parseAtoms((t) => t.type === 'rbrace').join('');
   }
 }
 
