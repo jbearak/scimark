@@ -433,3 +433,32 @@ async function isExistingFileAsync(filePath: string): Promise<boolean> {
 	}
 }
 
+export interface BibFieldLink {
+	fieldName: string;
+	value: string;
+	url: string;
+	label: string;
+}
+
+const BIB_FIELD_LINK_RE = /^\s*(doi|isbn|issn)\s*=\s*[{"]\s*([^}"]+?)\s*[}"]/i;
+
+export function findBibFieldLinkAtLine(lineText: string): BibFieldLink | undefined {
+	const match = BIB_FIELD_LINK_RE.exec(lineText);
+	if (!match) return undefined;
+
+	const fieldName = match[1].toLowerCase();
+	const value = match[2].trim();
+	if (!value) return undefined;
+
+	switch (fieldName) {
+		case 'doi':
+			return { fieldName, value, url: `https://doi.org/${value}`, label: 'Access via DOI' };
+		case 'isbn':
+			return { fieldName, value, url: `https://search.worldcat.org/isbn/${value}`, label: 'Look up ISBN' };
+		case 'issn':
+			return { fieldName, value, url: `https://portal.issn.org/resource/ISSN/${value}`, label: 'Look up ISSN' };
+		default:
+			return undefined;
+	}
+}
+

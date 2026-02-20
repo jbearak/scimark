@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
 	canonicalizeFsPath,
+	findBibFieldLinkAtLine,
 	findBibKeyAtOffset,
 	findCitekeyAtOffset,
 	fsPathToUri,
@@ -217,6 +218,60 @@ describe('parseBibDataFromText / findBibKeyAtOffset', () => {
 	});
 });
 
+
+describe('findBibFieldLinkAtLine', () => {
+	test('detects DOI with brace delimiters', () => {
+		const result = findBibFieldLinkAtLine('  doi = {10.1234/test},');
+		expect(result).toBeDefined();
+		expect(result!.fieldName).toBe('doi');
+		expect(result!.value).toBe('10.1234/test');
+		expect(result!.url).toBe('https://doi.org/10.1234/test');
+		expect(result!.label).toBe('Access via DOI');
+	});
+
+	test('detects DOI with quote delimiters', () => {
+		const result = findBibFieldLinkAtLine('  doi = "10.1234/test",');
+		expect(result).toBeDefined();
+		expect(result!.url).toBe('https://doi.org/10.1234/test');
+	});
+
+	test('detects ISBN with brace delimiters', () => {
+		const result = findBibFieldLinkAtLine('  isbn = {978-0-123456-78-9},');
+		expect(result).toBeDefined();
+		expect(result!.fieldName).toBe('isbn');
+		expect(result!.value).toBe('978-0-123456-78-9');
+		expect(result!.url).toBe('https://search.worldcat.org/isbn/978-0-123456-78-9');
+		expect(result!.label).toBe('Look up ISBN');
+	});
+
+	test('detects ISSN with brace delimiters', () => {
+		const result = findBibFieldLinkAtLine('  issn = {1234-5678},');
+		expect(result).toBeDefined();
+		expect(result!.fieldName).toBe('issn');
+		expect(result!.value).toBe('1234-5678');
+		expect(result!.url).toBe('https://portal.issn.org/resource/ISSN/1234-5678');
+		expect(result!.label).toBe('Look up ISSN');
+	});
+
+	test('is case-insensitive for field name', () => {
+		const result = findBibFieldLinkAtLine('  DOI = {10.1234/test},');
+		expect(result).toBeDefined();
+		expect(result!.fieldName).toBe('doi');
+	});
+
+	test('returns undefined for empty value', () => {
+		expect(findBibFieldLinkAtLine('  doi = {},')).toBeUndefined();
+	});
+
+	test('returns undefined for non-link fields', () => {
+		expect(findBibFieldLinkAtLine('  title = {Some Title},')).toBeUndefined();
+		expect(findBibFieldLinkAtLine('  author = {Smith, John},')).toBeUndefined();
+	});
+
+	test('returns undefined for entry header lines', () => {
+		expect(findBibFieldLinkAtLine('@article{smith2020,')).toBeUndefined();
+	});
+});
 
 describe('code-region filtering', () => {
 	test('scanCitationUsages returns no usages for citation inside inline code', () => {
