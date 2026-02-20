@@ -99,6 +99,8 @@ test('parseArgs handles defaults correctly', () => {
 
 test('parseArgs throws on unknown flags', () => {
   expect(() => parseArgs(['node', 'cli.js', '--unknown'])).toThrow('Unknown option "--unknown"');
+  expect(() => parseArgs(['node', 'cli.js', 'test.md', '--mixed-citation-style', 'unified']))
+    .toThrow('Unknown option "--mixed-citation-style"');
 });
 
 test('parseArgs throws on invalid citation key format', () => {

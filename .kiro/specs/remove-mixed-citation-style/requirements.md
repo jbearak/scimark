@@ -44,7 +44,7 @@ The `manuscriptMarkdown.mixedCitationStyle` setting controlled how mixed Zotero/
 
 ### Requirement 4: Remove CLI Flag
 
-**User Story:** As a CLI user, I want the `--mixed-citation-style` flag removed, so that the CLI interface reflects the current behavior.
+**User Story:** As a CLI user, I want the `--mixed-citation-style` flag removed, so that the CLI reflects the current behavior.
 
 #### Acceptance Criteria
 
