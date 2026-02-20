@@ -369,4 +369,40 @@ describe('latexToOmml', () => {
     expect(result).toContain('<m:m>');
     expect(result).toContain('<m:mr>');
   });
+
+  // --- null delimiter tests ---
+
+  test('\\left. produces empty begChr', () => {
+    const result = latexToOmml('\\left.\\frac{df}{dx}\\right|_{x=0}');
+    expect(result).toContain('<m:begChr m:val=""/>');
+    expect(result).toContain('<m:endChr m:val="|"/>');
+    expect(result).toContain('<m:d>');
+  });
+
+  test('\\right. produces empty endChr', () => {
+    const result = latexToOmml('\\left(\\frac{1}{x}\\right.');
+    expect(result).toContain('<m:begChr m:val="("/>');
+    expect(result).toContain('<m:endChr m:val=""/>');
+    expect(result).toContain('<m:d>');
+  });
+
+  // --- operatorname edge cases ---
+
+  test('\\operatorname{foo}x works like \\sin x', () => {
+    const opResult = latexToOmml('\\operatorname{foo}{x}');
+    const sinResult = latexToOmml('\\sin{x}');
+    // Both should produce m:func with m:fName and m:e
+    expect(opResult).toContain('<m:func>');
+    expect(opResult).toContain('<m:fName>');
+    expect(opResult).toContain('foo');
+    expect(sinResult).toContain('<m:func>');
+    expect(sinResult).toContain('<m:fName>');
+  });
+
+  test('\\operatorname{foo} at end of input produces empty m:e', () => {
+    const result = latexToOmml('\\operatorname{foo}');
+    expect(result).toContain('<m:func>');
+    expect(result).toContain('foo');
+    expect(result).toContain('<m:e></m:e>');
+  });
 });

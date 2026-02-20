@@ -515,6 +515,13 @@ function translateDelimiter(children: any[]): string {
         const den = findChild(fracChildren, 'm:den');
         return `\\binom{${ommlToLatex(num)}}{${ommlToLatex(den)}}`;
       }
+
+      // Pmod: parens wrapping \mathrm{mod} + space + argument
+      const innerLatex = ommlToLatex(eChildren);
+      const pmodMatch = /^\\mathrm\{mod\}\s*(.+)$/.exec(innerLatex);
+      if (pmodMatch) {
+        return `\\pmod{${pmodMatch[1].trim()}}`;
+      }
     }
   }
 

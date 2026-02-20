@@ -502,6 +502,7 @@ class Parser {
     if (leftToken.type === 'text') {
       // The delimiter and content might be combined in one token like "(x"
       begChr = leftToken.value.charAt(0);
+      if (begChr === '.') begChr = ''; // \left. → invisible delimiter
       const remaining = leftToken.value.slice(1);
       if (remaining) {
         this.tokens.splice(this.pos, 0, { type: 'text', value: remaining, pos: leftToken.pos });
@@ -535,6 +536,7 @@ class Parser {
     let endChr = ')';
     if (delimToken.type === 'text') {
       endChr = delimToken.value.charAt(0);
+      if (endChr === '.') endChr = ''; // \right. → invisible delimiter
       const remaining = delimToken.value.slice(1);
       if (remaining) {
         this.tokens.splice(this.pos, 0, { type: 'text', value: remaining, pos: delimToken.pos });

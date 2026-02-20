@@ -1256,4 +1256,66 @@ describe('Unit tests: OMML construct translation', () => {
       expect(result).toContain('\\underbrace{');
     });
   });
+
+  // --- Null delimiter handling ---
+  describe('Null delimiter (empty begChr/endChr)', () => {
+    it('empty begChr with | endChr emits content with just endChr', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '' } },
+            { 'm:endChr': [], ':@': { '@_m:val': '|' } },
+          ]},
+          { 'm:e': [makeRun('x')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('x|');
+    });
+
+    it('( begChr with empty endChr emits content with just begChr', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '(' } },
+            { 'm:endChr': [], ':@': { '@_m:val': '' } },
+          ]},
+          { 'm:e': [makeRun('x')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('(x');
+    });
+
+    it('both delimiters empty emits bare content', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '' } },
+            { 'm:endChr': [], ':@': { '@_m:val': '' } },
+          ]},
+          { 'm:e': [makeRun('x')] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('x');
+    });
+  });
+
+  // --- Pmod round-trip detection ---
+  describe('Pmod pattern detection', () => {
+    it('parens wrapping \\mathrm{mod} + space + arg → \\pmod{}', () => {
+      const node = {
+        'm:d': [
+          { 'm:dPr': [
+            { 'm:begChr': [], ':@': { '@_m:val': '(' } },
+            { 'm:endChr': [], ':@': { '@_m:val': ')' } },
+          ]},
+          { 'm:e': [
+            makeRun('mod', 'p'),
+            makeRun('\u2005'),
+            makeRun('p'),
+          ] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('\\pmod{p}');
+    });
+  });
 });
