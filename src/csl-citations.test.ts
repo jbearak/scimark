@@ -69,14 +69,14 @@ describe('parseFrontmatter', () => {
     const { metadata, body } = parseFrontmatter(input);
     expect(metadata.csl).toBe('apa');
     expect(metadata.locale).toBe('en-US');
-    expect(metadata.noteType).toBe('footnotes');
+    expect(metadata.zoteroNotes).toBe('footnotes');
     expect(body).toBe('Body text here.');
   });
 
   test('parses legacy numeric zotero-notes values', () => {
-    expect(parseFrontmatter('---\nzotero-notes: 0\n---\n').metadata.noteType).toBe('in-text');
-    expect(parseFrontmatter('---\nzotero-notes: 1\n---\n').metadata.noteType).toBe('footnotes');
-    expect(parseFrontmatter('---\nzotero-notes: 2\n---\n').metadata.noteType).toBe('endnotes');
+    expect(parseFrontmatter('---\nzotero-notes: 0\n---\n').metadata.zoteroNotes).toBe('in-text');
+    expect(parseFrontmatter('---\nzotero-notes: 1\n---\n').metadata.zoteroNotes).toBe('footnotes');
+    expect(parseFrontmatter('---\nzotero-notes: 2\n---\n').metadata.zoteroNotes).toBe('endnotes');
   });
 
   test('handles missing frontmatter', () => {
@@ -91,7 +91,7 @@ describe('parseFrontmatter', () => {
     const { metadata, body } = parseFrontmatter(input);
     expect(metadata.csl).toBe('chicago-author-date');
     expect(metadata.locale).toBeUndefined();
-    expect(metadata.noteType).toBeUndefined();
+    expect(metadata.zoteroNotes).toBeUndefined();
     expect(body).toBe('Paragraph.');
   });
 
@@ -112,7 +112,7 @@ describe('parseFrontmatter', () => {
 
 describe('serializeFrontmatter', () => {
   test('serializes all fields', () => {
-    const result = serializeFrontmatter({ csl: 'apa', locale: 'en-US', noteType: 'footnotes' });
+    const result = serializeFrontmatter({ csl: 'apa', locale: 'en-US', zoteroNotes: 'footnotes' });
     expect(result).toBe('---\ncsl: apa\nlocale: en-US\nzotero-notes: footnotes\n---\n');
   });
 

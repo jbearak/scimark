@@ -31,7 +31,7 @@ describe('parseFrontmatter with title', () => {
     expect(metadata.title).toEqual(['My Title']);
     expect(metadata.csl).toBe('apa');
     expect(metadata.locale).toBe('en-US');
-    expect(metadata.noteType).toBe('in-text');
+    expect(metadata.zoteroNotes).toBe('in-text');
   });
 
   it('returns no title when absent', () => {

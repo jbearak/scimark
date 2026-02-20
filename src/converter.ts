@@ -2826,7 +2826,7 @@ export async function convertDocx(
   if (zoteroPrefs) {
     fm.csl = zoteroStyleShortName(zoteroPrefs.styleId);
     fm.locale = zoteroPrefs.locale;
-    fm.noteType = zoteroPrefs.noteType !== undefined ? noteTypeFromNumber(zoteroPrefs.noteType) : undefined;
+    fm.zoteroNotes = zoteroPrefs.noteType !== undefined ? noteTypeFromNumber(zoteroPrefs.noteType) : undefined;
   }
   if (detectedNotesMode === 'endnotes') {
     fm.notes = 'endnotes';

@@ -1620,7 +1620,7 @@ function zoteroCustomProps(fm: Frontmatter): CustomPropEntry[] {
     },
     prefs: {
       fieldType: 'Field',
-      noteType: fm.noteType ? noteTypeToNumber(fm.noteType) : 0,
+      noteType: fm.zoteroNotes ? noteTypeToNumber(fm.zoteroNotes) : 0,
     },
   });
 

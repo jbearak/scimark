@@ -32,7 +32,7 @@ export interface Frontmatter {
   author?: string;
   csl?: string;
   locale?: string;
-  noteType?: NoteType;
+  zoteroNotes?: NoteType;
   notes?: NotesMode;
   timezone?: string;
   bibliography?: string;
@@ -80,7 +80,7 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
       case 'zotero-notes':
       case 'note-type': {
         const nt = NOTE_TYPE_NAMES[value];
-        if (nt) metadata.noteType = nt;
+        if (nt) metadata.zoteroNotes = nt;
         break;
       }
       case 'notes': {
@@ -120,7 +120,7 @@ export function serializeFrontmatter(metadata: Frontmatter): string {
   if (metadata.author) lines.push(`author: ${metadata.author}`);
   if (metadata.csl) lines.push(`csl: ${metadata.csl}`);
   if (metadata.locale) lines.push(`locale: ${metadata.locale}`);
-  if (metadata.noteType) lines.push(`zotero-notes: ${metadata.noteType}`);
+  if (metadata.zoteroNotes) lines.push(`zotero-notes: ${metadata.zoteroNotes}`);
   if (metadata.notes === 'endnotes') lines.push(`notes: endnotes`);
   if (metadata.timezone) lines.push(`timezone: ${metadata.timezone}`);
   if (metadata.bibliography) lines.push(`bibliography: ${metadata.bibliography}`);
