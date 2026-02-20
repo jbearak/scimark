@@ -523,6 +523,9 @@ function translateDelimiter(children: any[]): string {
       if (pmodMatch) {
         return `\\pmod{${pmodMatch[1].trim()}}`;
       }
+
+      // Reuse already-computed innerLatex for default path
+      return `${begChr}${innerLatex}${endChr}`;
     }
   }
 

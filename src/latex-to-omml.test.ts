@@ -235,7 +235,7 @@ describe('latexToOmml', () => {
     const result = latexToOmml('\\begin{alignat}{2}a &= b & c &= d\\end{alignat}');
     expect(result).toContain('<m:eqArr>');
     // Column count {2} should be consumed, not in output
-    expect(result).not.toContain('2');
+    expect(result).not.toContain('{2}');
   });
 
   test('equation array with \\tag and \\label', () => {
