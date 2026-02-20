@@ -238,6 +238,7 @@ describe('renderCitationText', () => {
   test('renders IEEE-style numeric citation', () => {
     const entries = parseBibtex(SAMPLE_BIBTEX);
     const engine = createCiteprocEngine(entries, 'ieee');
+    engine.updateItems([...entries.keys()]);
 
     const text = renderCitationText(engine, ['smith2020effects']);
     expect(text).toBeDefined();
@@ -252,7 +253,8 @@ describe('renderBibliography', () => {
     const engine = createCiteprocEngine(entries, 'apa');
     expect(engine).toBeDefined();
 
-    // Need to process at least one citation before bibliography works
+    // Register items and process citations before bibliography works
+    engine.updateItems(['smith2020effects', 'jones2019urban', 'davis2021advances']);
     renderCitationText(engine, ['smith2020effects', 'jones2019urban', 'davis2021advances']);
 
     const bib = renderBibliography(engine);
@@ -323,6 +325,7 @@ describe('generateBibliographyXml', () => {
   test('includes bibliography entries', () => {
     const entries = parseBibtex(SAMPLE_BIBTEX);
     const engine = createCiteprocEngine(entries, 'apa');
+    engine.updateItems(['smith2020effects', 'jones2019urban']);
     renderCitationText(engine, ['smith2020effects', 'jones2019urban']);
 
     const xml = generateBibliographyXml(engine);

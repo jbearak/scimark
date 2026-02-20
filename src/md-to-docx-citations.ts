@@ -205,8 +205,6 @@ function buildEngine(
 
   try {
     const engine = new CSL.Engine(sys, styleXml, locale || 'en-US');
-    // Register all item IDs
-    engine.updateItems([...items.keys()]);
     return engine;
   } catch {
     return undefined;

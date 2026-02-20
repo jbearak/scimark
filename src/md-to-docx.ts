@@ -1319,6 +1319,7 @@ export interface DocxGenState {
   nextParaId: number;
   codeBlockIndex: number;
   codeBlockLanguages: Map<number, string>;
+  citedKeys: Set<string>;
 }
 
 interface CommentEntry {
@@ -1999,6 +2000,11 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       if (result.missingKeys) {
         for (const k of result.missingKeys) state.missingKeys.add(k);
       }
+      if (run.keys && bibEntries) {
+        for (const k of run.keys) {
+          if (bibEntries.has(k)) state.citedKeys.add(k);
+        }
+      }
     } else if (run.type === 'math') {
       xml += generateMathXml(run.text, !!run.display);
     } else if (run.type === 'comment_range_start') {
@@ -2371,6 +2377,12 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     prevTokenType = token.type;
   }
 
+  // Register only the actually-cited keys so makeBibliography() outputs
+  // only entries that were referenced in the markdown.
+  if (citeprocEngine) {
+    citeprocEngine.updateItems([...state.citedKeys]);
+  }
+
   // Append bibliography field if we have a citeproc engine
   if (citeprocEngine) {
     body += generateBibliographyXml(citeprocEngine, options?.zoteroBiblData);
@@ -2501,6 +2513,7 @@ export async function convertMdToDocx(
     nextParaId: 1,
     codeBlockIndex: 0,
     codeBlockLanguages: new Map(),
+    citedKeys: new Set(),
   };
 
   const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
