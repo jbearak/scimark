@@ -95,7 +95,7 @@ function makeStyledRun(text: string): string {
 }
 
 function makeHiddenCommentRun(text: string): string {
-  return '<m:r><m:rPr><m:nor/></m:rPr><m:t xml:space="preserve">\u200B' + escapeXmlChars(text) + '</m:t></m:r>';
+  return '<m:r><m:rPr><m:nor/></m:rPr><w:rPr><w:vanish/></w:rPr><m:t xml:space="preserve">\u200B' + escapeXmlChars(text) + '</m:t></m:r>';
 }
 
 
@@ -174,14 +174,15 @@ export function tokenize(latex: string): Token[] {
         j++;
       }
       const commentText = latex.slice(i + 1, j); // text after %
-      if (commentText.length === 0 && j < latex.length && latex[j] === '\n') {
-        // Line continuation: % at end-of-line with no comment text
-        tokens.push({ type: 'line_continuation', value: precedingWs + '%', pos: i });
+      if (commentText.trim().length === 0 && j < latex.length && latex[j] === '\n') {
+        // Line continuation: % at end-of-line with no meaningful comment text
+        tokens.push({ type: 'line_continuation', value: precedingWs + '%' + commentText, pos: i });
         j++; // consume the newline
       } else {
         // Regular comment: % followed by comment text
-        tokens.push({ type: 'comment', value: precedingWs + '%' + commentText, pos: i });
-        if (j < latex.length && latex[j] === '\n') {
+        const hasNewline = j < latex.length && latex[j] === '\n';
+        tokens.push({ type: 'comment', value: precedingWs + '%' + commentText + (hasNewline ? '\n' : ''), pos: i });
+        if (hasNewline) {
           j++; // consume the newline after comment
         }
       }
@@ -643,8 +644,8 @@ class Parser {
           for (const ch of consumed.value) {
             atoms.push(makeRun(ch));
           }
-        } else if ((consumed.type === 'comment' || consumed.type === 'line_continuation') && atoms.length > 0) {
-          atoms[atoms.length - 1] += this.parseToken(consumed);
+        } else if (consumed.type === 'comment' || consumed.type === 'line_continuation') {
+          atoms.push(this.parseToken(consumed));
         } else {
           atoms.push(this.parseToken(consumed));
         }

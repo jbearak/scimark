@@ -344,11 +344,11 @@ function translateRun(children: any[]): string {
       if (afterPct === '\n') {
         return whitespace + '%\n';
       }
-      // Regular comment: restore {whitespace}%{comment_text}\n
-      return whitespace + '%' + afterPct + '\n';
+      // Regular comment: restore {whitespace}%{comment_text} (includes \n if original had one)
+      return whitespace + '%' + afterPct;
     }
-    // Fallback: if no % found, return payload as-is (shouldn't happen for well-formed hidden runs)
-    return payload;
+    // Fallback: suppress malformed hidden runs (no % found)
+    return '';
   }
 
   const mapped = unicodeToLatex(text);
