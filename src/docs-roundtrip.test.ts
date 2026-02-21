@@ -7,15 +7,16 @@ import { convertDocx } from './converter';
 const repoRoot = join(__dirname, '..');
 
 /**
- * Extract text outside fenced code blocks. Content inside ``` fences is excluded
- * because code examples may contain syntax that doesn't round-trip as prose.
+ * Extract text outside fenced code blocks. Content inside ``` or ~~~ fences
+ * is excluded because code examples may contain syntax that doesn't
+ * round-trip as prose.
  */
 function stripFencedCodeBlocks(md: string): string {
   const lines = md.split('\n');
   const result: string[] = [];
   let inFence = false;
   for (const line of lines) {
-    if (/^```/.test(line)) {
+    if (/^(?:```|~~~)/.test(line)) {
       inFence = !inFence;
       continue;
     }
@@ -63,7 +64,7 @@ function extractPlainText(md: string): string {
     .trim();
 }
 
-/** Extract unique lowercase alpha words (3+ chars) from text, stripping punctuation. */
+/** Extract unique lowercase alphanumeric words (3+ chars) from text, stripping punctuation. */
 function uniqueWords(text: string): Set<string> {
   const words = text
     .toLowerCase()
@@ -73,8 +74,17 @@ function uniqueWords(text: string): Set<string> {
   return new Set(words);
 }
 
+/** Count headings outside fenced code blocks. */
+function countHeadings(md: string): number {
+  return (stripFencedCodeBlocks(md).match(/^#+\s/gm) || []).length;
+}
+
+/** Count fenced code block pairs (open+close = 1 block). */
+function countCodeBlocks(md: string): number {
+  return Math.floor((md.match(/^(?:```|~~~)/gm) || []).length / 2);
+}
+
 interface Fixture {
-  name: string;
   path: string;
   bibtex?: string;
   /** Words to exclude from the round-trip comparison (known lossy content). */
@@ -87,22 +97,22 @@ const sampleBib = readFileSync(join(repoRoot, 'sample.bib'), 'utf-8');
 
 const fixtures: Fixture[] = [
   // docs/
-  { name: 'docs/cli.md', path: 'docs/cli.md' },
-  { name: 'docs/configuration.md', path: 'docs/configuration.md' },
-  { name: 'docs/converter.md', path: 'docs/converter.md' },
-  { name: 'docs/criticmarkup.md', path: 'docs/criticmarkup.md' },
-  { name: 'docs/development.md', path: 'docs/development.md' },
-  { name: 'docs/intro.md', path: 'docs/intro.md' },
-  { name: 'docs/language-server.md', path: 'docs/language-server.md' },
-  { name: 'docs/latex-equations.md', path: 'docs/latex-equations.md' },
-  { name: 'docs/specification.md', path: 'docs/specification.md' },
-  { name: 'docs/ui.md', path: 'docs/ui.md' },
-  { name: 'docs/zotero-roundtrip.md', path: 'docs/zotero-roundtrip.md' },
+  { path: 'docs/cli.md' },
+  { path: 'docs/configuration.md' },
+  { path: 'docs/converter.md' },
+  { path: 'docs/criticmarkup.md' },
+  { path: 'docs/development.md' },
+  { path: 'docs/intro.md' },
+  { path: 'docs/language-server.md' },
+  { path: 'docs/latex-equations.md' },
+  { path: 'docs/specification.md' },
+  { path: 'docs/ui.md' },
+  { path: 'docs/zotero-roundtrip.md' },
   // root files
-  { name: 'sample.md', path: 'sample.md', bibtex: sampleBib },
-  { name: 'README.md', path: 'README.md' },
+  { path: 'sample.md', bibtex: sampleBib },
+  { path: 'README.md' },
   {
-    name: 'AGENTS.md', path: 'AGENTS.md',
+    path: 'AGENTS.md',
     // Indented code blocks (4-space indent) are not recognized by the converter
     skipWords: new Set(['bun', 'install', 'setup', 'run', 'compile', 'watch', 'test', 'package', 'rebuild', 'bundle']),
     skipCodeBlockCount: true,
@@ -111,7 +121,7 @@ const fixtures: Fixture[] = [
 
 describe('docs round-trip: md -> docx -> md', () => {
   for (const fixture of fixtures) {
-    it(`round-trips ${fixture.name}`, async () => {
+    it(`round-trips ${fixture.path}`, async () => {
       const originalMd = readFileSync(join(repoRoot, fixture.path), 'utf-8');
 
       // md -> docx
@@ -140,14 +150,10 @@ describe('docs round-trip: md -> docx -> md', () => {
       expect(missingWords).toEqual([]);
 
       // --- Structural preservation ---
-      const originalHeadings = (originalMd.match(/^#+\s/gm) || []).length;
-      const roundTrippedHeadings = (roundTrippedMd.match(/^#+\s/gm) || []).length;
-      expect(roundTrippedHeadings).toBe(originalHeadings);
+      expect(countHeadings(roundTrippedMd)).toBe(countHeadings(originalMd));
 
       if (!fixture.skipCodeBlockCount) {
-        const originalCodeBlocks = (originalMd.match(/^```/gm) || []).length;
-        const roundTrippedCodeBlocks = (roundTrippedMd.match(/^```/gm) || []).length;
-        expect(roundTrippedCodeBlocks).toBe(originalCodeBlocks);
+        expect(countCodeBlocks(roundTrippedMd)).toBe(countCodeBlocks(originalMd));
       }
 
       const originalHasLists = /^[-*]\s|^\d+\.\s/m.test(originalMd);
