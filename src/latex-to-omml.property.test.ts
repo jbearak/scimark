@@ -11,6 +11,7 @@ const parserOptions = {
   attributeNamePrefix: '@_',
   preserveOrder: true,
   trimValues: false,
+  parseTagValue: false,
 };
 
 function normalizeLatex(latex: string): string {

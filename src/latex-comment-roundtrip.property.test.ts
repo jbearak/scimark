@@ -13,6 +13,7 @@ const parserOptions = {
   attributeNamePrefix: '@_',
   preserveOrder: true,
   trimValues: false,
+  parseTagValue: false,
 };
 
 /**

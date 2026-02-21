@@ -10,6 +10,7 @@ const parserOptions = {
   attributeNamePrefix: '@_',
   preserveOrder: true,
   trimValues: false,
+  parseTagValue: false,
 };
 
 /** Parse OMML XML string back to node structure and convert to LaTeX. */
@@ -17,11 +18,10 @@ function roundTrip(latex: string): string {
   const omml = latexToOmml(latex);
   const parser = new XMLParser(parserOptions);
   const parsed = parser.parse('<m:oMath>' + omml + '</m:oMath>');
-  let children: any[] = [];
-  if (parsed && Array.isArray(parsed) && parsed[0]?.['m:oMath']) {
-    children = parsed[0]['m:oMath'];
+  if (!Array.isArray(parsed) || !parsed[0]?.['m:oMath']) {
+    throw new Error('roundTrip: XMLParser returned unexpected shape for OMML: ' + omml);
   }
-  return ommlToLatex(children);
+  return ommlToLatex(parsed[0]['m:oMath']);
 }
 
 describe('latexToOmml', () => {
@@ -468,7 +468,7 @@ describe('latexToOmml', () => {
       expect(rows.length).toBe(2);
       for (const row of rows) {
         const ampCount = (row.match(/&/g) || []).length;
-        expect(ampCount).toBeGreaterThanOrEqual(2);
+        expect(ampCount).toBe(3);
       }
     });
 
@@ -489,6 +489,7 @@ describe('latexToOmml', () => {
     test('align environment round-trips as aligned', () => {
       const result = roundTrip('\\begin{align}a &= b\\\\c &= d\\end{align}');
       expect(result).toContain('\\begin{aligned}');
+      expect(result).toContain('\\end{aligned}');
       expect(result).toContain('&');
     });
   });
