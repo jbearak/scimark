@@ -299,7 +299,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">line1</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">line2</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">line3</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:t xml:space="preserve">line1</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:t xml:space="preserve">line2</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:t xml:space="preserve">line3</w:t></w:r></w:p>');
   });
 
   it('generates horizontal rule', () => {
