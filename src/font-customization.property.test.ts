@@ -427,7 +427,7 @@ describe('Property 4: Code-font-size inference', () => {
         if (result === undefined) {
           throw new Error('Expected FontOverrides but got undefined for fontSize=' + fontSize);
         }
-        const expectedBodyHp = fontSize * 2;
+        const expectedBodyHp = Math.round(fontSize * 2);
         const expectedCodeHp = Math.max(1, expectedBodyHp - 2);
         if (result.bodySizeHp !== expectedBodyHp) {
           throw new Error(
@@ -451,7 +451,7 @@ describe('Property 4: Code-font-size inference', () => {
         if (result === undefined) {
           throw new Error('Expected FontOverrides but got undefined');
         }
-        const expectedCodeHp = codeFontSize * 2;
+        const expectedCodeHp = Math.round(codeFontSize * 2);
         if (result.codeSizeHp !== expectedCodeHp) {
           throw new Error(
             'codeSizeHp: expected ' + expectedCodeHp + ' (codeFontSize * 2) but got ' + result.codeSizeHp
@@ -474,7 +474,7 @@ describe('Property 4: Code-font-size inference', () => {
             'bodySizeHp: expected undefined but got ' + result.bodySizeHp
           );
         }
-        const expectedCodeHp = codeFontSize * 2;
+        const expectedCodeHp = Math.round(codeFontSize * 2);
         if (result.codeSizeHp !== expectedCodeHp) {
           throw new Error(
             'codeSizeHp: expected ' + expectedCodeHp + ' but got ' + result.codeSizeHp
@@ -821,7 +821,7 @@ describe('Property 7: Size and heading proportional scaling', () => {
           throw new Error('Normal style block not found');
         }
         const szVal = extractSzVal(block);
-        const expected = fontSize * 2;
+        const expected = Math.round(fontSize * 2);
         if (szVal !== expected) {
           throw new Error(
             'Normal w:sz: expected ' + expected + ' but got ' + szVal
@@ -840,7 +840,7 @@ describe('Property 7: Size and heading proportional scaling', () => {
           throw new Error('Expected FontOverrides but got undefined for fontSize=' + fontSize);
         }
         const xml = stylesXml(overrides);
-        const bodySizeHp = fontSize * 2;
+        const bodySizeHp = Math.round(fontSize * 2);
 
         const headingStyles = ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6'];
         for (const styleId of headingStyles) {
@@ -871,7 +871,7 @@ describe('Property 7: Size and heading proportional scaling', () => {
           throw new Error('Expected FontOverrides but got undefined for fontSize=' + fontSize);
         }
         const xml = stylesXml(overrides);
-        const bodySizeHp = fontSize * 2;
+        const bodySizeHp = Math.round(fontSize * 2);
 
         const block = extractStyleBlock(xml, 'Title');
         if (block === null) {
@@ -897,7 +897,7 @@ describe('Property 7: Size and heading proportional scaling', () => {
           throw new Error('Expected FontOverrides but got undefined for fontSize=' + fontSize);
         }
         const xml = stylesXml(overrides);
-        const bodySizeHp = fontSize * 2;
+        const bodySizeHp = Math.round(fontSize * 2);
 
         for (const styleId of ['FootnoteText', 'EndnoteText']) {
           const block = extractStyleBlock(xml, styleId);
@@ -931,7 +931,7 @@ describe('Property 7: Size and heading proportional scaling', () => {
           throw new Error('CodeBlock style block not found');
         }
         const szVal = extractSzVal(block);
-        const expected = Math.max(1, fontSize * 2 - 2);
+        const expected = Math.max(1, Math.round(fontSize * 2) - 2);
         if (szVal !== expected) {
           throw new Error(
             'CodeBlock w:sz: expected ' + expected + ' but got ' + szVal
@@ -1157,7 +1157,7 @@ describe('Property 8: Template font override application', () => {
           throw new Error('Expected FontOverrides but got undefined');
         }
         const result = applyFontOverridesToTemplate(toBytes(templateStylesXml), overrides);
-        const bodySizeHp = fontSize * 2;
+        const bodySizeHp = Math.round(fontSize * 2);
 
         // Normal should have the body size
         const normalBlock = extractStyleBlock(result, 'Normal');

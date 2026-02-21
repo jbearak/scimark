@@ -44,7 +44,7 @@ The frontmatter may also include citation-related fields (`csl`, `locale`, `zote
 | `font-size` | Body font size in points. Default: 11. |
 | `code-font-size` | Code font size in points. Default: 10. When `font-size` is specified without `code-font-size`, the code font size is automatically set to 1pt less than the body font size, preserving the default size difference. |
 
-#### Font Customization Example
+### Font Customization Example
 
 ```yaml
 ---

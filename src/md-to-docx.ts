@@ -1472,7 +1472,7 @@ export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined
   }
 
   if (fm.fontSize !== undefined) {
-    const bodySizeHp = fm.fontSize * 2;
+    const bodySizeHp = Math.round(fm.fontSize * 2);
     overrides.bodySizeHp = bodySizeHp;
 
     // Proportional heading scaling: preserve ratio relative to default 11pt body
@@ -1489,7 +1489,7 @@ export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined
   }
 
   if (fm.codeFontSize !== undefined) {
-    overrides.codeSizeHp = fm.codeFontSize * 2;
+    overrides.codeSizeHp = Math.round(fm.codeFontSize * 2);
   }
 
   return overrides;
@@ -1557,7 +1557,7 @@ export function applyFontOverridesToTemplate(
 
     // Build the replacement fragments
     const rFontsEl = font !== undefined
-      ? '<w:rFonts w:ascii="' + font + '" w:hAnsi="' + font + '"/>'
+      ? '<w:rFonts w:ascii="' + escapeXml(font) + '" w:hAnsi="' + escapeXml(font) + '"/>'
       : undefined;
     const szEl = sizeHp !== undefined
       ? '<w:sz w:val="' + sizeHp + '"/>'
@@ -1577,7 +1577,7 @@ export function applyFontOverridesToTemplate(
       if (rFontsEl !== undefined) {
         // Replace existing w:rFonts or insert at start of rPr content
         if (/<w:rFonts\b[^/]*\/>/.test(rPrContent)) {
-          rPrContent = rPrContent.replace(/<w:rFonts\b[^/]*\/>/, rFontsEl);
+          rPrContent = rPrContent.replace(/<w:rFonts\b[^/]*\/>/, () => rFontsEl);
         } else {
           rPrContent = rFontsEl + rPrContent;
         }
@@ -1586,7 +1586,7 @@ export function applyFontOverridesToTemplate(
       if (szEl !== undefined) {
         // Replace existing w:sz or append
         if (/<w:sz\b[^/]*\/>/.test(rPrContent)) {
-          rPrContent = rPrContent.replace(/<w:sz\b[^/]*\/>/, szEl);
+          rPrContent = rPrContent.replace(/<w:sz\b[^/]*\/>/, () => szEl);
         } else {
           rPrContent = rPrContent + szEl;
         }
@@ -1595,14 +1595,14 @@ export function applyFontOverridesToTemplate(
       if (szCsEl !== undefined) {
         // Replace existing w:szCs or append
         if (/<w:szCs\b[^/]*\/>/.test(rPrContent)) {
-          rPrContent = rPrContent.replace(/<w:szCs\b[^/]*\/>/, szCsEl);
+          rPrContent = rPrContent.replace(/<w:szCs\b[^/]*\/>/, () => szCsEl);
         } else {
           rPrContent = rPrContent + szCsEl;
         }
       }
 
       const newRPr = rPrMatch[1] + rPrContent + rPrMatch[3];
-      innerContent = innerContent.replace(rPrRegex, newRPr);
+      innerContent = innerContent.replace(rPrRegex, () => newRPr);
     } else {
       // No <w:rPr> section — insert one
       let rPrContent = '';
@@ -1613,7 +1613,7 @@ export function applyFontOverridesToTemplate(
       innerContent = innerContent + '<w:rPr>' + rPrContent + '</w:rPr>';
     }
 
-    xml = xml.replace(styleMatch[0], openTag + innerContent + closeTag);
+    xml = xml.slice(0, styleMatch.index) + openTag + innerContent + closeTag + xml.slice(styleMatch.index + styleMatch[0].length);
   }
 
   return xml;
@@ -1624,7 +1624,7 @@ export function applyFontOverridesToTemplate(
 export function stylesXml(overrides?: FontOverrides): string {
   // Helper: build w:rFonts element for a given font name
   function rFonts(font: string): string {
-    return '<w:rFonts w:ascii="' + font + '" w:hAnsi="' + font + '"/>';
+    return '<w:rFonts w:ascii="' + escapeXml(font) + '" w:hAnsi="' + escapeXml(font) + '"/>';
   }
 
   // Helper: build w:sz + w:szCs elements for a given half-point size
