@@ -94,17 +94,22 @@ function makeStyledRun(text: string): string {
   return '<m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>' + escapeXmlChars(text) + '</m:t></m:r>';
 }
 
+function makeHiddenCommentRun(text: string): string {
+  return '<m:r><m:rPr><m:nor/></m:rPr><w:rPr><w:vanish/></w:rPr><m:t xml:space="preserve">\u200B' + escapeXmlChars(text) + '</m:t></m:r>';
+}
+
+
 // ---------------------------------------------------------------------------
 // Tokenizer
 // ---------------------------------------------------------------------------
 
-interface Token {
-  type: 'command' | 'lbrace' | 'rbrace' | 'caret' | 'underscore' | 'ampersand' | 'backslash' | 'text';
+export interface Token {
+  type: 'command' | 'lbrace' | 'rbrace' | 'caret' | 'underscore' | 'ampersand' | 'backslash' | 'text' | 'comment' | 'line_continuation';
   value: string;
   pos: number;
 }
 
-function tokenize(latex: string): Token[] {
+export function tokenize(latex: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   
@@ -147,10 +152,45 @@ function tokenize(latex: string): Token[] {
     } else if (ch === '&') {
       tokens.push({ type: 'ampersand', value: '&', pos: i });
       i++;
+    } else if (ch === '%') {
+      // LaTeX line comment: % starts a comment to end-of-line
+      // Capture preceding whitespace from the last text token
+      let precedingWs = '';
+      if (tokens.length > 0 && tokens[tokens.length - 1].type === 'text') {
+        const lastText = tokens[tokens.length - 1].value;
+        const trimmed = lastText.replace(/[ \t]+$/, '');
+        if (trimmed.length < lastText.length) {
+          precedingWs = lastText.slice(trimmed.length);
+          if (trimmed.length === 0) {
+            tokens.pop();
+          } else {
+            tokens[tokens.length - 1] = { type: 'text', value: trimmed, pos: tokens[tokens.length - 1].pos };
+          }
+        }
+      }
+      // Find end-of-line or end-of-string
+      let j = i + 1;
+      while (j < latex.length && latex[j] !== '\n') {
+        j++;
+      }
+      const commentText = latex.slice(i + 1, j); // text after %
+      if (commentText.trim().length === 0 && j < latex.length && latex[j] === '\n') {
+        // Line continuation: % at end-of-line with no meaningful comment text
+        tokens.push({ type: 'line_continuation', value: precedingWs + '%' + commentText, pos: i });
+        j++; // consume the newline
+      } else {
+        // Regular comment: % followed by comment text
+        const hasNewline = j < latex.length && latex[j] === '\n';
+        tokens.push({ type: 'comment', value: precedingWs + '%' + commentText + (hasNewline ? '\n' : ''), pos: i });
+        if (hasNewline) {
+          j++; // consume the newline after comment
+        }
+      }
+      i = j;
     } else {
       // Regular text
       let j = i;
-      while (j < latex.length && !/[\\{}^_&]/.test(latex[j])) {
+      while (j < latex.length && !/[\\{}^_&%]/.test(latex[j])) {
         j++;
       }
       tokens.push({ type: 'text', value: latex.slice(i, j), pos: i });
@@ -206,20 +246,24 @@ class Parser {
   }
 
   private parseToken(token: Token): string {
-    switch (token.type) {
-      case 'command':
-        return this.parseCommand(token.value);
-      case 'text':
-        return makeRun(token.value);
-      case 'caret':
-      case 'underscore':
-      case 'ampersand':
-      case 'backslash':
-        return makeRun(token.value);
-      default:
-        return '';
+      switch (token.type) {
+        case 'command':
+          return this.parseCommand(token.value);
+        case 'text':
+          return makeRun(token.value);
+        case 'caret':
+        case 'underscore':
+        case 'ampersand':
+        case 'backslash':
+          return makeRun(token.value);
+        case 'comment':
+          return makeHiddenCommentRun(token.value);
+        case 'line_continuation':
+          return makeHiddenCommentRun(token.value + '\n');
+        default:
+          return '';
+      }
     }
-  }
 
   private parseScriptsForBase(base: string): string {
     let current = base;
@@ -599,6 +643,15 @@ class Parser {
         if (consumed.type === 'text' && consumed.value.length > 1) {
           for (const ch of consumed.value) {
             atoms.push(makeRun(ch));
+          }
+        } else if (consumed.type === 'comment' || consumed.type === 'line_continuation') {
+          // Append to the preceding atom so comment runs are never selected
+          // as bases for script binding (^ / _).
+          const commentXml = this.parseToken(consumed);
+          if (atoms.length > 0) {
+            atoms[atoms.length - 1] += commentXml;
+          } else {
+            atoms.push(commentXml);
           }
         } else {
           atoms.push(this.parseToken(consumed));
