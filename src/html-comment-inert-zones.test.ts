@@ -9,7 +9,7 @@
 import { describe, test, expect } from 'bun:test';
 import { parseMd, type MdToken, type MdRun } from './md-to-docx';
 
-/** Recursively collect all runs from parsed tokens */
+/** Collect all runs from top-level tokens */
 function allRuns(tokens: MdToken[]): MdRun[] {
   return tokens.flatMap(t => t.runs);
 }
@@ -44,6 +44,7 @@ describe('Inert Zone Exclusion — <!-- --> inside inert zones is NOT an HTML co
       // Should produce a code_block token
       const codeBlock = tokens.find(t => t.type === 'code_block');
       expect(codeBlock).toBeDefined();
+      expect(codeBlock!.runs.length).toBeGreaterThan(0);
       expect(codeBlock!.runs[0].text).toContain('<!-- comment -->');
       expect(codeBlock!.runs[0].type).toBe('text');
 

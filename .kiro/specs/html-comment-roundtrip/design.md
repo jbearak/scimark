@@ -143,10 +143,10 @@ The hidden run in DOCX XML will look like:
 ```xml
 <w:r>
   <w:rPr><w:vanish/></w:rPr>
-  <w:t xml:space="preserve">​<!-- hidden note --></w:t>
+  <w:t xml:space="preserve">\u200B<!-- hidden note --></w:t>
 </w:r>
 ```
-(where `​` is `\u200B`, the zero-width space prefix)
+(where `\u200B` is the zero-width space prefix character U+200B)
 
 On re-import, the converter detects:
 1. `w:vanish` in `w:rPr` → this is a hidden run

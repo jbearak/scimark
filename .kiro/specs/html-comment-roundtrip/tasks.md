@@ -8,7 +8,7 @@
   - **GOAL**: Surface counterexamples that demonstrate HTML comments are silently dropped
   - **Scoped PBT Approach**: Use fast-check with short bounded generators (per AGENTS.md) to generate HTML comment content and verify roundtrip behavior
   - Create test file `src/html-comment-roundtrip.property.test.ts`
-  - Import `parseMd`, `processInlineChildren`, `generateParagraph`, `convertMdToDocx` from `./md-to-docx`
+  - Import `parseMd`, `MdRun` from `./md-to-docx`
   - Property: for any short alphanumeric comment text `c`, parsing `text <!-- ${c} --> more` through `parseMd()` and inspecting the resulting `MdToken[]` runs should yield a run containing the comment content — but on unfixed code, no `html_comment` run exists (comment is silently dropped)
   - Also test standalone block comments: `<!-- ${c} -->` parsed as `html_block` should produce a token preserving the comment — but on unfixed code, it produces nothing
   - Also test multiple inline comments: `A <!-- ${c1} --> B <!-- ${c2} --> C` — both should be present but are dropped
