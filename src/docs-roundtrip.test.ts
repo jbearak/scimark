@@ -18,18 +18,19 @@ function stripFencedCodeBlocks(md: string): string {
   let fenceChar: string | null = null;
   let fenceLen = 0;
   for (const line of lines) {
-    const match = line.match(/^(`{3,}|~{3,})/);
+    const match = line.match(/^(`{3,}|~{3,})(.*)/);
     if (match) {
       const char = match[1][0];
       const len = match[1].length;
+      const trailing = match[2];
       if (fenceChar === null) {
-        // Opening fence
+        // Opening fence (info string allowed)
         fenceChar = char;
         fenceLen = len;
         continue;
       }
-      if (char === fenceChar && len >= fenceLen) {
-        // Closing fence (same char, at least as long)
+      // Closing fence: same char, at least as long, no info string
+      if (char === fenceChar && len >= fenceLen && /^\s*$/.test(trailing)) {
         fenceChar = null;
         continue;
       }
@@ -100,14 +101,15 @@ function countCodeBlocks(md: string): number {
   let fenceChar: string | null = null;
   let fenceLen = 0;
   for (const line of lines) {
-    const match = line.match(/^(`{3,}|~{3,})/);
+    const match = line.match(/^(`{3,}|~{3,})(.*)/);
     if (match) {
       const char = match[1][0];
       const len = match[1].length;
+      const trailing = match[2];
       if (fenceChar === null) {
         fenceChar = char;
         fenceLen = len;
-      } else if (char === fenceChar && len >= fenceLen) {
+      } else if (char === fenceChar && len >= fenceLen && /^\s*$/.test(trailing)) {
         fenceChar = null;
         count++;
       }
