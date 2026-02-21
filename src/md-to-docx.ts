@@ -1760,7 +1760,10 @@ export function stylesXml(overrides?: FontOverrides): string {
     '<w:style w:type="paragraph" w:styleId="CodeBlock">\n' +
     '<w:name w:val="Code Block"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="' + CODE_BLOCK_INSET_TWIPS + '" w:right="' + CODE_BLOCK_INSET_TWIPS + '"/><w:shd w:val="clear" w:color="auto" w:fill="F6F8FA"/></w:pPr>\n' +
+    // Word paragraph shading (w:shd) does not extend into the indent/inset area (w:ind),
+    // a known OOXML limitation. Background color intentionally omitted to avoid an
+    // abrupt visual gap between the shaded text area and the paragraph border.
+    '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="' + CODE_BLOCK_INSET_TWIPS + '" w:right="' + CODE_BLOCK_INSET_TWIPS + '"/></w:pPr>\n' +
     codeBlockRpr +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Title">\n' +
