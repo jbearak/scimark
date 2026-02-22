@@ -1295,7 +1295,7 @@ export interface MdToDocxOptions {
    *  Return true to attempt downloading from the CSL repository. */
   onStyleNotFound?: (styleName: string) => Promise<boolean>;
   /** Word paragraph style to use for blockquotes. */
-  blockquoteStyle?: 'Quote' | 'IntenseQuote';
+  blockquoteStyle?: 'Quote' | 'IntenseQuote' | 'GitHub';
 }
 
 export interface MdToDocxResult {
@@ -1514,7 +1514,7 @@ export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined
 // Style IDs that receive body font/size overrides
 const BODY_STYLE_IDS = new Set([
   'Normal', 'Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6',
-  'Title', 'Quote', 'IntenseQuote', 'FootnoteText', 'EndnoteText',
+  'Title', 'Quote', 'IntenseQuote', 'GitHub', 'FootnoteText', 'EndnoteText',
 ]);
 // Style IDs that receive code font/size overrides
 const CODE_STYLE_IDS = new Set(['CodeChar', 'CodeBlock']);
@@ -1795,6 +1795,12 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:basedOn w:val="Normal"/>\n' +
     '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="4" w:color="4472C4"/></w:pBdr><w:ind w:left="720"/></w:pPr>\n' +
     intenseQuoteRpr +
+    '</w:style>\n' +
+    '<w:style w:type="paragraph" w:styleId="GitHub">\n' +
+    '<w:name w:val="GitHub Blockquote"/>\n' +
+    '<w:basedOn w:val="Normal"/>\n' +
+    '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="D0D7DE"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
+    (quoteRpr ? quoteRpr : '') +
     '</w:style>\n' +
     '<w:style w:type="character" w:styleId="CodeChar">\n' +
     '<w:name w:val="Code Char"/>\n' +
@@ -2425,8 +2431,9 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       state.hasList = true;
       break;
     case 'blockquote':
-      const bqStyle = options?.blockquoteStyle ?? 'Quote';
-      const leftIndent = 720 * (token.level || 1);
+      const bqStyle = options?.blockquoteStyle ?? 'GitHub';
+      const bqIndentUnit = bqStyle === 'GitHub' ? 240 : 720;
+      const leftIndent = bqIndentUnit * (token.level || 1);
       pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/><w:ind w:left="' + leftIndent + '"/></w:pPr>';
       break;
     case 'code_block':
@@ -2905,7 +2912,13 @@ export async function convertMdToDocx(
     }
   }
 
-  const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
+  // Resolve effective blockquote style: frontmatter > options > default
+  const effectiveBlockquoteStyle = frontmatter.blockquoteStyle ?? options?.blockquoteStyle ?? 'GitHub';
+  const resolvedOptions = options
+    ? { ...options, blockquoteStyle: effectiveBlockquoteStyle }
+    : { blockquoteStyle: effectiveBlockquoteStyle };
+
+  const documentXml = generateDocumentXml(tokens, state, resolvedOptions, bibEntries, citeprocEngine, frontmatter);
 
   // Build footnote/endnote body OOXML from definitions
   for (const [label, bodyText] of footnoteDefs) {

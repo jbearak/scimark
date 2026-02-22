@@ -2416,6 +2416,19 @@ describe('parseBlockquoteLevel', () => {
   test('returns undefined when pStyle is absent', () => {
     expect(parseBlockquoteLevel([])).toBeUndefined();
   });
+
+  test('returns 1 for GitHub style without explicit indent', () => {
+    const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHub' } }];
+    expect(parseBlockquoteLevel(children)).toBe(1);
+  });
+
+  test('returns level based on 240-twip indent for GitHub style', () => {
+    const children = [
+      { 'w:pStyle': [], ':@': { '@_w:val': 'GitHub' } },
+      { 'w:ind': [], ':@': { '@_w:left': '480' } },
+    ];
+    expect(parseBlockquoteLevel(children)).toBe(2);
+  });
 });
 
 describe('Blockquote round-trip', () => {
@@ -2451,6 +2464,30 @@ describe('Blockquote round-trip', () => {
     const buf = await buildSyntheticDocx(xml);
     const result = await convertDocx(buf);
     expect(result.markdown).toContain('> intense');
+  });
+
+  test('DOCX with GitHub style detected as blockquote', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:ind w:left="240"/></w:pPr>'
+      + '<w:r><w:t>github styled</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('> github styled');
+  });
+
+  test('GitHub-style blockquote round-trips through md→docx→md', async () => {
+    const md = '> quoted text';
+    const { docx } = await convertMdToDocx(md, { blockquoteStyle: 'GitHub' });
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('> quoted text');
+  });
+
+  test('nested GitHub-style blockquote round-trips', async () => {
+    const md = '> > nested';
+    const { docx } = await convertMdToDocx(md, { blockquoteStyle: 'GitHub' });
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('> > nested');
   });
 });
 

@@ -291,14 +291,15 @@ export function parseBlockquoteLevel(pPrChildren: any[]): number | undefined {
   const pStyleElement = pPrChildren.find(child => child['w:pStyle'] !== undefined);
   if (!pStyleElement) return undefined;
   const val = getAttr(pStyleElement, 'val').toLowerCase();
-  if (val !== 'quote' && val !== 'intensequote') return undefined;
+  if (val !== 'quote' && val !== 'intensequote' && val !== 'github') return undefined;
 
   // Extract left indent to determine nesting level
   const indElement = pPrChildren.find(child => child['w:ind'] !== undefined);
   if (indElement) {
     const left = parseInt(getAttr(indElement, 'left'), 10);
     if (!isNaN(left) && left > 0) {
-      return Math.max(1, Math.round(left / 720));
+      const unit = val === 'github' ? 240 : 720;
+      return Math.max(1, Math.round(left / unit));
     }
   }
   return 1;

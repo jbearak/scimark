@@ -22,7 +22,7 @@ export interface CliOptions {
   cslCacheDir: string;
   tableIndent: string;
   alwaysUseCommentIds: boolean;
-  blockquoteStyle: 'Quote' | 'IntenseQuote';
+  blockquoteStyle: 'Quote' | 'IntenseQuote' | 'GitHub';
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -37,7 +37,7 @@ export function parseArgs(argv: string[]): CliOptions {
     tableIndent: '  ',
     noTemplate: false,
     alwaysUseCommentIds: false,
-    blockquoteStyle: 'Quote',
+    blockquoteStyle: 'GitHub',
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -85,10 +85,10 @@ export function parseArgs(argv: string[]): CliOptions {
       options.tableIndent = ' '.repeat(n);
     } else if (arg === '--blockquote-style') {
       const style = requireValue('--blockquote-style');
-      if (!['Quote', 'IntenseQuote'].includes(style)) {
-        throw new Error(`Invalid blockquote style "${style}". Use Quote or IntenseQuote`);
+      if (!['Quote', 'IntenseQuote', 'GitHub'].includes(style)) {
+        throw new Error(`Invalid blockquote style "${style}". Use Quote, IntenseQuote, or GitHub`);
       }
-      options.blockquoteStyle = style as 'Quote' | 'IntenseQuote';
+      options.blockquoteStyle = style as 'Quote' | 'IntenseQuote' | 'GitHub';
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown option "${arg}"`);
     } else if (!options.inputPath) {
@@ -129,7 +129,7 @@ Options:
   --csl-cache-dir <path>          CSL style cache directory
   --table-indent <n>              Spaces per indent level in HTML tables (DOCX→MD, default: 2)
   --always-use-comment-ids        Always use ID-based comment syntax (DOCX→MD)
-  --blockquote-style <style>      Blockquote style: Quote, IntenseQuote (MD→DOCX, default: Quote)`);
+  --blockquote-style <style>      Blockquote style: Quote, IntenseQuote, GitHub (MD→DOCX, default: GitHub)`);
 }
 
 function showVersion() {

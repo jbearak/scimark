@@ -57,6 +57,19 @@ export function normalizeFontStyle(raw: string): string | undefined {
   return unique.sort((a, b) => CANONICAL_ORDER.indexOf(a) - CANONICAL_ORDER.indexOf(b)).join('-');
 }
 
+export type BlockquoteStyle = 'Quote' | 'IntenseQuote' | 'GitHub';
+
+const BLOCKQUOTE_STYLE_NAMES: Record<string, BlockquoteStyle> = {
+  'quote': 'Quote',
+  'intensequote': 'IntenseQuote',
+  'github': 'GitHub',
+};
+
+/** Normalize a raw blockquote-style value (case-insensitive). */
+export function normalizeBlockquoteStyle(raw: string): BlockquoteStyle | undefined {
+  return BLOCKQUOTE_STYLE_NAMES[raw.toLowerCase().trim()];
+}
+
 export interface Frontmatter {
   title?: string[];
   author?: string;
@@ -79,6 +92,7 @@ export interface Frontmatter {
   codeBackgroundColor?: string;
   codeFontColor?: string;
   codeBlockInset?: number;
+  blockquoteStyle?: BlockquoteStyle;
 }
 
 /**
@@ -206,6 +220,11 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
         }
         break;
       }
+      case 'blockquote-style': {
+        const style = normalizeBlockquoteStyle(value);
+        if (style) metadata.blockquoteStyle = style;
+        break;
+      }
     }
   }
 
@@ -251,6 +270,7 @@ export function serializeFrontmatter(metadata: Frontmatter): string {
   if (metadata.codeBackgroundColor) lines.push('code-background-color: ' + metadata.codeBackgroundColor);
   if (metadata.codeFontColor) lines.push('code-font-color: ' + metadata.codeFontColor);
   if (metadata.codeBlockInset !== undefined) lines.push('code-block-inset: ' + metadata.codeBlockInset);
+  if (metadata.blockquoteStyle) lines.push('blockquote-style: ' + metadata.blockquoteStyle);
   if (lines.length === 0) return '';
   return '---\n' + lines.join('\n') + '\n---\n';
 }

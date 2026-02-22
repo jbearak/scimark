@@ -46,6 +46,7 @@ The frontmatter may also include citation-related fields (`csl`, `locale`, `zote
 | `code-background-color` | Code block and inline code background color. A 6-digit hex value (e.g., `E8E8E8`) enables shading mode; `none` or `transparent` falls back to indentation-based inset mode. Default: `E8E8E8` (shading mode). Alias: `code-background`. |
 | `code-font-color` | Code block and inline code text color. A 6-digit hex value (e.g., `2E2E2E`). Default: `2E2E2E`. Alias: `code-color`. |
 | `code-block-inset` | Border width for code blocks in shading mode, in eighths of a point (`w:sz`). A positive integer. Default: `48`. Does not affect inline code. |
+| `blockquote-style` | Word paragraph style for blockquotes: `Quote`, `IntenseQuote`, or `GitHub` (gray left border bar). Case-insensitive. Default: `GitHub`. Overrides the VS Code setting. |
 
 ### Font Customization Example
 
