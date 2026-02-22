@@ -2705,8 +2705,18 @@ export function buildMarkdown(
           // emit the exact number of blank lines from the original source.
           const gapCount = blockquoteGaps.get(lastBlockquoteGroupIndex);
           if (gapCount !== undefined && gapCount >= 0) {
-            // gapCount blank lines = gapCount+1 newline characters
-            output.push('\n' + '\n'.repeat(gapCount));
+            // Same-type transitions with a zero gap can merge into a single
+            // logical blockquote in Markdown. Preserve exact gaps generally,
+            // but force one blank separator for this specific merge case.
+            const currentType: GfmAlertType | 'plain' = item.alertType || 'plain';
+            const effectiveGap = (gapCount === 0
+              && lastBlockquoteAlertType !== undefined
+              && currentType === lastBlockquoteAlertType
+              && item.blockquoteLevel === lastBlockquoteLevel)
+              ? 1
+              : gapCount;
+            // effectiveGap blank lines = effectiveGap+1 newline characters
+            output.push('\n' + '\n'.repeat(effectiveGap));
           } else {
             output.push('\n\n');
           }
@@ -2810,8 +2820,8 @@ export function buildMarkdown(
           const isAlertStart = lastAlertParagraphKey !== alertKey || groupChanged;
           if (isAlertStart) {
             const markerInline = item.blockquoteGroupIndex !== undefined
-              ? blockquoteAlertInlineByGroup?.get(item.blockquoteGroupIndex) === true
-              : false;
+              ? (blockquoteAlertInlineByGroup?.get(item.blockquoteGroupIndex) ?? true)
+              : true;
             output.push(toGfmAlertMarker(item.alertType));
             if (markerInline) {
               output.push(' ');

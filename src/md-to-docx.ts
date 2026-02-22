@@ -855,8 +855,34 @@ function deLazifyBlockquotes(markdown: string): string {
   const lines = markdown.split('\n');
   const out: string[] = [];
   let inBlockquoteRun = false;
+  let fenceChar: '`' | '~' | null = null;
+  let fenceLen = 0;
 
   for (const line of lines) {
+    const fenceMatch = line.match(/^ {0,3}([`~]{3,})/);
+    if (fenceMatch) {
+      const run = fenceMatch[1];
+      const runChar = run[0] as '`' | '~';
+      // Invariant: de-lazification must not inject blank lines inside fenced
+      // code blocks, or code content roundtrip fidelity is corrupted.
+      if (!fenceChar) {
+        if (inBlockquoteRun) {
+          out.push('');
+          inBlockquoteRun = false;
+        }
+        fenceChar = runChar;
+        fenceLen = run.length;
+      } else if (runChar === fenceChar && run.length >= fenceLen) {
+        fenceChar = null;
+        fenceLen = 0;
+      }
+      out.push(line);
+      continue;
+    }
+    if (fenceChar) {
+      out.push(line);
+      continue;
+    }
     const isBlank = line.trim() === '';
     const isBlockquoteLine = /^ {0,3}>/.test(line);
 

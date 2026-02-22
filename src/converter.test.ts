@@ -2518,7 +2518,7 @@ describe('Blockquote round-trip', () => {
     const md = '> [!WARNING]\n> Be careful';
     const { docx } = await convertMdToDocx(md);
     const result = await convertDocx(docx);
-    expect(result.markdown).toContain('> [!WARNING] Be careful');
+    expect(result.markdown).toContain('> [!WARNING]\n> Be careful');
   });
 
   test('DOCX alert style converts to markdown alert syntax', async () => {

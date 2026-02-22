@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Blockquotes and GitHub-style alerts (NOTE, WARNING, IMPORTANT, TIP, CAUTION) lose fidelity during md→docx→md roundtrip conversion. Converting `test/fixtures/blockquotes.md` to `.docx` and back produces a markdown file that differs from the original, and re-converting that file to `.docx` confirms the differences have real visual/structural impact. The issues affect both the md→docx direction (how blockquotes are encoded into docx XML) and the docx→md direction (how blockquote paragraphs are reconstructed into markdown). A critical requirement is lossless roundtrip fidelity for inter-blockquote whitespace: the exact number and placement of blank lines between blockquote groups must be preserved byte-for-byte, because even semantically meaningless whitespace differences create noisy diffs in git version control.
+Blockquotes and GitHub-style alerts (NOTE, WARNING, IMPORTANT, TIP, CAUTION) lose fidelity during md→docx→md roundtrip conversion. Converting `test/fixtures/blockquotes.md` to `.docx` and back produces a Markdown file that differs from the original, and re-converting that file to `.docx` confirms the differences have real visual/structural impact. The issues affect both the md→docx direction (how blockquotes are encoded into docx XML) and the docx→md direction (how blockquote paragraphs are reconstructed into Markdown). A critical requirement is lossless roundtrip fidelity for inter-blockquote whitespace: the exact number and placement of blank lines between blockquote groups must be preserved byte-for-byte, because even semantically meaningless whitespace differences create noisy diffs in git version control.
 
 ## Bug Analysis
 
