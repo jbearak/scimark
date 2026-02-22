@@ -2848,9 +2848,8 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
   }
 
   // headerFontSize: emit if any heading size differs from default
-  const hSizes = sizes.map((s, i) => s !== undefined ? s : undefined);
-  if (hSizes.some((s, i) => s !== undefined && s !== defaultHp[ids[i]])) {
-    const ptSizes = hSizes.map(s => s !== undefined ? s / 2 : undefined);
+  if (sizes.some((s, i) => s !== undefined && s !== defaultHp[ids[i]])) {
+    const ptSizes = sizes.map(s => s !== undefined ? s / 2 : undefined);
     const valid = ptSizes.filter((s): s is number => s !== undefined);
     if (valid.length > 0) result.headerFontSize = trimTrailing(valid);
   }
