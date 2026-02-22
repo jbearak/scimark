@@ -1334,6 +1334,7 @@ export interface DocxGenState {
   codeBlockLanguages: Map<number, string>;
   citedKeys: Set<string>;
   codeFont: string;
+  codeShadingMode: boolean;
 }
 
 interface CommentEntry {
@@ -2434,6 +2435,9 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   if (token.type === 'code_block') {
     const lines = (token.runs[0]?.text || '').replace(/\n$/, '').split('\n');
     const rpr = '<w:rPr><w:rFonts w:ascii="' + escapeXml(state.codeFont) + '" w:hAnsi="' + escapeXml(state.codeFont) + '"/></w:rPr>';
+    if (state.codeShadingMode) {
+      return lines.map((line) => '<w:p>' + pPr + generateRun(line, rpr) + '</w:p>').join('');
+    }
     const inset = CODE_BLOCK_INSET_TWIPS;
     return lines.map((line, i) => {
       let linePPr = pPr;
@@ -2742,6 +2746,13 @@ export async function convertMdToDocx(
   // Parse frontmatter for CSL style and other metadata
   const { metadata: frontmatter, body } = parseFrontmatter(markdown);
   const fontOverrides = resolveFontOverrides(frontmatter);
+  const isInsetMode = frontmatter.codeBackgroundColor === 'none' || frontmatter.codeBackgroundColor === 'transparent';
+  const codeBlockConfig: CodeBlockConfig = {
+    insetMode: isInsetMode,
+    background: !isInsetMode && frontmatter.codeBackgroundColor && /^[0-9A-Fa-f]{6}$/.test(frontmatter.codeBackgroundColor) ? frontmatter.codeBackgroundColor : undefined,
+    codeFontColor: frontmatter.codeFontColor,
+    codeBlockInset: frontmatter.codeBlockInset,
+  };
   // Extract footnote definitions before markdown parsing
   const { cleaned: bodyWithoutFootnotes, definitions: footnoteDefs } = extractFootnoteDefinitions(body);
   const tokens = parseMd(bodyWithoutFootnotes);
@@ -2852,6 +2863,7 @@ export async function convertMdToDocx(
     codeBlockLanguages: new Map(),
     citedKeys: new Set(),
     codeFont: fontOverrides?.codeFont || 'Consolas',
+    codeShadingMode: !isInsetMode,
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -2949,7 +2961,7 @@ export async function convertMdToDocx(
   } else if (templateParts?.has('word/styles.xml')) {
     zip.file('word/styles.xml', templateParts.get('word/styles.xml')!);
   } else {
-    zip.file('word/styles.xml', stylesXml(fontOverrides));
+    zip.file('word/styles.xml', stylesXml(fontOverrides, codeBlockConfig));
   }
 
   // Always use generated settings.xml to guarantee compatibilityMode >= 15

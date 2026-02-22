@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import { parseFrontmatter, serializeFrontmatter, type Frontmatter } from './frontmatter';
-import { stylesXml, type CodeBlockConfig } from './md-to-docx';
+import { stylesXml, type CodeBlockConfig, generateParagraph, type DocxGenState, type MdToken } from './md-to-docx';
 
 describe('Code Block Styling Property Tests', () => {
   const hexColorArb = fc.array(fc.constantFrom('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'), { minLength: 6, maxLength: 6 }).map(arr => arr.join(''));
@@ -188,3 +188,58 @@ describe('Code Block Styling Property Tests', () => {
     ), { numRuns: 100 });
   });
 });
+function makeState(codeShadingMode: boolean): DocxGenState {
+  return {
+    commentId: 0, comments: [], commentIdMap: new Map(),
+    relationships: new Map(), nextRId: 1, rIdOffset: 3,
+    warnings: [], hasList: false, hasComments: false,
+    hasFootnotes: false, hasEndnotes: false, footnoteId: 1,
+    footnoteEntries: [], footnoteLabelToId: new Map(),
+    notesMode: 'footnotes', missingKeys: new Set(),
+    citationIds: new Set(), citationItemIds: new Map(),
+    replyRanges: [], nextParaId: 1, codeBlockIndex: 0,
+    codeBlockLanguages: new Map(), citedKeys: new Set(),
+    codeFont: 'Consolas', codeShadingMode,
+  };
+}
+
+  it('Property 6: Uniform paragraph treatment in shading mode', () => {
+    fc.assert(fc.property(
+      fc.array(fc.string({ minLength: 0, maxLength: 20 }).filter(s => !s.includes('\n')), { minLength: 1, maxLength: 10 }),
+      (lines) => {
+        const token: MdToken = { type: 'code_block' as const, runs: [{ type: 'text' as const, text: lines.join('\n') }] };
+        const state = makeState(true);
+        const result = generateParagraph(token, state);
+        
+        const paragraphs = result.split('</w:p>').filter(p => p.trim());
+        for (const paragraph of paragraphs) {
+          const pPrMatch = paragraph.match(/<w:pPr>(.*?)<\/w:pPr>/);
+          expect(pPrMatch).not.toBeNull();
+          expect(pPrMatch![1]).toBe('<w:pStyle w:val="CodeBlock"/>');
+          expect(paragraph).not.toContain('w:spacing w:before');
+          expect(paragraph).not.toContain('w:spacing w:after');
+        }
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('Property 7: Inset mode first/last paragraph spacing', () => {
+    fc.assert(fc.property(
+      fc.array(fc.string({ minLength: 0, maxLength: 20 }).filter(s => !s.includes('\n')), { minLength: 2, maxLength: 10 }),
+      (lines) => {
+        const token: MdToken = { type: 'code_block' as const, runs: [{ type: 'text' as const, text: lines.join('\n') }] };
+        const state = makeState(false);
+        const result = generateParagraph(token, state);
+        
+        const paragraphs = result.split('</w:p>').filter(p => p.trim());
+        expect(paragraphs[0]).toContain('w:before="160"');
+        expect(paragraphs[paragraphs.length - 1]).toContain('w:after="160"');
+        
+        for (let i = 1; i < paragraphs.length - 1; i++) {
+          const pPrMatch = paragraphs[i].match(/<w:pPr>(.*?)<\/w:pPr>/);
+          expect(pPrMatch).not.toBeNull();
+          expect(pPrMatch![1]).toBe('<w:pStyle w:val="CodeBlock"/>');
+        }
+      }
+    ), { numRuns: 100 });
+  });
