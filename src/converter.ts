@@ -4,6 +4,7 @@ import { ommlToLatex } from './omml';
 import { resolveMarkdownColor } from './highlight-colors';
 import { wrapColoredHighlight } from './formatting';
 import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
+import { gfmAlertTitle, parseGfmAlertMarker, toGfmAlertMarker, type GfmAlertType } from './gfm';
 
 // --- Implementation notes ---
 // Table parsing:
@@ -60,6 +61,22 @@ export interface Comment {
   paraId?: string;         // w14:paraId from <w:p> in comments.xml
   replies?: CommentReply[];
 }
+
+const ALERT_STYLE_TO_TYPE: Record<string, GfmAlertType> = {
+  githubnote: 'note',
+  githubtip: 'tip',
+  githubimportant: 'important',
+  githubwarning: 'warning',
+  githubcaution: 'caution',
+};
+
+const ALERT_GLYPH_TO_TYPE: Record<string, GfmAlertType> = {
+  '※': 'note',
+  '◈': 'tip',
+  '‼': 'important',
+  '▲': 'warning',
+  '⛒': 'caution',
+};
 
 export interface CommentReply {
   author: string;
@@ -162,6 +179,7 @@ export type ContentItem =
       listMeta?: ListMeta;     // present if list item
       isTitle?: boolean;       // true if Word "Title" paragraph style
       blockquoteLevel?: number; // 1+ if Quote/IntenseQuote paragraph style
+      alertType?: GfmAlertType; // present for GitHub alert styles
       isCodeBlock?: boolean;   // true if Word "Code Block" paragraph style
     }
   | { type: 'math'; latex: string; display: boolean; commentIds: Set<string> }
@@ -316,18 +334,26 @@ export function parseBlockquoteLevel(pPrChildren: any[]): number | undefined {
   const pStyleElement = pPrChildren.find(child => child['w:pStyle'] !== undefined);
   if (!pStyleElement) return undefined;
   const val = getAttr(pStyleElement, 'val').toLowerCase();
-  if (val !== 'quote' && val !== 'intensequote' && val !== 'github') return undefined;
+  const isAlertStyle = ALERT_STYLE_TO_TYPE[val] !== undefined;
+  if (val !== 'quote' && val !== 'intensequote' && val !== 'github' && !isAlertStyle) return undefined;
 
   // Extract left indent to determine nesting level
   const indElement = pPrChildren.find(child => child['w:ind'] !== undefined);
   if (indElement) {
     const left = parseInt(getAttr(indElement, 'left'), 10);
     if (!isNaN(left) && left > 0) {
-      const unit = val === 'github' ? 240 : 720;
+      const unit = (val === 'github' || isAlertStyle) ? 240 : 720;
       return Math.max(1, Math.round(left / unit));
     }
   }
   return 1;
+}
+
+export function parseAlertType(pPrChildren: any[]): GfmAlertType | undefined {
+  const pStyleElement = pPrChildren.find(child => child['w:pStyle'] !== undefined);
+  if (!pStyleElement) return undefined;
+  const val = getAttr(pStyleElement, 'val').toLowerCase();
+  return ALERT_STYLE_TO_TYPE[val];
 }
 
 export function parseCodeBlockStyle(pPrChildren: any[]): boolean {
@@ -1688,6 +1714,7 @@ export async function extractDocumentContent(
           let listMeta: ListMeta | undefined;
           let isTitle = false;
           let blockquoteLevel: number | undefined;
+          let alertType: GfmAlertType | undefined;
           let isCodeBlock = false;
           let paraFormatting = currentFormatting;
 
@@ -1699,6 +1726,7 @@ export async function extractDocumentContent(
               listMeta = parseListMeta(pPrChildren, numberingDefs);
               isTitle = parseTitleStyle(pPrChildren);
               blockquoteLevel = parseBlockquoteLevel(pPrChildren);
+              alertType = parseAlertType(pPrChildren);
               isCodeBlock = parseCodeBlockStyle(pPrChildren);
               const pRPrElement = pPrChildren.find(pprChild => pprChild['w:rPr'] !== undefined);
               if (pRPrElement) {
@@ -1725,6 +1753,7 @@ export async function extractDocumentContent(
             if (listMeta) paraItem.listMeta = listMeta;
             if (isTitle) paraItem.isTitle = true;
             if (blockquoteLevel) paraItem.blockquoteLevel = blockquoteLevel;
+            if (alertType) paraItem.alertType = alertType;
             if (isCodeBlock) paraItem.isCodeBlock = true;
             target.push(paraItem);
           }
@@ -2242,6 +2271,32 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
   return lines.join('\n');
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripAlertLeadPrefix(text: string, alertType: GfmAlertType): string {
+  const marker = parseGfmAlertMarker(text.trimStart());
+  if (marker?.type === alertType) {
+    return text.replace(/^\s*\[![A-Za-z]+\](?:[ \t]+|$)/, '');
+  }
+  const title = gfmAlertTitle(alertType);
+  const glyphAlternation = Object.keys(ALERT_GLYPH_TO_TYPE).map(escapeRegExp).join('|');
+  const titleCore = '(?:' + glyphAlternation + ')\\s*' + escapeRegExp(title);
+  const boldWrapped = text.match(/^\s*(\*\*|__)(.+?)\1\s*/);
+  if (boldWrapped) {
+    const inner = boldWrapped[2].trim();
+    if (new RegExp('^' + titleCore + '\\s*[:：-]?$').test(inner)) {
+      return text.slice(boldWrapped[0].length);
+    }
+  }
+  const withGlyph = new RegExp('^\\s*(?:' + glyphAlternation + ')\\s*' + escapeRegExp(title) + '\\s*[:：-]?\\s*');
+  if (withGlyph.test(text)) return text.replace(withGlyph, '');
+  const titleOnly = new RegExp('^\\s*' + escapeRegExp(title) + '\\s*[:：-]\\s*');
+  if (titleOnly.test(text)) return text.replace(titleOnly, '');
+  return text;
+}
+
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
@@ -2365,6 +2420,8 @@ export function buildMarkdown(
   let i = 0;
   let lastListType: 'bullet' | 'ordered' | undefined;
   let codeBlockGroupIndex = 0;
+  let lastAlertParagraphKey: string | undefined;
+  let pendingAlertPrefixStrip: GfmAlertType | undefined;
   const codeBlockLangs = options?.codeBlockLangs;
 
   while (i < mergedContent.length) {
@@ -2377,6 +2434,8 @@ export function buildMarkdown(
           output.push('\n\n');
         }
         lastListType = undefined;
+        lastAlertParagraphKey = undefined;
+        pendingAlertPrefixStrip = undefined;
 
         const lang = codeBlockLangs?.get(String(codeBlockGroupIndex)) || '';
         const codeLines: string[] = [];
@@ -2460,8 +2519,12 @@ export function buildMarkdown(
       lastListType = isCurrentList ? item.listMeta!.type : undefined;
 
       if (item.headingLevel) {
+        lastAlertParagraphKey = undefined;
+        pendingAlertPrefixStrip = undefined;
         output.push('#'.repeat(item.headingLevel) + ' ');
       } else if (item.listMeta) {
+        lastAlertParagraphKey = undefined;
+        pendingAlertPrefixStrip = undefined;
         const indent = item.listMeta.type === 'bullet'
           ? ' '.repeat(2 * item.listMeta.level)
           : ' '.repeat(3 * item.listMeta.level);
@@ -2469,6 +2532,24 @@ export function buildMarkdown(
         output.push(indent + marker);
       } else if (item.blockquoteLevel) {
         output.push('> '.repeat(item.blockquoteLevel));
+        if (item.alertType) {
+          const alertKey = item.blockquoteLevel + ':' + item.alertType;
+          const isAlertStart = lastAlertParagraphKey !== alertKey;
+          if (isAlertStart) {
+            output.push(toGfmAlertMarker(item.alertType) + ' ');
+            const next = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
+            pendingAlertPrefixStrip = (next && next.type !== 'para') ? item.alertType : undefined;
+          } else {
+            pendingAlertPrefixStrip = undefined;
+          }
+          lastAlertParagraphKey = alertKey;
+        } else {
+          lastAlertParagraphKey = undefined;
+          pendingAlertPrefixStrip = undefined;
+        }
+      } else {
+        lastAlertParagraphKey = undefined;
+        pendingAlertPrefixStrip = undefined;
       }
 
       i++;
@@ -2483,6 +2564,8 @@ export function buildMarkdown(
       output.push('$$' + '\n' + item.latex + '\n' + '$$');
       // A display math block breaks list flow; reset list continuation state.
       lastListType = undefined;
+      lastAlertParagraphKey = undefined;
+      pendingAlertPrefixStrip = undefined;
       i++;
       continue;
     }
@@ -2493,6 +2576,8 @@ export function buildMarkdown(
       }
       output.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
       lastListType = undefined;
+      lastAlertParagraphKey = undefined;
+      pendingAlertPrefixStrip = undefined;
       i++;
       continue;
     }
@@ -2501,13 +2586,15 @@ export function buildMarkdown(
     if (rendered.nextIndex <= i) {
       throw new Error('Invariant violated: renderInlineRange did not advance index');
     }
+    const textOut = pendingAlertPrefixStrip ? stripAlertLeadPrefix(rendered.text, pendingAlertPrefixStrip) : rendered.text;
+    pendingAlertPrefixStrip = undefined;
     if (rendered.deferredComments.length > 0) {
       // Strip trailing newlines (from <w:br/> between comment references in round-tripped DOCX)
-      output.push(rendered.text.replace(/\n+$/, ''));
+      output.push(textOut.replace(/\n+$/, ''));
       output.push('\n');
       output.push(rendered.deferredComments.join('\n'));
     } else {
-      output.push(rendered.text);
+      output.push(textOut);
     }
     i = rendered.nextIndex;
   }

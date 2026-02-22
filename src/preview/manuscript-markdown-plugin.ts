@@ -4,7 +4,7 @@ import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import { VALID_COLOR_IDS, getDefaultHighlightColor } from '../highlight-colors';
 import { PARA_PLACEHOLDER, preprocessCriticMarkup, findMatchingClose } from '../critic-markup';
 import { wrapBareLatexEnvironments } from '../latex-env-preprocess';
-import { isGfmDisallowedRawHtml, escapeHtmlText, parseTaskListMarker } from '../gfm';
+import { isGfmDisallowedRawHtml, escapeHtmlText, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from '../gfm';
 
 /** Escape HTML special characters for use in attribute values */
 function escapeHtmlAttr(str: string): string {
@@ -13,6 +13,62 @@ function escapeHtmlAttr(str: string): string {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function alertOcticonSvg(type: GfmAlertType): string {
+  const common = 'class="octicon markdown-alert-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"';
+  switch (type) {
+    case 'note':
+      return '<svg ' + common + '><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8.93-3.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 .877-.252 1.02-.598l.088-.416c.066-.293.171-.352.47-.288l.451.088.082-.381-2.29-.287.87-4.084c.07-.288.176-.352.47-.287l.451.082.082-.381Zm-.93-2.412a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>';
+    case 'tip':
+      return '<svg ' + common + '><path d="M8 1.5a4.5 4.5 0 0 0-2.106 8.478.75.75 0 0 1 .356.643v.629h3.5v-.63a.75.75 0 0 1 .356-.642A4.5 4.5 0 0 0 8 1.5ZM2 6a6 6 0 1 1 11.693 1.897 6.5 6.5 0 0 1-2.044 2.213c-.015.01-.024.024-.024.04v.85A1.5 1.5 0 0 1 10.125 12h-4.25a1.5 1.5 0 0 1-1.5-1.5v-.85c0-.015-.009-.03-.024-.04A6.501 6.501 0 0 1 2 6Zm3.75 7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1-.75-.75Z"/></svg>';
+    case 'important':
+      return '<svg ' + common + '><path d="M6.457 1.047a1.75 1.75 0 0 1 3.086 0l5.468 9.75A1.75 1.75 0 0 1 13.468 13H2.532A1.75 1.75 0 0 1 .99 10.797l5.468-9.75ZM8 4.75a.75.75 0 0 0-.75.75v2.5a.75.75 0 0 0 1.5 0V5.5A.75.75 0 0 0 8 4.75Zm0 6.5A1 1 0 1 0 8 9.25a1 1 0 0 0 0 2Z"/></svg>';
+    case 'warning':
+      return '<svg ' + common + '><path d="M6.457 1.047a1.75 1.75 0 0 1 3.086 0l5.468 9.75A1.75 1.75 0 0 1 13.468 13H2.532A1.75 1.75 0 0 1 .99 10.797l5.468-9.75ZM8 4.75a.75.75 0 0 0-.75.75v2.5a.75.75 0 0 0 1.5 0V5.5A.75.75 0 0 0 8 4.75Zm0 6.5A1 1 0 1 0 8 9.25a1 1 0 0 0 0 2Z"/></svg>';
+    case 'caution':
+      return '<svg ' + common + '><path d="M7.467.133a1.748 1.748 0 0 1 1.066 0l6.25 2.5A1.75 1.75 0 0 1 15.875 4.258v5.484a1.75 1.75 0 0 1-1.092 1.625l-6.25 2.5a1.748 1.748 0 0 1-1.066 0l-6.25-2.5A1.75 1.75 0 0 1 .125 9.742V4.258a1.75 1.75 0 0 1 1.092-1.625l6.25-2.5ZM8 4.75a.75.75 0 0 0-.75.75v2.25a.75.75 0 0 0 1.5 0V5.5A.75.75 0 0 0 8 4.75Zm0 6.25a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"/></svg>';
+  }
+}
+
+function alertBlockquoteRule(state: any): void {
+  const tokens = state.tokens;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].type !== 'blockquote_open') continue;
+    let depth = 1;
+    let closeIdx = i + 1;
+    while (closeIdx < tokens.length) {
+      if (tokens[closeIdx].type === 'blockquote_open') depth++;
+      else if (tokens[closeIdx].type === 'blockquote_close') {
+        depth--;
+        if (depth === 0) break;
+      }
+      closeIdx++;
+    }
+    if (closeIdx >= tokens.length) continue;
+
+    let firstInlineIdx = -1;
+    for (let j = i + 1; j < closeIdx; j++) {
+      if (tokens[j].type === 'inline') {
+        firstInlineIdx = j;
+        break;
+      }
+    }
+    if (firstInlineIdx === -1 || !tokens[firstInlineIdx].children) continue;
+
+    const children = tokens[firstInlineIdx].children;
+    const firstText = children.find((child: any) => child.type === 'text' && child.content.length > 0);
+    if (!firstText) continue;
+    const parsed = parseGfmAlertMarker(firstText.content);
+    if (!parsed) continue;
+
+    firstText.content = parsed.rest;
+    tokens[i].meta = {
+      ...(tokens[i].meta || {}),
+      gfmAlertType: parsed.type,
+      gfmAlertTitle: gfmAlertTitle(parsed.type),
+    };
+  }
 }
 
 function autolinkLiteralsRule(state: any): void {
@@ -735,6 +791,7 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
   md.core.ruler.after('inline', 'manuscript_markdown_autolink_literals', autolinkLiteralsRule);
   md.core.ruler.after('inline', 'manuscript_markdown_associate_comments', associateCommentsRule);
   md.core.ruler.after('manuscript_markdown_associate_comments', 'manuscript_markdown_task_list', taskListRule);
+  md.core.ruler.after('manuscript_markdown_task_list', 'manuscript_markdown_alert_blockquote', alertBlockquoteRule);
 
   // Register renderers for each Manuscript Markdown token type
   for (const pattern of patterns) {
@@ -837,5 +894,19 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
     if (checked === undefined) return rendered;
     const checkbox = `<input class="task-list-item-checkbox" type="checkbox" disabled${checked ? ' checked' : ''}> `;
     return rendered.replace(/^<li>/, '<li class="task-list-item">') + checkbox;
+  };
+
+  md.renderer.rules.blockquote_open = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    const alertType: GfmAlertType | undefined = token.meta?.gfmAlertType;
+    if (!alertType) {
+      return self.renderToken(tokens, idx, options);
+    }
+    const title = token.meta?.gfmAlertTitle || gfmAlertTitle(alertType);
+    return `<blockquote class="markdown-alert markdown-alert-${alertType}"><p class="markdown-alert-title">${alertOcticonSvg(alertType)} ${escapeHtmlText(title)}</p>\n`;
+  };
+
+  md.renderer.rules.blockquote_close = (tokens, idx, options, env, self) => {
+    return self.renderToken(tokens, idx, options);
   };
 }

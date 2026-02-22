@@ -38,3 +38,27 @@ export function parseTaskListMarker(text: string): { checked: boolean; rest: str
     rest: text.slice(match[0].length),
   };
 }
+
+export const GFM_ALERT_TYPES = ['note', 'tip', 'important', 'warning', 'caution'] as const;
+export type GfmAlertType = typeof GFM_ALERT_TYPES[number];
+
+const ALERT_TYPE_SET = new Set<string>(GFM_ALERT_TYPES);
+
+export function parseGfmAlertMarker(text: string): { type: GfmAlertType; rest: string } | undefined {
+  const match = text.match(/^\[!([A-Za-z]+)\](?:[ \t]+|$)/);
+  if (!match) return undefined;
+  const type = match[1].toLowerCase();
+  if (!ALERT_TYPE_SET.has(type)) return undefined;
+  return {
+    type: type as GfmAlertType,
+    rest: text.slice(match[0].length),
+  };
+}
+
+export function toGfmAlertMarker(type: GfmAlertType): string {
+  return `[!${type.toUpperCase()}]`;
+}
+
+export function gfmAlertTitle(type: GfmAlertType): string {
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}

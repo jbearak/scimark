@@ -261,3 +261,66 @@ describe('iterateFences / stripFencedCodeBlocks', () => {
     expect(stripped).toContain('After');
   });
 });
+
+describe('alerts integration: md -> docx -> md', () => {
+  it('round-trips mixed alert blocks with canonical markers', async () => {
+    const md = [
+      '# Alerts',
+      '',
+      '> [!NOTE]',
+      '> Useful information.',
+      '',
+      '> [!TIP]',
+      '> Helpful advice.',
+      '',
+      '> [!IMPORTANT]',
+      '> Key info.',
+      '',
+      '> [!WARNING]',
+      '> Urgent attention needed.',
+      '',
+      '> [!CAUTION]',
+      '> Risks ahead.',
+      '',
+      'After alerts.',
+    ].join('\n');
+
+    const { docx, warnings } = await convertMdToDocx(md);
+    expect(warnings).toEqual([]);
+
+    const rt = await convertDocx(docx);
+    expect(rt.markdown).toContain('> [!NOTE] Useful information.');
+    expect(rt.markdown).toContain('> [!TIP] Helpful advice.');
+    expect(rt.markdown).toContain('> [!IMPORTANT] Key info.');
+    expect(rt.markdown).toContain('> [!WARNING] Urgent attention needed.');
+    expect(rt.markdown).toContain('> [!CAUTION] Risks ahead.');
+    expect(rt.markdown).toContain('After alerts.');
+    expect(rt.markdown).not.toContain('※ Note');
+    expect(rt.markdown).not.toContain('◈ Tip');
+    expect(rt.markdown).not.toContain('‼ Important');
+    expect(rt.markdown).not.toContain('▲ Warning');
+    expect(rt.markdown).not.toContain('⛒ Caution');
+  });
+
+  it('round-trips multi-paragraph alert blocks and preserves only one marker per alert block', async () => {
+    const md = [
+      '> [!WARNING]',
+      '> First paragraph.',
+      '>',
+      '> Second paragraph.',
+      '',
+      '> [!NOTE]',
+      '> Single paragraph.',
+    ].join('\n');
+
+    const { docx } = await convertMdToDocx(md);
+    const rt = await convertDocx(docx);
+
+    const warningMarkerCount = (rt.markdown.match(/> \[!WARNING\]/g) || []).length;
+    const noteMarkerCount = (rt.markdown.match(/> \[!NOTE\]/g) || []).length;
+    expect(warningMarkerCount).toBe(1);
+    expect(noteMarkerCount).toBe(1);
+    expect(rt.markdown).toContain('First paragraph.');
+    expect(rt.markdown).toContain('Second paragraph.');
+  });
+});

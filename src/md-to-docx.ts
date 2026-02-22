@@ -6,7 +6,7 @@ import { isAbsolute, join } from 'path';
 import { parseBibtex, BibtexEntry } from './bibtex-parser';
 import { parseFrontmatter, Frontmatter, noteTypeToNumber } from './frontmatter';
 import { ZoteroBiblData, zoteroStyleFullId } from './converter';
-import { isGfmDisallowedRawHtml, parseTaskListMarker } from './gfm';
+import { isGfmDisallowedRawHtml, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from './gfm';
 
 // --- Implementation notes ---
 // - decodeHtmlEntities(): decode &amp; after other named entities to avoid over-decoding
@@ -22,6 +22,8 @@ export interface MdToken {
   level?: number;           // heading level 1-6, blockquote nesting, list nesting
   ordered?: boolean;        // for list items
   taskChecked?: boolean;    // for GFM task list items
+  alertType?: GfmAlertType; // for GFM alerts in blockquotes
+  alertLead?: boolean;      // first blockquote paragraph carrying alert header
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
@@ -74,6 +76,22 @@ const COLOR_TO_OOXML: Record<string, string> = {
   'turquoise': 'cyan', 'pink': 'magenta', 'dark-blue': 'darkBlue',
   'teal': 'darkCyan', 'violet': 'darkMagenta', 'dark-red': 'darkRed',
   'dark-yellow': 'darkYellow', 'gray-50': 'darkGray', 'gray-25': 'lightGray',
+};
+
+const ALERT_STYLE_BY_TYPE: Record<GfmAlertType, string> = {
+  note: 'GitHubNote',
+  tip: 'GitHubTip',
+  important: 'GitHubImportant',
+  warning: 'GitHubWarning',
+  caution: 'GitHubCaution',
+};
+
+const ALERT_GLYPH_BY_TYPE: Record<GfmAlertType, string> = {
+  note: '※',
+  tip: '◈',
+  important: '‼',
+  warning: '▲',
+  caution: '⛒',
 };
 
 import { PARA_PLACEHOLDER, preprocessCriticMarkup, findMatchingClose } from './critic-markup';
@@ -632,6 +650,43 @@ export function parseMd(markdown: string): MdToken[] {
   return convertTokens(tokens);
 }
 
+function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; runs: MdRun[] } {
+  const firstTextIdx = runs.findIndex(run => run.type === 'text' && run.text.length > 0);
+  if (firstTextIdx === -1) return { runs };
+  const firstText = runs[firstTextIdx];
+  const parsed = parseGfmAlertMarker(firstText.text);
+  if (!parsed) return { runs };
+  const nextRuns = [...runs];
+  if (parsed.rest.length > 0) {
+    nextRuns[firstTextIdx] = { ...firstText, text: parsed.rest };
+  } else {
+    nextRuns.splice(firstTextIdx, 1);
+  }
+  return { alertType: parsed.type, runs: nextRuns };
+}
+
+function annotateBlockquoteAlert(tokens: MdToken[], level: number): MdToken[] {
+  const firstIdx = tokens.findIndex(t => t.runs.length > 0);
+  if (firstIdx === -1) {
+    return tokens.map(t => ({ ...t, type: 'blockquote' as const, level: t.type === 'blockquote' ? t.level : level }));
+  }
+
+  const firstToken = tokens[firstIdx];
+  const parsed = stripLeadingAlertMarker(firstToken.runs);
+  const alertType = parsed.alertType;
+
+  const mapped = tokens.map((t, idx) => ({
+    ...t,
+    type: 'blockquote' as const,
+    level: t.type === 'blockquote' ? t.level : level,
+    ...(alertType ? { alertType } : {}),
+    ...(alertType && idx === firstIdx ? { alertLead: true } : {}),
+    ...(idx === firstIdx ? { runs: parsed.runs } : {}),
+  }));
+
+  return mapped;
+}
+
 function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdToken[] {
   const result: MdToken[] = [];
   let i = 0;
@@ -675,11 +730,7 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         // In Markdown, `> - item` starts a new list context within the quote,
         // so numbering/indentation should not inherit from outer lists.
         const blockquoteTokens = convertTokens(tokens.slice(i + 1, blockquoteClose), 0, bqLevel);
-        result.push(...blockquoteTokens.map(t => ({
-          ...t,
-          type: 'blockquote' as const,
-          level: t.type === 'blockquote' ? t.level : bqLevel
-        })));
+        result.push(...annotateBlockquoteAlert(blockquoteTokens, bqLevel));
         i = blockquoteClose + 1;
         break;
         
@@ -1624,7 +1675,7 @@ export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined
 // Style IDs that receive body font/size overrides
 const BODY_STYLE_IDS = new Set([
   'Normal', 'Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6',
-  'Title', 'Quote', 'IntenseQuote', 'GitHub', 'FootnoteText', 'EndnoteText',
+  'Title', 'Quote', 'IntenseQuote', 'GitHub', 'GitHubNote', 'GitHubTip', 'GitHubImportant', 'GitHubWarning', 'GitHubCaution', 'FootnoteText', 'EndnoteText',
 ]);
 // Style IDs that receive code font/size overrides
 const CODE_STYLE_IDS = new Set(['CodeChar', 'CodeBlock']);
@@ -1894,6 +1945,14 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
 
   // IntenseQuote: body font + existing italic/color
   const intenseQuoteRpr = '<w:rPr><w:i/><w:color w:val="4472C4"/>' + bodyFontStr + '</w:rPr>\n';
+  function githubAlertStyle(styleId: string, displayName: string, borderColor: string): string {
+    return '<w:style w:type="paragraph" w:styleId="' + styleId + '">\n' +
+      '<w:name w:val="' + displayName + '"/>\n' +
+      '<w:basedOn w:val="Normal"/>\n' +
+      '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="' + borderColor + '"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
+      (quoteRpr ? quoteRpr : '') +
+      '</w:style>\n';
+  }
 
   // CodeBlock pPr: conditional inset vs shading mode
   let codeBlockPPr: string;
@@ -1972,6 +2031,11 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="D0D7DE"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
     (quoteRpr ? quoteRpr : '') +
     '</w:style>\n' +
+    githubAlertStyle('GitHubNote', 'GitHub Note', '1F6FEB') +
+    githubAlertStyle('GitHubTip', 'GitHub Tip', '238636') +
+    githubAlertStyle('GitHubImportant', 'GitHub Important', '8957E5') +
+    githubAlertStyle('GitHubWarning', 'GitHub Warning', '9A6700') +
+    githubAlertStyle('GitHubCaution', 'GitHub Caution', 'CF222E') +
     '<w:style w:type="character" w:styleId="CodeChar">\n' +
     '<w:name w:val="Code Char"/>\n' +
     codeCharRpr +
@@ -2601,8 +2665,8 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       state.hasList = true;
       break;
     case 'blockquote':
-      const bqStyle = options?.blockquoteStyle ?? 'GitHub';
-      const bqIndentUnit = bqStyle === 'GitHub' ? 240 : 720;
+      const bqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
+      const bqIndentUnit = bqStyle.startsWith('GitHub') ? 240 : 720;
       const leftIndent = bqIndentUnit * (token.level || 1);
       pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/><w:ind w:left="' + leftIndent + '"/></w:pPr>';
       break;
@@ -2646,8 +2710,11 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   const taskPrefix = token.type === 'list_item' && token.taskChecked !== undefined
     ? generateRun(token.taskChecked ? '☒ ' : '☐ ', '')
     : '';
+  const alertPrefix = token.type === 'blockquote' && token.alertType && token.alertLead
+    ? generateRun(ALERT_GLYPH_BY_TYPE[token.alertType] + ' ' + gfmAlertTitle(token.alertType) + ' ', '')
+    : '';
 
-  return '<w:p>' + pPr + taskPrefix + runs + '</w:p>';
+  return '<w:p>' + pPr + alertPrefix + taskPrefix + runs + '</w:p>';
 }
 
 export function generateTable(token: MdToken, state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any): string {

@@ -17,6 +17,7 @@ import {
   ContentItem,
   isToggleOn,
   parseHeadingLevel,
+  parseAlertType,
   parseBlockquoteLevel,
   parseCodeBlockStyle,
   parseRunProperties,
@@ -2429,6 +2430,29 @@ describe('parseBlockquoteLevel', () => {
     ];
     expect(parseBlockquoteLevel(children)).toBe(2);
   });
+
+  test('returns level based on 240-twip indent for GitHub alert styles', () => {
+    const children = [
+      { 'w:pStyle': [], ':@': { '@_w:val': 'GitHubWarning' } },
+      { 'w:ind': [], ':@': { '@_w:left': '480' } },
+    ];
+    expect(parseBlockquoteLevel(children)).toBe(2);
+  });
+});
+
+describe('parseAlertType', () => {
+  test('parses GitHub alert style names', () => {
+    expect(parseAlertType([{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHubNote' } }])).toBe('note');
+    expect(parseAlertType([{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHubTip' } }])).toBe('tip');
+    expect(parseAlertType([{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHubImportant' } }])).toBe('important');
+    expect(parseAlertType([{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHubWarning' } }])).toBe('warning');
+    expect(parseAlertType([{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHubCaution' } }])).toBe('caution');
+  });
+
+  test('returns undefined for non-alert styles', () => {
+    expect(parseAlertType([{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHub' } }])).toBeUndefined();
+    expect(parseAlertType([{ 'w:pStyle': [], ':@': { '@_w:val': 'Normal' } }])).toBeUndefined();
+  });
 });
 
 describe('Blockquote round-trip', () => {
@@ -2488,6 +2512,24 @@ describe('Blockquote round-trip', () => {
     const { docx } = await convertMdToDocx(md, { blockquoteStyle: 'GitHub' });
     const result = await convertDocx(docx);
     expect(result.markdown).toContain('> > nested');
+  });
+
+  test('alert blockquote round-trips to canonical markdown alert syntax', async () => {
+    const md = '> [!WARNING]\n> Be careful';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('> [!WARNING] Be careful');
+  });
+
+  test('DOCX alert style converts to markdown alert syntax', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:pPr><w:pStyle w:val="GitHubTip"/><w:ind w:left="240"/></w:pPr>'
+      + '<w:r><w:rPr><w:b/></w:rPr><w:t>◈ Tip </w:t></w:r>'
+      + '<w:r><w:t>Helpful advice</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('> [!TIP] Helpful advice');
   });
 });
 

@@ -25,6 +25,46 @@ const hasNoSpecialSyntax = (s: string) => {
 };
 
 describe('Manuscript Markdown Plugin Property Tests', () => {
+  describe('GFM alerts', () => {
+    it('renders NOTE alert with title row and strips marker text', () => {
+      const md = new MarkdownIt();
+      md.use(manuscriptMarkdownPlugin);
+      const html = md.render('> [!NOTE]\n> Useful information.');
+      expect(html).toContain('markdown-alert markdown-alert-note');
+      expect(html).toContain('markdown-alert-title');
+      expect(html).toContain('octicon markdown-alert-icon');
+      expect(html).toContain('Note');
+      expect(html).toContain('Useful information.');
+      expect(html).not.toContain('[!NOTE]');
+    });
+
+    it('renders all alert variants with per-type classes and title case labels', () => {
+      const md = new MarkdownIt();
+      md.use(manuscriptMarkdownPlugin);
+      const html = md.render(
+        '> [!TIP]\n> tip text\n\n' +
+        '> [!IMPORTANT]\n> important text\n\n' +
+        '> [!WARNING]\n> warning text\n\n' +
+        '> [!CAUTION]\n> caution text'
+      );
+      expect(html).toContain('markdown-alert-tip');
+      expect(html).toContain('Tip</p>');
+      expect(html).toContain('markdown-alert-important');
+      expect(html).toContain('Important</p>');
+      expect(html).toContain('markdown-alert-warning');
+      expect(html).toContain('Warning</p>');
+      expect(html).toContain('markdown-alert-caution');
+      expect(html).toContain('Caution</p>');
+    });
+
+    it('keeps non-alert blockquotes unchanged', () => {
+      const md = new MarkdownIt();
+      md.use(manuscriptMarkdownPlugin);
+      const html = md.render('> regular quote');
+      expect(html).toContain('<blockquote>');
+      expect(html).not.toContain('markdown-alert');
+    });
+  });
 
   // Feature: markdown-preview-highlighting, Property 1: Manuscript Markdown pattern transformation
   // Validates: Requirements 1.1, 2.1, 3.1, 4.1, 5.1

@@ -154,6 +154,15 @@ describe('GFM support in Markdown→DOCX parser', () => {
     expect(tokens[0].type).toBe('paragraph');
     expect(tokens[0].runs[0]).toMatchObject({ type: 'text', text: '<div>alpha</div>' });
   });
+
+  it('parses alert blockquotes and strips raw [!TYPE] marker text', () => {
+    const tokens = parseMd('> [!WARNING]\n> Heads up');
+    const blockquoteTokens = tokens.filter(t => t.type === 'blockquote');
+    expect(blockquoteTokens.length).toBeGreaterThan(0);
+    expect(blockquoteTokens[0].alertType).toBe('warning');
+    expect(blockquoteTokens[0].alertLead).toBe(true);
+    expect(blockquoteTokens.map(t => t.runs.map(r => r.text).join('')).join('\n')).not.toContain('[!WARNING]');
+  });
 });
 
 describe('parseMd HTML tables', () => {
@@ -333,6 +342,21 @@ describe('generateParagraph', () => {
     const state = createState();
     const result = generateParagraph(token, state);
     expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:ind w:left="720"/></w:pPr><w:r><w:t xml:space="preserve">Nested quote</w:t></w:r></w:p>');
+  });
+
+  it('generates alert blockquote with GitHub alert style and title prefix', () => {
+    const token: MdToken = {
+      type: 'blockquote',
+      level: 1,
+      alertType: 'caution',
+      alertLead: true,
+      runs: [{ type: 'text', text: 'Watch out' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state);
+    expect(result).toContain('w:pStyle w:val=\"GitHubCaution\"');
+    expect(result).toContain('⛒ Caution ');
+    expect(result).toContain('Watch out');
   });
 
   it('generates code block with multiple lines', () => {
@@ -1638,6 +1662,17 @@ describe('blockquote-style frontmatter', () => {
     const zip = await JSZip.loadAsync(docx);
     const docXml = await zip.file('word/document.xml')!.async('string');
     expect(docXml).toContain('w:pStyle w:val="GitHub"');
+  });
+
+  it('convertMdToDocx emits alert styles and monochrome title prefixes', async () => {
+    const md = '> [!TIP]\n> Helpful advice';
+    const { docx } = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('w:pStyle w:val=\"GitHubTip\"');
+    expect(docXml).toContain('◈ Tip ');
+    expect(docXml).not.toContain('[!TIP]');
   });
 });
 
