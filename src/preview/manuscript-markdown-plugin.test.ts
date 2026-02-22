@@ -64,6 +64,34 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
       expect(html).toContain('<blockquote>');
       expect(html).not.toContain('markdown-alert');
     });
+
+    it('splits merged blockquote with multiple alert markers into separate alerts', () => {
+      const md = new MarkdownIt();
+      md.use(manuscriptMarkdownPlugin);
+      // Without blank lines, markdown-it merges these into one blockquote
+      const src = '> [!NOTE]\n> A note.\n> [!WARNING]\n> A warning.\n> [!TIP]\n> A tip.';
+      const html = md.render(src);
+      expect(html).toContain('markdown-alert-note');
+      expect(html).toContain('markdown-alert-warning');
+      expect(html).toContain('markdown-alert-tip');
+      // Each alert should have its own title row
+      expect(html).toContain('Note</p>');
+      expect(html).toContain('Warning</p>');
+      expect(html).toContain('Tip</p>');
+      // Marker text should be stripped
+      expect(html).not.toContain('[!NOTE]');
+      expect(html).not.toContain('[!WARNING]');
+      expect(html).not.toContain('[!TIP]');
+    });
+
+    it('preserves plain blockquote content before first alert marker in merged blockquote', () => {
+      const md = new MarkdownIt();
+      md.use(manuscriptMarkdownPlugin);
+      const src = '> Plain text.\n> [!NOTE]\n> A note.';
+      const html = md.render(src);
+      expect(html).toContain('Plain text.');
+      expect(html).toContain('markdown-alert-note');
+    });
   });
 
   // Feature: markdown-preview-highlighting, Property 1: Manuscript Markdown pattern transformation

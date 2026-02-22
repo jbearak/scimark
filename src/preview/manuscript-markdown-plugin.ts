@@ -52,6 +52,72 @@ function alertBlockquoteRule(state: any): void {
     }
     if (closeIdx >= tokens.length) { i++; continue; }
 
+    // Pre-pass: when a single inline token contains multiple [!TYPE] markers
+    // (merged blockquotes without blank lines), split it into separate
+    // paragraph_open/inline/paragraph_close groups within the blockquote.
+    for (let j = i + 1; j < closeIdx; j++) {
+      if (tokens[j].type !== 'inline' || !tokens[j].children) continue;
+      const children = tokens[j].children;
+      // Find all child indices that are alert markers
+      const markerChildIndices: number[] = [];
+      for (let c = 0; c < children.length; c++) {
+        if (children[c].type === 'text' && parseGfmAlertMarker(children[c].content)) {
+          markerChildIndices.push(c);
+        }
+      }
+      if (markerChildIndices.length === 0) continue;
+      // Single marker that IS the first text child — no split needed
+      const firstTextChildIdx = children.findIndex((c: any) => c.type === 'text' && c.content.length > 0);
+      if (markerChildIndices.length === 1 && markerChildIndices[0] === firstTextChildIdx) continue;
+
+      // Find the paragraph_open and paragraph_close around this inline
+      let pOpenIdx = j - 1;
+      while (pOpenIdx > i && tokens[pOpenIdx].type !== 'paragraph_open') pOpenIdx--;
+      let pCloseIdx = j + 1;
+      while (pCloseIdx < closeIdx && tokens[pCloseIdx].type !== 'paragraph_close') pCloseIdx++;
+
+      // Build replacement tokens: one paragraph group per marker segment
+      const replacement: any[] = [];
+      // Content before first marker (plain blockquote paragraph)
+      if (markerChildIndices[0] > 0) {
+        let preChildren = children.slice(0, markerChildIndices[0]);
+        // Strip trailing softbreaks
+        while (preChildren.length > 0 && preChildren[preChildren.length - 1].type === 'softbreak') preChildren = preChildren.slice(0, -1);
+        if (preChildren.length > 0) {
+          const pOpen = new state.Token('paragraph_open', 'p', 1);
+          replacement.push(pOpen);
+          const inlineTok = new state.Token('inline', '', 0);
+          inlineTok.children = preChildren;
+          inlineTok.content = preChildren.map((c: any) => c.content || '').join('');
+          replacement.push(inlineTok);
+          replacement.push(new state.Token('paragraph_close', 'p', -1));
+        }
+      }
+      for (let m = 0; m < markerChildIndices.length; m++) {
+        const start = markerChildIndices[m];
+        const end = m + 1 < markerChildIndices.length ? markerChildIndices[m + 1] : children.length;
+        let segChildren = children.slice(start, end);
+        // Strip leading/trailing softbreaks
+        while (segChildren.length > 0 && segChildren[0].type === 'softbreak') segChildren = segChildren.slice(1);
+        while (segChildren.length > 0 && segChildren[segChildren.length - 1].type === 'softbreak') segChildren = segChildren.slice(0, -1);
+        if (segChildren.length > 0) {
+          const pOpen = new state.Token('paragraph_open', 'p', 1);
+          replacement.push(pOpen);
+          const inlineTok = new state.Token('inline', '', 0);
+          inlineTok.children = segChildren;
+          inlineTok.content = segChildren.map((c: any) => c.content || '').join('');
+          replacement.push(inlineTok);
+          replacement.push(new state.Token('paragraph_close', 'p', -1));
+        }
+      }
+      // Replace paragraph_open/inline/paragraph_close with expanded groups
+      const removeCount = pCloseIdx - pOpenIdx + 1;
+      tokens.splice(pOpenIdx, removeCount, ...replacement);
+      closeIdx += replacement.length - removeCount;
+      // Re-scan from current position
+      j = pOpenIdx - 1;
+    }
+
     // Collect all top-level inline tokens that start with an alert marker.
     // Track the paragraph_open index preceding each hit for splitting.
     interface AlertHit { inlineIdx: number; paraOpenIdx: number; type: GfmAlertType; rest: string }

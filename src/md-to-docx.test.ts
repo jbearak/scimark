@@ -163,6 +163,39 @@ describe('GFM support in Markdown→DOCX parser', () => {
     expect(blockquoteTokens[0].alertLead).toBe(true);
     expect(blockquoteTokens.map(t => t.runs.map(r => r.text).join('')).join('\n')).not.toContain('[!WARNING]');
   });
+
+  it('splits merged blockquotes with multiple alert markers into separate tokens', () => {
+    const md = '> [!NOTE]\n> A note.\n> [!WARNING]\n> A warning.\n> [!TIP]\n> A tip.';
+    const tokens = parseMd(md);
+    const bqTokens = tokens.filter(t => t.type === 'blockquote');
+    const noteTokens = bqTokens.filter(t => t.alertType === 'note');
+    const warningTokens = bqTokens.filter(t => t.alertType === 'warning');
+    const tipTokens = bqTokens.filter(t => t.alertType === 'tip');
+    expect(noteTokens.length).toBeGreaterThan(0);
+    expect(warningTokens.length).toBeGreaterThan(0);
+    expect(tipTokens.length).toBeGreaterThan(0);
+    expect(noteTokens[0].alertLead).toBe(true);
+    expect(warningTokens[0].alertLead).toBe(true);
+    expect(tipTokens[0].alertLead).toBe(true);
+  });
+
+  it('marks alertFirst/alertLast boundaries on contiguous alert blockquotes', () => {
+    const md = '> [!NOTE]\n> Line one.\n>\n> Line two.';
+    const tokens = parseMd(md);
+    const bqTokens = tokens.filter(t => t.type === 'blockquote');
+    expect(bqTokens.length).toBeGreaterThanOrEqual(2);
+    expect(bqTokens[0].alertFirst).toBe(true);
+    expect(bqTokens[bqTokens.length - 1].alertLast).toBe(true);
+  });
+
+  it('marks alertFirst/alertLast on plain blockquotes too', () => {
+    const md = '> Plain quote.';
+    const tokens = parseMd(md);
+    const bqTokens = tokens.filter(t => t.type === 'blockquote');
+    expect(bqTokens.length).toBeGreaterThan(0);
+    expect(bqTokens[0].alertFirst).toBe(true);
+    expect(bqTokens[bqTokens.length - 1].alertLast).toBe(true);
+  });
 });
 
 describe('parseMd HTML tables', () => {
@@ -391,6 +424,58 @@ describe('generateParagraph', () => {
     expect(result).toContain('w:pStyle w:val=\"GitHubCaution\"');
     expect(result).toContain('⛒ Caution ');
     expect(result).toContain('Watch out');
+  });
+
+  it('generates bold colored alert title prefix', () => {
+    const colors: Record<string, string> = {
+      note: '1F6FEB', tip: '238636', important: '8957E5',
+      warning: '9A6700', caution: 'CF222E',
+    };
+    for (const [type, color] of Object.entries(colors)) {
+      const token: MdToken = {
+        type: 'blockquote',
+        level: 1,
+        alertType: type as any,
+        alertLead: true,
+        runs: [{ type: 'text', text: 'Content' }]
+      };
+      const result = generateParagraph(token, createState());
+      expect(result).toContain('<w:b/>');
+      expect(result).toContain('w:color w:val="' + color + '"');
+    }
+  });
+
+  it('emits spacer paragraphs for alertFirst/alertLast blockquotes', () => {
+    const token: MdToken = {
+      type: 'blockquote',
+      level: 1,
+      alertType: 'note',
+      alertLead: true,
+      alertFirst: true,
+      alertLast: true,
+      runs: [{ type: 'text', text: 'Note text' }]
+    };
+    const result = generateParagraph(token, createState());
+    // Should contain two spacer paragraphs (before and after)
+    const spacerPattern = /w:line="1" w:lineRule="exact"/g;
+    const spacers = result.match(spacerPattern);
+    expect(spacers).toHaveLength(2);
+    // Spacers carry inline pBdr with alert border color, not pStyle
+    expect(result).toContain('w:color="1F6FEB"');
+    // The content paragraph should NOT have a spacer style
+    expect((result.match(/w:pStyle/g) || []).length).toBe(1);
+  });
+
+  it('spacer paragraphs use correct border color for plain blockquotes', () => {
+    const token: MdToken = {
+      type: 'blockquote',
+      level: 1,
+      alertFirst: true,
+      alertLast: true,
+      runs: [{ type: 'text', text: 'Plain quote' }]
+    };
+    const result = generateParagraph(token, createState());
+    expect(result).toContain('w:color="D0D7DE"');
   });
 
   it('generates code block with multiple lines', () => {
