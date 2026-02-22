@@ -2798,11 +2798,25 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
     return v ? Number(v) : undefined;
   }
 
+  function isXmlToggleOn(rpr: string, tag: string): boolean {
+    // Self-closing with no attributes: <w:b/>
+    if (rpr.includes('<' + tag + '/>')) return true;
+    // Tag with attributes: <w:b w:val="true"/>  or  <w:b w:val="1">
+    const re = new RegExp('<' + tag + '\\s[^>]*?(?:/>|>)');
+    const m = re.exec(rpr);
+    if (!m) return false;
+    const vm = /w:val="([^"]*)"/.exec(m[0]);
+    if (!vm) return true; // present with no w:val → on
+    const v = vm[1];
+    return v === 'true' || v === '1' || v === 'on';
+  }
+
   function extractStyle(rpr: string): string {
     const parts: string[] = [];
-    if (rpr.includes('<w:b/>')) parts.push('bold');
-    if (rpr.includes('<w:i/>')) parts.push('italic');
-    if (rpr.includes('<w:u ')) parts.push('underline');
+    if (isXmlToggleOn(rpr, 'w:b')) parts.push('bold');
+    if (isXmlToggleOn(rpr, 'w:i')) parts.push('italic');
+    // Underline: bare <w:u/> or any w:val except "none"
+    if (rpr.includes('<w:u/>') || (rpr.includes('<w:u ') && !rpr.includes('w:val="none"'))) parts.push('underline');
     return parts.length > 0 ? parts.join('-') : 'normal';
   }
 
