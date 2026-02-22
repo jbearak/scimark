@@ -800,6 +800,55 @@ export async function extractZoteroPrefs(data: Uint8Array | JSZip): Promise<Zote
     }
   }
 }
+export async function extractBlockquoteAlertStyleMapping(data: Uint8Array | JSZip): Promise<Map<number, boolean> | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propPrefix = 'MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE';
+  const parts: Array<{ index: number; value: string }> = [];
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (!name.startsWith(propPrefix)) continue;
+
+    let idx = 1;
+    if (name !== propPrefix) {
+      if (!name.startsWith(propPrefix + '_')) continue;
+      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
+      if (!chunkMatch) continue;
+      idx = parseInt(chunkMatch[1], 10);
+      if (isNaN(idx)) continue;
+    }
+
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const val = nodeText(child['vt:lpwstr'] || []);
+        parts.push({ index: idx, value: val });
+      }
+    }
+  }
+
+  if (parts.length === 0) return null;
+
+  parts.sort((a, b) => a.index - b.index);
+  const mappingJson = parts.map(p => p.value).join('');
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<number, boolean>();
+    for (const [key, isInline] of Object.entries(parsedJson)) {
+      const groupIdx = parseInt(key, 10);
+      if (isNaN(groupIdx) || typeof isInline !== 'number') continue;
+      mapping.set(groupIdx, isInline === 1);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
 
 async function extractIdMappingFromCustomXml(
   data: Uint8Array | JSZip,
@@ -2425,7 +2474,7 @@ function stripAlertLeadPrefix(text: string, alertType: GfmAlertType): string {
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -2554,6 +2603,7 @@ export function buildMarkdown(
   let lastBlockquoteLevel: number | undefined;
   const codeBlockLangs = options?.codeBlockLangs;
   const blockquoteGaps = options?.blockquoteGaps;
+  const blockquoteAlertInlineByGroup = options?.blockquoteAlertInlineByGroup;
 
   while (i < mergedContent.length) {
     const item = mergedContent[i];
@@ -2759,7 +2809,15 @@ export function buildMarkdown(
             && item.blockquoteGroupIndex !== prevBlockquoteGroupIndex;
           const isAlertStart = lastAlertParagraphKey !== alertKey || groupChanged;
           if (isAlertStart) {
-            output.push(toGfmAlertMarker(item.alertType) + ' ');
+            const markerInline = item.blockquoteGroupIndex !== undefined
+              ? blockquoteAlertInlineByGroup?.get(item.blockquoteGroupIndex) === true
+              : false;
+            output.push(toGfmAlertMarker(item.alertType));
+            if (markerInline) {
+              output.push(' ');
+            } else {
+              output.push('\n' + '> '.repeat(item.blockquoteLevel));
+            }
             const next = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
             pendingAlertPrefixStrip = (next && next.type !== 'para') ? item.alertType : undefined;
           } else {
@@ -3241,7 +3299,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -3252,6 +3310,7 @@ export async function convertDocx(
     extractCommentThreads(zip),
     extractCodeBlockStyling(zip),
     extractBlockquoteGapMapping(zip),
+    extractBlockquoteAlertStyleMapping(zip),
   ]);
 
   // Group reply comments under their parents and get IDs to exclude from ranges
@@ -3346,6 +3405,7 @@ export async function convertDocx(
     notes: notesMap.size > 0 ? { map: notesMap, assignedLabels } : undefined,
     codeBlockLangs: codeBlockLangMapping,
     blockquoteGaps: blockquoteGapMapping,
+    blockquoteAlertInlineByGroup: blockquoteAlertStyleMapping,
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)

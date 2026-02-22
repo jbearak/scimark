@@ -24,6 +24,7 @@ export interface MdToken {
   taskChecked?: boolean;    // for GFM task list items
   alertType?: GfmAlertType; // for GFM alerts in blockquotes
   alertLead?: boolean;      // first blockquote paragraph carrying alert header
+  alertMarkerInline?: boolean; // true when source alert marker had same-line body text
   alertFirst?: boolean;     // first paragraph in an alert block (for spacing)
   alertLast?: boolean;      // last paragraph in an alert block (for spacing)
   blockquoteGroupIndex?: number; // sequential index of the blockquote group this token belongs to
@@ -737,6 +738,39 @@ export function computeBlockquoteGaps(markdown: string): Map<number, number> {
 
   return gaps;
 }
+// Compute per-blockquote-group alert marker style from source markdown.
+// true means `> [!TYPE] body`, false means marker-only line.
+export function computeBlockquoteAlertMarkerInlineByGroup(markdown: string): Map<number, boolean> {
+  const inlineByGroup = new Map<number, boolean>();
+  const lines = markdown.split('\n');
+  const alertMarkerRe = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](.*)$/i;
+
+  let groupIndex = 0;
+  let i = 0;
+  while (i < lines.length) {
+    if (/^>/.test(lines[i])) {
+      const runStart = i;
+      let groupStart = i;
+      i++;
+      while (i < lines.length && /^>/.test(lines[i])) {
+        if (alertMarkerRe.test(lines[i]) && i > runStart) {
+          const first = lines[groupStart].match(alertMarkerRe);
+          if (first) inlineByGroup.set(groupIndex, first[2].trim().length > 0);
+          groupIndex++;
+          groupStart = i;
+        }
+        i++;
+      }
+      const first = lines[groupStart].match(alertMarkerRe);
+      if (first) inlineByGroup.set(groupIndex, first[2].trim().length > 0);
+      groupIndex++;
+    } else {
+      i++;
+    }
+  }
+
+  return inlineByGroup;
+}
 
 // Assign a sequential blockquoteGroupIndex to each blockquote token so the
 // gap map can be correlated during docx→md conversion.  Groups are delimited
@@ -777,6 +811,23 @@ export function blockquoteGapProps(gaps: Map<number, number>): CustomPropEntry[]
   for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
     props.push({
       name: 'MANUSCRIPT_BLOCKQUOTE_GAPS_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boolean>): CustomPropEntry[] {
+  if (inlineByGroup.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, isInline] of inlineByGroup) {
+    mapping[String(index)] = isInline ? 1 : 0;
+  }
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE_' + (props.length + 1),
       value: mappingJson.slice(i, i + CHUNK_SIZE),
     });
   }
@@ -1695,6 +1746,7 @@ export interface DocxGenState {
   codeFont: string;
   codeShadingMode: boolean;
   blockquoteGaps: Map<number, number>; // gap (blank-line count) after each blockquote group, keyed by group index
+  blockquoteAlertMarkerInlineByGroup: Map<number, boolean>; // alert group index -> inline marker style
 }
 
 interface CommentEntry {
@@ -3322,6 +3374,7 @@ export async function convertMdToDocx(
   // Compute inter-blockquote-group gap metadata from the original markdown
   // source and annotate tokens with sequential group indices.
   const blockquoteGaps = computeBlockquoteGaps(bodyWithoutFootnotes);
+  const blockquoteAlertMarkerInlineByGroup = computeBlockquoteAlertMarkerInlineByGroup(bodyWithoutFootnotes);
   annotateBlockquoteGroupIndices(tokens);
 
   // Parse BibTeX if provided
@@ -3432,6 +3485,7 @@ export async function convertMdToDocx(
     codeFont: fontOverrides?.codeFont || 'Consolas',
     codeShadingMode: !isInsetMode,
     blockquoteGaps: blockquoteGaps,
+    blockquoteAlertMarkerInlineByGroup,
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -3587,6 +3641,7 @@ export async function convertMdToDocx(
   customProps.push(...codeBlockLanguageProps(state.codeBlockLanguages));
   customProps.push(...codeBlockStylingProps(frontmatter));
   customProps.push(...blockquoteGapProps(state.blockquoteGaps));
+  customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));
