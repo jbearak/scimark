@@ -31,7 +31,7 @@ export function escapeHtmlText(text: string): string {
 }
 
 export function parseTaskListMarker(text: string): { checked: boolean; rest: string } | undefined {
-  const match = text.match(/^\[( |x|X)\]\s+/);
+  const match = text.match(/^\[( |x|X)\](?:\s+|$)/);
   if (!match) return undefined;
   return {
     checked: match[1].toLowerCase() === 'x',

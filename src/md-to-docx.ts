@@ -2659,10 +2659,15 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       pPr = '<w:pPr><w:pStyle w:val="Heading' + (token.level || 1) + '"/></w:pPr>';
       break;
     case 'list_item':
-      const numId = token.ordered ? '2' : '1';
-      const ilvl = (token.level || 1) - 1;
-      pPr = '<w:pPr><w:numPr><w:ilvl w:val="' + ilvl + '"/><w:numId w:val="' + numId + '"/></w:numPr></w:pPr>';
-      state.hasList = true;
+      if (token.taskChecked !== undefined) {
+        const leftIndent = 720 * (token.level || 1);
+        pPr = '<w:pPr><w:ind w:left="' + leftIndent + '" w:hanging="360"/></w:pPr>';
+      } else {
+        const numId = token.ordered ? '2' : '1';
+        const ilvl = (token.level || 1) - 1;
+        pPr = '<w:pPr><w:numPr><w:ilvl w:val="' + ilvl + '"/><w:numId w:val="' + numId + '"/></w:numPr></w:pPr>';
+        state.hasList = true;
+      }
       break;
     case 'blockquote':
       const bqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');

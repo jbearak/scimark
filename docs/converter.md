@@ -11,14 +11,14 @@ The converter supports DOCX → Markdown → DOCX round-tripping. The following 
 - **Text formatting**: Markdown syntax ↔ Word run formatting (bold, italic, underline, strikethrough, superscript, subscript, inline code)
 - **Headings**: `#`–`######` Markdown headings ↔ Word heading styles (H1 through H6)
 - **Lists**: Markdown list syntax ↔ Word numbering (bulleted and numbered with nesting)
-- **GFM task lists**: `- [ ]` / `- [x]` parsed as semantic task items in Markdown and exported to deterministic DOCX list output with checkbox prefixes (`☐`/`☒`)
+- **Task lists**: `- [ ]` / `- [x]` parsed as semantic task items in Markdown and exported to deterministic DOCX list output with checkbox prefixes (`☐`/`☒`)
 - **Comments**: non-overlapping comments use CriticMarkup `{==highlighted text==}{>>author: comment<<}` format; overlapping comments use non-inline ID-based syntax (`{#1}highlighted text{/1}{#1>>alice: comment<<}`) — see [Specification](specification.md#overlapping-comments)
 - **Track changes**: CriticMarkup `{++...++}` and `{--...--}` ↔ Word revisions (`w:ins`/`w:del`)
 - **Citations**: Zotero field codes ↔ Pandoc `[@key]` syntax with BibTeX export. On import, `ZOTERO_BIBL` field codes are detected and omitted (bibliography is regenerated on export). On export, bibliography is automatically generated and appended as a `ZOTERO_BIBL` field when a CSL style is specified. Mixed Zotero/non-Zotero grouped citations always produce unified output — a single set of parentheses wrapping all entries (see [Zotero Round-Trip](zotero-roundtrip.md#mixed-citations)). Missing keys appear inline as `@citekey` with a post-bibliography note.
 - **Zotero document preferences**: CSL style, locale, and note type round-tripped between YAML frontmatter (`csl`, `locale`, `zotero-notes`) and `docProps/custom.xml` (`ZOTERO_PREF_*` properties)
 - **Math**: OMML equations ↔ LaTeX (`$inline$`, `$$display$$`, and bare `\begin{env}...\end{env}`)
 - **Hyperlinks**: Markdown links ↔ Word hyperlinks (with proper escaping)
-- **GFM autolink literals**: bare URLs (e.g., `https://example.com`) are linkified during Markdown parsing and exported as hyperlinks
+- **Autolink literals**: bare URLs (e.g., `https://example.com`) are linkified during Markdown parsing and exported as hyperlinks
 - **Highlights**: colored highlights ↔ `==text=={color}` syntax
 - **Blockquotes**: `> quoted text` ↔ Word Quote/Intense Quote paragraph style (with nesting)
 - **Tables**: DOCX→Markdown import produces HTML tables (`<table>/<tr>/<th>/<td>`) to preserve multi-paragraph cell content; Markdown→DOCX export accepts both HTML tables and pipe-delimited tables (with `colspan` and `rowspan` support)
@@ -122,7 +122,7 @@ If output files already exist, you'll be prompted to replace, choose a new name,
 - **Complex nested tables**: nested `<table>` elements inside cells are not supported
 - **Images**: Not extracted from DOCX
 - **Task-list round-trip normalization**: task list items are exported with deterministic checkbox prefixes in DOCX output; exact original marker spelling (`[x]` vs `[X]`) is not preserved
-- **GFM disallowed raw HTML handling**: disallowed tags from the GFM extension set (`title`, `textarea`, `style`, `xmp`, `iframe`, `noembed`, `noframes`, `script`, `plaintext`) are treated as literal text rather than executable/rendered HTML in parsing/preview paths
+- **Disallowed raw HTML handling**: disallowed tags from the GitHub Flavored Markdown extension set (`title`, `textarea`, `style`, `xmp`, `iframe`, `noembed`, `noframes`, `script`, `plaintext`) are treated as literal text rather than executable/rendered HTML in parsing/preview paths
 
 ### Comment Boundary Expansion in Code Runs
 

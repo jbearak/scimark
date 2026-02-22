@@ -138,7 +138,7 @@ body.vscode-dark .manuscript-markdown-highlight-black { background-color: rgba(0
   font-weight: 600;
 }
 .markdown-alert-icon {
-  fill: currentColor;
+  fill: currentcolor;
   flex: 0 0 auto;
 }
 

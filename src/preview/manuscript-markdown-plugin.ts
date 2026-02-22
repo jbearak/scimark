@@ -76,8 +76,19 @@ function autolinkLiteralsRule(state: any): void {
   for (const blockToken of state.tokens) {
     if (blockToken.type !== 'inline' || !blockToken.children) continue;
     const nextChildren: any[] = [];
+    let linkDepth = 0;
     for (const child of blockToken.children) {
-      if (child.type !== 'text' || !urlPattern.test(child.content)) {
+      if (child.type === 'link_open') {
+        linkDepth++;
+        nextChildren.push(child);
+        continue;
+      }
+      if (child.type === 'link_close') {
+        linkDepth = Math.max(0, linkDepth - 1);
+        nextChildren.push(child);
+        continue;
+      }
+      if (linkDepth > 0 || child.type !== 'text' || !urlPattern.test(child.content)) {
         urlPattern.lastIndex = 0;
         nextChildren.push(child);
         continue;
