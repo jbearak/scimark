@@ -256,22 +256,22 @@ describe('Code Block Styling Round-Trip Tests', () => {
     const { metadata } = parseFrontmatter(markdown);
     expect(metadata.codeBackgroundColor).toBe('none');
   });
-});
-});
-function makeState(codeShadingMode: boolean): DocxGenState {
-  return {
-    commentId: 0, comments: [], commentIdMap: new Map(),
-    relationships: new Map(), nextRId: 1, rIdOffset: 3,
-    warnings: [], hasList: false, hasComments: false,
-    hasFootnotes: false, hasEndnotes: false, footnoteId: 1,
-    footnoteEntries: [], footnoteLabelToId: new Map(),
-    notesMode: 'footnotes', missingKeys: new Set(),
-    citationIds: new Set(), citationItemIds: new Map(),
-    replyRanges: [], nextParaId: 1, codeBlockIndex: 0,
-    codeBlockLanguages: new Map(), citedKeys: new Set(),
-    codeFont: 'Consolas', codeShadingMode,
-  };
-}
+  });
+
+  function makeState(codeShadingMode: boolean): DocxGenState {
+    return {
+      commentId: 0, comments: [], commentIdMap: new Map(),
+      relationships: new Map(), nextRId: 1, rIdOffset: 3,
+      warnings: [], hasList: false, hasComments: false,
+      hasFootnotes: false, hasEndnotes: false, footnoteId: 1,
+      footnoteEntries: [], footnoteLabelToId: new Map(),
+      notesMode: 'footnotes', missingKeys: new Set(),
+      citationIds: new Set(), citationItemIds: new Map(),
+      replyRanges: [], nextParaId: 1, codeBlockIndex: 0,
+      codeBlockLanguages: new Map(), citedKeys: new Set(),
+      codeFont: 'Consolas', codeShadingMode,
+    };
+  }
 
   it('Property 6: Uniform paragraph treatment in shading mode', () => {
     fc.assert(fc.property(
@@ -313,3 +313,5 @@ function makeState(codeShadingMode: boolean): DocxGenState {
       }
     ), { numRuns: 100 });
   });
+});
+
