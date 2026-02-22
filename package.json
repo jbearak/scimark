@@ -161,7 +161,8 @@
       },
       {
         "command": "scimark.exportToWord",
-        "title": "Export to Word"
+        "title": "Export to Word",
+        "icon": "$(file-binary)"
       },
       {
         "command": "scimark.exportToWordWithTemplate",
@@ -273,6 +274,11 @@
         {
           "submenu": "markdown.exportDocx",
           "when": "editorLangId == markdown && !isInDiffEditor",
+          "group": "navigation@3"
+        },
+        {
+          "command": "scimark.exportToWord",
+          "when": "activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor'",
           "group": "navigation@3"
         },
         {
