@@ -137,15 +137,23 @@ code-background-color: none
 
 ## Standard Markdown
 
-Manuscript Markdown supports all [CommonMark](https://commonmark.org/) and [GitHub Flavored Markdown](https://github.github.com/gfm/) syntax:
+Manuscript Markdown supports CommonMark plus the implemented GitHub Flavored Markdown (GFM) extension set. Official GFM reference: <https://github.github.com/gfm/>.
 
 - **Formatting**: bold (`**text**`), italic (`_text_`), strikethrough (`~~text~~`), underline (`<u>text</u>`), superscript (`<sup>text</sup>`), subscript (`<sub>text</sub>`), inline code (`` `code` ``)
 - **Headings**: `# H1` through `###### H6`
-- **Lists**: bulleted (`- item`), numbered (`1. item`), task lists (`- [ ] item`)
-- **Links**: `[text](url)`
+- **Lists**: bulleted (`- item`), numbered (`1. item`), task lists (`- [ ] item`, `- [x] item`)
+- **Links**: `[text](url)` plus GFM autolink literals (bare URLs/emails)
 - **Code blocks**: fenced with triple backticks. Optional language annotation (e.g., `` ```stata ``) is preserved on round-trip via the `MANUSCRIPT_CODE_BLOCK_LANGS` custom property in the DOCX. In Word, code blocks use the "Code Block" paragraph style (Consolas, shaded background). Consecutive code blocks are separated by an empty paragraph to prevent merging.
 - **Blockquotes**: `> quoted text`
 - **Tables**: pipe-delimited with alignment support
+
+### GFM Extension Notes
+
+- **Autolink literals** are enabled in parser and preview (for example, `https://example.com` is linkified without explicit `[]()` markup).
+- **Strikethrough** uses standard GFM `~~text~~` behavior.
+- **Task list items** are parsed semantically as checkbox list items, not only plain text prefixes.
+- **Disallowed raw HTML** follows the GFM extension set (`title`, `textarea`, `style`, `xmp`, `iframe`, `noembed`, `noframes`, `script`, `plaintext`) and is treated as literal text in preview/conversion paths.
+- **Intentional HTML exceptions**: HTML comments (`<!-- ... -->`) and supported inline HTML formatting tags used by this project (for example `<u>`, `<sup>`, `<sub>`) remain supported.
 
 ## Pandoc Extensions
 

@@ -2685,6 +2685,25 @@ describe('Inline code import (CodeChar detection)', () => {
   });
 });
 
+describe('Selective escaping for literal HTML-like text', () => {
+  test('escapes literal <sup> and </sup> in plain text', () => {
+    expect(wrapWithFormatting('x <sup>2</sup>', DEFAULT_FORMATTING)).toBe('x &lt;sup&gt;2&lt;/sup&gt;');
+  });
+
+  test('escapes literal table tags in plain text', () => {
+    expect(wrapWithFormatting('<table><tr><td>x</td></tr></table>', DEFAULT_FORMATTING))
+      .toBe('&lt;table&gt;&lt;tr&gt;&lt;td&gt;x&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;');
+  });
+
+  test('does not escape plain inequality angle brackets or ampersand', () => {
+    expect(wrapWithFormatting('A < B & C > D', DEFAULT_FORMATTING)).toBe('A < B & C > D');
+  });
+
+  test('does not escape non-sensitive tags', () => {
+    expect(wrapWithFormatting('A <foo> B', DEFAULT_FORMATTING)).toBe('A <foo> B');
+  });
+});
+
 describe('Inline code round-trip', () => {
   test('inline code survives MD→DOCX→MD', async () => {
     const md = 'Some `inline code` here';

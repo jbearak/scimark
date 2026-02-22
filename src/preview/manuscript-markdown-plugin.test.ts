@@ -13,6 +13,10 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function stripHtmlTags(str: string): string {
+  return str.replace(/<[^>]+>/g, '');
+}
+
 // Helper to filter out strings with Markdown or HTML special characters that would be transformed
 const hasNoSpecialSyntax = (s: string) => {
   // Exclude Markdown special characters that trigger inline formatting
@@ -133,9 +137,9 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
             // Should contain both deletion and addition CSS classes
             expect(output).toContain('manuscript-markdown-deletion');
             expect(output).toContain('manuscript-markdown-addition');
-            // Should contain both text contents (HTML-escaped)
-            expect(output).toContain(escapeHtml(oldText));
-            expect(output).toContain(escapeHtml(newText));
+            // Should contain both text contents (HTML-escaped); strip tags to allow linkified content
+            expect(stripHtmlTags(output)).toContain(escapeHtml(oldText));
+            expect(stripHtmlTags(output)).toContain(escapeHtml(newText));
             // Should use both del and ins tags
             expect(output).toContain('<del');
             expect(output).toContain('<ins');
@@ -164,9 +168,9 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
             const classCount = (output.match(/manuscript-markdown-addition/g) || []).length;
             expect(classCount).toBe(texts.length);
             
-            // All texts should be present (HTML-escaped)
+            // All texts should be present (HTML-escaped); strip tags to allow linkified content
             texts.forEach(text => {
-              expect(output).toContain(escapeHtml(text));
+              expect(stripHtmlTags(output)).toContain(escapeHtml(text));
             });
           }
         ),
@@ -189,9 +193,12 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
             const classCount = (output.match(/manuscript-markdown-deletion/g) || []).length;
             expect(classCount).toBe(texts.length);
             
-            // All texts should be present (HTML-escaped)
+            // All texts should be present (HTML-escaped); strip tags to allow linkified content
             texts.forEach(text => {
-              expect(output).toContain(escapeHtml(text));
+              const trimmed = escapeHtml(text.trim());
+              if (trimmed.length > 0) {
+                expect(stripHtmlTags(output)).toContain(trimmed);
+              }
             });
           }
         ),
@@ -274,8 +281,14 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
             
             // All texts should be present (HTML-escaped)
             pairs.forEach(([old, newText]) => {
-              expect(output).toContain(escapeHtml(old));
-              expect(output).toContain(escapeHtml(newText));
+              const oldTrimmed = escapeHtml(old.trim());
+              const newTrimmed = escapeHtml(newText.trim());
+              if (oldTrimmed.length > 0) {
+                expect(stripHtmlTags(output)).toContain(oldTrimmed);
+              }
+              if (newTrimmed.length > 0) {
+                expect(stripHtmlTags(output)).toContain(newTrimmed);
+              }
             });
           }
         ),
@@ -773,6 +786,35 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
         { numRuns: 100 }
       );
     });
+  });
+});
+
+describe('GFM behavior in preview plugin', () => {
+  it('renders bare URLs as links', () => {
+    const md = new MarkdownIt();
+    md.use(manuscriptMarkdownPlugin);
+    const output = md.render('See https://example.com now.');
+    expect(output).toContain('<a href="https://example.com">https://example.com</a>');
+  });
+
+  it('renders task list items with disabled checkbox inputs', () => {
+    const md = new MarkdownIt();
+    md.use(manuscriptMarkdownPlugin);
+    const output = md.render('- [x] done\n- [ ] todo');
+    expect(output).toContain('class="task-list-item"');
+    expect(output).toContain('class="task-list-item-checkbox"');
+    expect(output).toContain('type="checkbox"');
+    expect(output).toContain('disabled checked');
+    expect(output).toContain('done');
+    expect(output).toContain('todo');
+  });
+
+  it('escapes GFM-disallowed raw HTML tags', () => {
+    const md = new MarkdownIt();
+    md.use(manuscriptMarkdownPlugin);
+    const output = md.render('<script>alert(1)</script>');
+    expect(output).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(output).not.toContain('<script>alert(1)</script>');
   });
 });
 

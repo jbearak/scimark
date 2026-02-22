@@ -121,6 +121,31 @@ export const DEFAULT_FORMATTING: Readonly<RunFormatting> = Object.freeze({
   code: false,
 });
 
+// Tags that are interpreted semantically by the MD→DOCX parser/preview pipeline
+// and therefore must be escaped when they occur as literal plain text in DOCX.
+const MARKDOWN_HTML_SENSITIVE_TAGS = new Set([
+  'u',
+  'sup',
+  'sub',
+  'table',
+  'thead',
+  'tbody',
+  'tfoot',
+  'tr',
+  'th',
+  'td',
+  'caption',
+  'colgroup',
+  'col',
+]);
+
+function escapeSensitiveHtmlLikeTags(text: string): string {
+  return text.replace(/<\/?([A-Za-z][A-Za-z0-9-]*)(?:\s[^<>]*?)?>/g, (fullMatch, tagName: string) => {
+    if (!MARKDOWN_HTML_SENSITIVE_TAGS.has(tagName.toLowerCase())) return fullMatch;
+    return fullMatch.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  });
+}
+
 export type ContentItem =
   | {
       type: 'text';
@@ -550,6 +575,8 @@ export function wrapWithFormatting(text: string, fmt: RunFormatting): string {
     result = needsPadding ? `${fence} ${result} ${fence}` : `${fence}${result}${fence}`;
     return result;
   }
+
+  result = escapeSensitiveHtmlLikeTags(result);
 
   // If both superscript and subscript are true, superscript takes precedence
   if (fmt.superscript) {

@@ -4,6 +4,7 @@ import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import { VALID_COLOR_IDS, getDefaultHighlightColor } from '../highlight-colors';
 import { PARA_PLACEHOLDER, preprocessCriticMarkup, findMatchingClose } from '../critic-markup';
 import { wrapBareLatexEnvironments } from '../latex-env-preprocess';
+import { isGfmDisallowedRawHtml, escapeHtmlText, parseTaskListMarker } from '../gfm';
 
 /** Escape HTML special characters for use in attribute values */
 function escapeHtmlAttr(str: string): string {
@@ -12,6 +13,79 @@ function escapeHtmlAttr(str: string): string {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function autolinkLiteralsRule(state: any): void {
+  const urlPattern = /https?:\/\/[^\s<]+/g;
+  for (const blockToken of state.tokens) {
+    if (blockToken.type !== 'inline' || !blockToken.children) continue;
+    const nextChildren: any[] = [];
+    for (const child of blockToken.children) {
+      if (child.type !== 'text' || !urlPattern.test(child.content)) {
+        urlPattern.lastIndex = 0;
+        nextChildren.push(child);
+        continue;
+      }
+      urlPattern.lastIndex = 0;
+      let cursor = 0;
+      let match: RegExpExecArray | null;
+      while ((match = urlPattern.exec(child.content)) !== null) {
+        const start = match.index;
+        let url = match[0];
+        while (/[).,!?;:]$/.test(url)) {
+          url = url.slice(0, -1);
+        }
+        const end = start + url.length;
+        if (start > cursor) {
+          const textBefore = new state.Token('text', '', 0);
+          textBefore.content = child.content.slice(cursor, start);
+          nextChildren.push(textBefore);
+        }
+        const open = new state.Token('link_open', 'a', 1);
+        open.attrSet('href', url);
+        nextChildren.push(open);
+        const text = new state.Token('text', '', 0);
+        text.content = url;
+        nextChildren.push(text);
+        nextChildren.push(new state.Token('link_close', 'a', -1));
+        cursor = end;
+      }
+      if (cursor < child.content.length) {
+        const textAfter = new state.Token('text', '', 0);
+        textAfter.content = child.content.slice(cursor);
+        nextChildren.push(textAfter);
+      }
+    }
+    blockToken.children = nextChildren;
+  }
+}
+
+/** Core rule: detect GFM task list markers at list item starts and mark list_item_open tokens. */
+function taskListRule(state: any): void {
+  const stack: number[] = [];
+  for (let i = 0; i < state.tokens.length; i++) {
+    const token = state.tokens[i];
+    if (token.type === 'list_item_open') {
+      stack.push(i);
+      continue;
+    }
+    if (token.type === 'list_item_close') {
+      stack.pop();
+      continue;
+    }
+    if (token.type !== 'inline' || !token.children || stack.length === 0) continue;
+
+    const listItemOpen = state.tokens[stack[stack.length - 1]];
+    if (listItemOpen.meta?.taskChecked !== undefined) continue;
+
+    const firstText = token.children.find((child: any) => child.type === 'text' && child.content.length > 0);
+    if (!firstText) continue;
+    const parsed = parseTaskListMarker(firstText.content);
+    if (!parsed) continue;
+
+    listItemOpen.meta = { ...(listItemOpen.meta || {}), taskChecked: parsed.checked };
+    firstText.content = parsed.rest;
+  }
 }
 
 /**
@@ -658,7 +732,9 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
 
   // Register core rule to associate comments with annotated elements
   // Runs after inline parsing to post-process the token stream
+  md.core.ruler.after('inline', 'manuscript_markdown_autolink_literals', autolinkLiteralsRule);
   md.core.ruler.after('inline', 'manuscript_markdown_associate_comments', associateCommentsRule);
+  md.core.ruler.after('manuscript_markdown_associate_comments', 'manuscript_markdown_task_list', taskListRule);
 
   // Register renderers for each Manuscript Markdown token type
   for (const pattern of patterns) {
@@ -742,5 +818,24 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
     const token = tokens[idx];
     const dataComment = token.attrGet('data-comment') || '';
     return `<span class="manuscript-markdown-comment-indicator" data-comment="${escapeHtmlAttr(dataComment)}"></span>`;
+  };
+
+  // GFM disallowed raw HTML tags must be rendered as escaped text, not live HTML.
+  md.renderer.rules.html_inline = (tokens, idx) => {
+    const content = tokens[idx].content || '';
+    return isGfmDisallowedRawHtml(content) ? escapeHtmlText(content) : content;
+  };
+  md.renderer.rules.html_block = (tokens, idx) => {
+    const content = tokens[idx].content || '';
+    return isGfmDisallowedRawHtml(content) ? `<p>${escapeHtmlText(content)}</p>\n` : content;
+  };
+
+  // GFM task list rendering.
+  md.renderer.rules.list_item_open = (tokens, idx, options, env, self) => {
+    const rendered = self.renderToken(tokens, idx, options);
+    const checked = tokens[idx].meta?.taskChecked;
+    if (checked === undefined) return rendered;
+    const checkbox = `<input class="task-list-item-checkbox" type="checkbox" disabled${checked ? ' checked' : ''}> `;
+    return rendered.replace(/^<li>/, '<li class="task-list-item">') + checkbox;
   };
 }

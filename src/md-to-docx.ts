@@ -6,6 +6,7 @@ import { isAbsolute, join } from 'path';
 import { parseBibtex, BibtexEntry } from './bibtex-parser';
 import { parseFrontmatter, Frontmatter, noteTypeToNumber } from './frontmatter';
 import { ZoteroBiblData, zoteroStyleFullId } from './converter';
+import { isGfmDisallowedRawHtml, parseTaskListMarker } from './gfm';
 
 // --- Implementation notes ---
 // - decodeHtmlEntities(): decode &amp; after other named entities to avoid over-decoding
@@ -20,6 +21,7 @@ export interface MdToken {
   type: 'paragraph' | 'heading' | 'list_item' | 'blockquote' | 'code_block' | 'table' | 'hr';
   level?: number;           // heading level 1-6, blockquote nesting, list nesting
   ordered?: boolean;        // for list items
+  taskChecked?: boolean;    // for GFM task list items
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
@@ -463,7 +465,7 @@ function paraPlaceholderRule(state: any, silent: boolean): boolean {
 }
 
 function createMarkdownIt(): MarkdownIt {
-  const md = new MarkdownIt({ html: true });
+  const md = new MarkdownIt({ html: true, linkify: true });
 
   md.inline.ruler.before('emphasis', 'para_placeholder', paraPlaceholderRule);
   md.inline.ruler.before('emphasis', 'comment_range', commentRangeRule);
@@ -708,16 +710,30 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
             type: 'paragraph',
             runs: [{ type: 'html_comment' as const, text: htmlContent.replace(/\n$/, '') }]
           });
+        } else if (isGfmDisallowedRawHtml(htmlContent)) {
+          result.push({
+            type: 'paragraph',
+            runs: [{ type: 'text', text: htmlContent.replace(/\n$/, '') }]
+          });
         } else {
           const htmlTables = extractHtmlTables(htmlContent);
-          for (const rows of htmlTables) {
-            if (rows.length > 0) {
-              result.push({
-                type: 'table',
-                runs: [],
-                rows
-              });
+          if (htmlTables.length > 0) {
+            for (const rows of htmlTables) {
+              if (rows.length > 0) {
+                result.push({
+                  type: 'table',
+                  runs: [],
+                  rows
+                });
+              }
             }
+          } else {
+            // Preserve non-table raw HTML blocks as literal text so user content
+            // like <tag> is not silently dropped during MD→DOCX parsing.
+            result.push({
+              type: 'paragraph',
+              runs: [{ type: 'text', text: htmlContent.replace(/\n$/, '') }]
+            });
           }
         }
         i++;
@@ -828,12 +844,29 @@ function processInlineChildren(tokens: any[]): MdRun[] {
         const html = token.content;
         if (html.startsWith('<!--')) {
           runs.push({ type: 'html_comment', text: html });
+        } else if (isGfmDisallowedRawHtml(html)) {
+          runs.push({
+            type: 'text',
+            text: html,
+            ...formatStack,
+            href: currentHref
+          });
         } else if (html === '<u>') formatStack.underline = true;
         else if (html === '</u>') delete formatStack.underline;
         else if (html === '<sup>') formatStack.superscript = true;
         else if (html === '</sup>') delete formatStack.superscript;
         else if (html === '<sub>') formatStack.subscript = true;
         else if (html === '</sub>') delete formatStack.subscript;
+        else {
+          // Preserve unsupported inline HTML-like fragments as literal text
+          // instead of dropping them.
+          runs.push({
+            type: 'text',
+            text: html,
+            ...formatStack,
+            href: currentHref
+          });
+        }
         break;
       }
         
@@ -1022,8 +1055,15 @@ function extractListItems(tokens: any[], ordered: boolean, level: number): MdTok
           break;
         }
       }
-      
-      items.push({ type: 'list_item', ordered, level, runs });
+
+      const taskInfo = extractTaskListItem(runs);
+      items.push({
+        type: 'list_item',
+        ordered,
+        level,
+        runs: taskInfo?.runs ?? runs,
+        taskChecked: taskInfo?.checked,
+      });
       
       // Extract nested sublists
       for (let j = 0; j < itemTokens.length; j++) {
@@ -1042,6 +1082,21 @@ function extractListItems(tokens: any[], ordered: boolean, level: number): MdTok
   }
   
   return items;
+}
+
+function extractTaskListItem(runs: MdRun[]): { checked: boolean; runs: MdRun[] } | undefined {
+  const firstTextIdx = runs.findIndex(run => run.type === 'text' && run.text.length > 0);
+  if (firstTextIdx === -1) return undefined;
+  const firstTextRun = runs[firstTextIdx];
+  const parsed = parseTaskListMarker(firstTextRun.text);
+  if (!parsed) return undefined;
+  const updatedRuns = [...runs];
+  if (parsed.rest.length === 0) {
+    updatedRuns.splice(firstTextIdx, 1);
+  } else {
+    updatedRuns[firstTextIdx] = { ...firstTextRun, text: parsed.rest };
+  }
+  return { checked: parsed.checked, runs: updatedRuns };
 }
 
 function extractTableData(tokens: any[]): MdTableRow[] {
@@ -2588,8 +2643,11 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   }
   
   const runs = generateRuns(token.runs, state, options, bibEntries, citeprocEngine);
+  const taskPrefix = token.type === 'list_item' && token.taskChecked !== undefined
+    ? generateRun(token.taskChecked ? '☒ ' : '☐ ', '')
+    : '';
 
-  return '<w:p>' + pPr + runs + '</w:p>';
+  return '<w:p>' + pPr + taskPrefix + runs + '</w:p>';
 }
 
 export function generateTable(token: MdToken, state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any): string {

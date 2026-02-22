@@ -115,6 +115,47 @@ describe('generateRPr', () => {
   });
 });
 
+describe('GFM support in Markdown→DOCX parser', () => {
+  it('parses bare URLs as links (autolink literals)', () => {
+    const tokens = parseMd('Visit https://example.com for docs.');
+    const hrefRun = tokens[0].runs.find(run => run.href === 'https://example.com');
+    expect(hrefRun).toBeDefined();
+    expect(hrefRun?.text).toBe('https://example.com');
+  });
+
+  it('parses task list markers semantically and strips literal marker text', () => {
+    const tokens = parseMd('- [x] done\n- [ ] todo');
+    const listItems = tokens.filter(t => t.type === 'list_item');
+    expect(listItems).toHaveLength(2);
+    expect(listItems[0].taskChecked).toBe(true);
+    expect(listItems[1].taskChecked).toBe(false);
+    expect(listItems[0].runs.map(r => r.text).join('')).toContain('done');
+    expect(listItems[0].runs.map(r => r.text).join('')).not.toContain('[x]');
+    expect(listItems[1].runs.map(r => r.text).join('')).toContain('todo');
+    expect(listItems[1].runs.map(r => r.text).join('')).not.toContain('[ ]');
+  });
+
+  it('escapes GFM-disallowed raw HTML tags into literal text runs', () => {
+    const tokens = parseMd('<script>alert(1)</script>');
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].type).toBe('paragraph');
+    expect(tokens[0].runs[0]).toMatchObject({ type: 'text', text: '<script>alert(1)</script>' });
+  });
+
+  it('preserves inline HTML-like text tokens as literal text runs', () => {
+    const tokens = parseMd('A <tag> B');
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].runs.map(r => r.text).join('')).toBe('A <tag> B');
+  });
+
+  it('preserves non-table HTML blocks as literal text', () => {
+    const tokens = parseMd('<div>alpha</div>');
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].type).toBe('paragraph');
+    expect(tokens[0].runs[0]).toMatchObject({ type: 'text', text: '<div>alpha</div>' });
+  });
+});
+
 describe('parseMd HTML tables', () => {
   it('parses HTML table blocks into table tokens', () => {
     const markdown = '<table><tr><th>H1</th><th>H2</th></tr><tr><td>A</td><td>B</td></tr></table>';
