@@ -2078,7 +2078,7 @@ describe('Property 1: Whitespace-Separated Comment Association (Bug Condition Ex
     { name: 'highlight',        open: '{==', close: '==}', tag: 'mark' },
     { name: 'addition',         open: '{++', close: '++}', tag: 'ins'  },
     { name: 'deletion',         open: '{--', close: '--}', tag: 'del'  },
-    { name: 'substitution',     open: '{~~', close: '~~}', tag: 'del'  },
+    { name: 'substitution',     open: '{~~', close: '~~}', tag: 'span' },
     { name: 'format highlight', open: '==',  close: '==',  tag: 'mark' },
   ];
 
