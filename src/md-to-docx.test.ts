@@ -364,7 +364,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:ind w:left="240"/></w:pPr><w:r><w:t xml:space="preserve">Quote text</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:spacing w:before="0" w:after="0"/><w:ind w:left="240"/></w:pPr><w:r><w:t xml:space="preserve">Quote text</w:t></w:r></w:p>');
   });
 
   it('generates nested blockquote', () => {
@@ -375,7 +375,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:ind w:left="720"/></w:pPr><w:r><w:t xml:space="preserve">Nested quote</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:spacing w:before="0" w:after="0"/><w:ind w:left="720"/></w:pPr><w:r><w:t xml:space="preserve">Nested quote</w:t></w:r></w:p>');
   });
 
   it('generates alert blockquote with GitHub alert style and title prefix', () => {

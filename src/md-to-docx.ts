@@ -648,17 +648,18 @@ export function extractFootnoteDefinitions(markdown: string): { cleaned: string;
   return { cleaned: cleanedLines.join('\n'), definitions };
 }
 
-/** Mark first/last tokens in contiguous runs of alert blockquotes for spacing. */
+/** Mark first/last tokens in contiguous runs of blockquotes for spacing. */
 function annotateAlertBoundaries(tokens: MdToken[]): void {
   let i = 0;
   while (i < tokens.length) {
-    if (tokens[i].type !== 'blockquote' || !tokens[i].alertType) {
+    if (tokens[i].type !== 'blockquote') {
       i++;
       continue;
     }
     const alertType = tokens[i].alertType;
+    const level = tokens[i].level;
     const start = i;
-    while (i < tokens.length && tokens[i].type === 'blockquote' && tokens[i].alertType === alertType) {
+    while (i < tokens.length && tokens[i].type === 'blockquote' && tokens[i].alertType === alertType && tokens[i].level === level) {
       i++;
     }
     tokens[start].alertFirst = true;
@@ -2012,7 +2013,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     return '<w:style w:type="paragraph" w:styleId="' + styleId + '">\n' +
       '<w:name w:val="' + displayName + '"/>\n' +
       '<w:basedOn w:val="Normal"/>\n' +
-      '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="' + borderColor + '"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
+      '<w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="' + borderColor + '"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
       (quoteRpr ? quoteRpr : '') +
       '</w:style>\n';
   }
@@ -2091,7 +2092,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:style w:type="paragraph" w:styleId="GitHub">\n' +
     '<w:name w:val="GitHub Blockquote"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="D0D7DE"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="D0D7DE"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
     (quoteRpr ? quoteRpr : '') +
     '</w:style>\n' +
     githubAlertStyle('GitHubNote', 'GitHub Note', '1F6FEB') +
@@ -2736,12 +2737,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       const bqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
       const bqIndentUnit = bqStyle.startsWith('GitHub') ? 240 : 720;
       const bqLeftIndent = bqIndentUnit * (token.level || 1);
-      let bqSpacing = '';
-      if (token.alertType) {
-        const before = token.alertFirst ? '80' : '0';
-        const after = token.alertLast ? '80' : '0';
-        bqSpacing = '<w:spacing w:before="' + before + '" w:after="' + after + '"/>';
-      }
+      const bqSpacing = '<w:spacing w:before="0" w:after="0"/>';
       pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/>' + bqSpacing + '<w:ind w:left="' + bqLeftIndent + '"/></w:pPr>';
       break;
     }
@@ -2789,7 +2785,25 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
     ? generateRun(ALERT_GLYPH_BY_TYPE[token.alertType] + ' ' + gfmAlertTitle(token.alertType) + ' ', '<w:rPr><w:b/><w:color w:val="' + ALERT_COLOR_BY_TYPE[token.alertType] + '"/></w:rPr>')
     : '';
 
-  return '<w:p>' + pPr + alertPrefix + taskPrefix + runs + '</w:p>';
+  let xml = '<w:p>' + pPr + alertPrefix + taskPrefix + runs + '</w:p>';
+
+  // Blockquote spacer paragraphs: exact-height empty paragraphs with an
+  // inline left border (no pStyle, so the converter ignores them).  The left
+  // rule extends symmetrically above/below content regardless of font size.
+  if (token.type === 'blockquote' && (token.alertFirst || token.alertLast)) {
+    const borderColor = token.alertType ? ALERT_COLOR_BY_TYPE[token.alertType] : 'D0D7DE';
+    const bqIndentUnit = (token.alertType || (options?.blockquoteStyle ?? 'GitHub') === 'GitHub') ? 240 : 720;
+    const bqLeftIndent = bqIndentUnit * (token.level || 1);
+    const spacerPPr = '<w:pPr>' +
+      '<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' +
+      '<w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="' + borderColor + '"/></w:pBdr>' +
+      '<w:ind w:left="' + bqLeftIndent + '"/></w:pPr>';
+    const spacer = '<w:p>' + spacerPPr + '</w:p>';
+    if (token.alertFirst) xml = spacer + xml;
+    if (token.alertLast) xml = xml + spacer;
+  }
+
+  return xml;
 }
 
 export function generateTable(token: MdToken, state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any): string {
