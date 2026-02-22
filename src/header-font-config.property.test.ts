@@ -578,3 +578,43 @@ describe('Property 12: Template application preserves unmodified styles', () => 
     expect(titleBlock).toContain('<w:sz w:val="56"/>');
   });
 });
+
+// Feature: header-font-config, Property 14: Full pipeline round-trip (md→docx→md)
+import { convertMdToDocx } from './md-to-docx';
+import { convertDocx } from './converter';
+
+describe('Property 14: Full pipeline round-trip (md→docx→md)', () => {
+  it('header font fields survive md→docx→md round-trip', async () => {
+    const fm: Frontmatter = {
+      title: ['Test Document'],
+      headerFont: ['Georgia', 'Arial'],
+      headerFontSize: [24, 18],
+      headerFontStyle: ['bold-italic', 'italic'],
+    };
+    const yaml = serializeFrontmatter(fm);
+    const md = yaml + '\n# Heading 1\n\n## Heading 2\n\nBody text.';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.headerFont).toEqual(['Georgia', 'Arial']);
+    expect(metadata.headerFontSize).toEqual([24, 18]);
+    expect(metadata.headerFontStyle).toEqual(['bold-italic', 'italic']);
+  });
+
+  it('title font fields survive md→docx→md round-trip', async () => {
+    const fm: Frontmatter = {
+      title: ['My Title'],
+      titleFont: ['Georgia'],
+      titleFontSize: [24],
+      titleFontStyle: ['bold'],
+    };
+    const yaml = serializeFrontmatter(fm);
+    const md = yaml + '\nBody text.';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.titleFont).toEqual(['Georgia']);
+    expect(metadata.titleFontSize).toEqual([24]);
+    expect(metadata.titleFontStyle).toEqual(['bold']);
+  });
+});

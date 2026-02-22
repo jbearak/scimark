@@ -2755,6 +2755,126 @@ export async function extractAuthor(zip: JSZip): Promise<string | undefined> {
 
 // Main conversion
 
+/** Extract heading/title font properties from word/styles.xml for round-trip. */
+function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter> {
+  const result: Partial<Frontmatter> = {};
+
+  // Helper: find a style block by styleId and extract rPr content
+  function getStyleRPr(styleId: string): string | null {
+    let searchFrom = 0;
+    while (true) {
+      const idx = stylesXml.indexOf('<w:style ', searchFrom);
+      if (idx === -1) return null;
+      const closeTag = stylesXml.indexOf('</w:style>', idx);
+      if (closeTag === -1) return null;
+      const block = stylesXml.substring(idx, closeTag + '</w:style>'.length);
+      if (block.includes('w:styleId="' + styleId + '"')) {
+        // Skip past pPr to find style-level rPr
+        const pPrEnd = block.indexOf('</w:pPr>');
+        const rPrStart = block.indexOf('<w:rPr>', pPrEnd !== -1 ? pPrEnd : 0);
+        const rPrEnd = block.indexOf('</w:rPr>', rPrStart !== -1 ? rPrStart : 0);
+        if (rPrStart !== -1 && rPrEnd !== -1) return block.substring(rPrStart, rPrEnd + '</w:rPr>'.length);
+        return null;
+      }
+      searchFrom = closeTag + '</w:style>'.length;
+    }
+  }
+
+  function extractAttr(rpr: string, prefix: string): string | null {
+    const idx = rpr.indexOf(prefix);
+    if (idx === -1) return null;
+    const start = idx + prefix.length;
+    const end = rpr.indexOf('"', start);
+    return end !== -1 ? rpr.substring(start, end) : null;
+  }
+
+  function extractFont(rpr: string): string | undefined {
+    const v = extractAttr(rpr, 'w:ascii="');
+    return v || undefined;
+  }
+
+  function extractSizeHp(rpr: string): number | undefined {
+    const v = extractAttr(rpr, '<w:sz w:val="');
+    return v ? Number(v) : undefined;
+  }
+
+  function extractStyle(rpr: string): string {
+    const parts: string[] = [];
+    if (rpr.includes('<w:b/>')) parts.push('bold');
+    if (rpr.includes('<w:i/>')) parts.push('italic');
+    if (rpr.includes('<w:u ')) parts.push('underline');
+    return parts.length > 0 ? parts.join('-') : 'normal';
+  }
+
+  // Extract Normal (body) font for comparison
+  const normalRpr = getStyleRPr('Normal');
+  const bodyFont = normalRpr ? extractFont(normalRpr) : undefined;
+
+  // Default heading sizes in half-points
+  const defaultHp: Record<string, number> = {
+    Heading1: 32, Heading2: 26, Heading3: 24, Heading4: 22, Heading5: 20, Heading6: 18,
+  };
+  const ids = ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6'];
+
+  const fonts: (string | undefined)[] = [];
+  const sizes: (number | undefined)[] = [];
+  const styles: (string | undefined)[] = [];
+
+  for (const id of ids) {
+    const rpr = getStyleRPr(id);
+    if (rpr) {
+      fonts.push(extractFont(rpr));
+      sizes.push(extractSizeHp(rpr));
+      styles.push(extractStyle(rpr));
+    } else {
+      fonts.push(undefined);
+      sizes.push(undefined);
+      styles.push(undefined);
+    }
+  }
+
+  // Trim trailing duplicates helper
+  function trimTrailing<T>(arr: T[]): T[] {
+    let end = arr.length;
+    while (end > 1 && arr[end - 1] === arr[end - 2]) end--;
+    return arr.slice(0, end);
+  }
+
+  // headerFont: emit if any heading font differs from body font
+  const hFonts = fonts.map(f => f || bodyFont);
+  if (hFonts.some(f => f && f !== bodyFont)) {
+    const trimmed = trimTrailing(hFonts.filter((f): f is string => !!f));
+    if (trimmed.length > 0) result.headerFont = trimmed;
+  }
+
+  // headerFontSize: emit if any heading size differs from default
+  const hSizes = sizes.map((s, i) => s !== undefined ? s : undefined);
+  if (hSizes.some((s, i) => s !== undefined && s !== defaultHp[ids[i]])) {
+    const ptSizes = hSizes.map(s => s !== undefined ? s / 2 : undefined);
+    const valid = ptSizes.filter((s): s is number => s !== undefined);
+    if (valid.length > 0) result.headerFontSize = trimTrailing(valid);
+  }
+
+  // headerFontStyle: emit if any heading style differs from default (bold)
+  if (styles.some(s => s !== undefined && s !== 'bold')) {
+    const valid = styles.filter((s): s is string => s !== undefined);
+    if (valid.length > 0) result.headerFontStyle = trimTrailing(valid);
+  }
+
+  // Title extraction
+  const titleRpr = getStyleRPr('Title');
+  if (titleRpr) {
+    const tFont = extractFont(titleRpr);
+    if (tFont && tFont !== bodyFont) result.titleFont = [tFont];
+    const tSizeHp = extractSizeHp(titleRpr);
+    if (tSizeHp !== undefined && tSizeHp !== 56) result.titleFontSize = [tSizeHp / 2];
+    const tStyle = extractStyle(titleRpr);
+    if (tStyle !== 'normal') result.titleFontStyle = [tStyle];
+  }
+
+  return result;
+}
+
 export async function convertDocx(
   data: Uint8Array,
   format: CitationKeyFormat = 'authorYearTitle',
@@ -2894,6 +3014,13 @@ export async function convertDocx(
   const hasCommentDates = [...comments.values()].some(c => !!c.date);
   if (hasCommentDates) {
     fm.timezone = getLocalTimezoneOffset();
+  }
+  // Extract heading/title font overrides from styles.xml for round-trip
+  const stylesFile = zip.file('word/styles.xml');
+  if (stylesFile) {
+    const stylesStr = await stylesFile.async('string');
+    const fontFields = extractFontOverridesFromStyles(stylesStr);
+    Object.assign(fm, fontFields);
   }
   const frontmatterStr = serializeFrontmatter(fm);
   if (frontmatterStr) {
