@@ -694,25 +694,68 @@ function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; run
 }
 
 function annotateBlockquoteAlert(tokens: MdToken[], level: number): MdToken[] {
+  // Pre-pass: split merged paragraphs that contain multiple [!TYPE] markers
+  // (markdown-it merges consecutive > lines without blank lines into one
+  // paragraph separated by softbreaks).
+  const expanded: MdToken[] = [];
+  for (const token of tokens) {
+    if (token.type === 'blockquote' || token.runs.length === 0) {
+      expanded.push(token);
+      continue;
+    }
+    // Find all run indices that start with an alert marker
+    const markerIndices: number[] = [];
+    for (let r = 0; r < token.runs.length; r++) {
+      if (token.runs[r].type === 'text' && parseGfmAlertMarker(token.runs[r].text)) {
+        markerIndices.push(r);
+      }
+    }
+    if (markerIndices.length <= 1) {
+      expanded.push(token);
+      continue;
+    }
+    // Split at each marker: each segment starts at a marker index
+    for (let m = 0; m < markerIndices.length; m++) {
+      const start = markerIndices[m];
+      const end = m + 1 < markerIndices.length ? markerIndices[m + 1] : token.runs.length;
+      let segRuns = token.runs.slice(start, end);
+      // Strip leading/trailing softbreaks from each segment
+      while (segRuns.length > 0 && segRuns[0].type === 'softbreak') segRuns = segRuns.slice(1);
+      while (segRuns.length > 0 && segRuns[segRuns.length - 1].type === 'softbreak') segRuns = segRuns.slice(0, -1);
+      if (segRuns.length > 0) {
+        expanded.push({ ...token, runs: segRuns });
+      }
+    }
+    // Any runs before the first marker become a plain paragraph
+    if (markerIndices[0] > 0) {
+      let preRuns = token.runs.slice(0, markerIndices[0]);
+      while (preRuns.length > 0 && preRuns[preRuns.length - 1].type === 'softbreak') preRuns = preRuns.slice(0, -1);
+      if (preRuns.length > 0) {
+        // Insert at the position before the first expanded marker segment
+        expanded.splice(expanded.length - markerIndices.length, 0, { ...token, runs: preRuns });
+      }
+    }
+  }
+
   // Find all tokens whose runs start with an alert marker
   interface Hit { idx: number; type: GfmAlertType; runs: MdRun[] }
   const hits: Hit[] = [];
-  for (let idx = 0; idx < tokens.length; idx++) {
-    if (tokens[idx].type === 'blockquote' || tokens[idx].runs.length === 0) continue;
-    const parsed = stripLeadingAlertMarker(tokens[idx].runs);
+  for (let idx = 0; idx < expanded.length; idx++) {
+    if (expanded[idx].type === 'blockquote' || expanded[idx].runs.length === 0) continue;
+    const parsed = stripLeadingAlertMarker(expanded[idx].runs);
     if (parsed.alertType) {
       hits.push({ idx, type: parsed.alertType, runs: parsed.runs });
     }
   }
 
   if (hits.length === 0) {
-    return tokens.map(t => ({ ...t, type: 'blockquote' as const, level: t.type === 'blockquote' ? t.level : level }));
+    return expanded.map(t => ({ ...t, type: 'blockquote' as const, level: t.type === 'blockquote' ? t.level : level }));
   }
 
   // Single alert marker — original behavior
   if (hits.length === 1) {
     const hit = hits[0];
-    return tokens.map((t, idx) => ({
+    return expanded.map((t, idx) => ({
       ...t,
       type: 'blockquote' as const,
       level: t.type === 'blockquote' ? t.level : level,
@@ -725,8 +768,8 @@ function annotateBlockquoteAlert(tokens: MdToken[], level: number): MdToken[] {
   // Tokens from one marker to the next belong to that alert; tokens before
   // the first marker become a plain blockquote.
   const result: MdToken[] = [];
-  for (let idx = 0; idx < tokens.length; idx++) {
-    const t = tokens[idx];
+  for (let idx = 0; idx < expanded.length; idx++) {
+    const t = expanded[idx];
     const hit = hits.find(h => h.idx === idx);
     // Determine which alert group this token belongs to
     let currentAlert: GfmAlertType | undefined;
