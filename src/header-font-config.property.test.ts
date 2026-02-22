@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import { parseInlineArray, normalizeFontStyle, parseFrontmatter, serializeFrontmatter, type Frontmatter } from './frontmatter';
-import { resolveAtIndex, resolveFontOverrides, stylesXml, type FontOverrides } from './md-to-docx';
+import { resolveAtIndex, resolveFontOverrides, stylesXml, applyFontOverridesToTemplate, type FontOverrides } from './md-to-docx';
 
 // Feature: header-font-config, Property 1: Inline array parsing equivalence
 describe('Property 1: Inline array parsing equivalence', () => {
@@ -474,5 +474,107 @@ describe('Property 11: stylesXml heading and title output correctness', () => {
     expect(rpr).toContain('<w:sz w:val="48"/>');
     expect(rpr).toContain('<w:b/>');
     expect(rpr).toContain('<w:i/>');
+  });
+});
+
+// Feature: header-font-config, Property 12: Template application preserves unmodified styles
+describe('Property 12: Template application preserves unmodified styles', () => {
+  // Build a minimal template styles.xml with heading styles
+  function buildTemplateXml(headingFonts: Record<string, string>): string {
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>';
+    xml += '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">';
+    xml += '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">';
+    xml += '<w:name w:val="Normal"/><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:style>';
+    const ids = ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6'];
+    for (const id of ids) {
+      const font = headingFonts[id] || 'Calibri';
+      xml += '<w:style w:type="paragraph" w:styleId="' + id + '">';
+      xml += '<w:name w:val="heading"/><w:basedOn w:val="Normal"/>';
+      xml += '<w:rPr><w:b/><w:rFonts w:ascii="' + font + '" w:hAnsi="' + font + '"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>';
+    }
+    xml += '<w:style w:type="paragraph" w:styleId="Title">';
+    xml += '<w:name w:val="Title"/><w:basedOn w:val="Normal"/>';
+    xml += '<w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="56"/><w:szCs w:val="56"/></w:rPr></w:style>';
+    xml += '</w:styles>';
+    return xml;
+  }
+
+  it('modifies only styles with overrides, preserves others', () => {
+    const fontName = fc.string({ minLength: 1, maxLength: 10 })
+      .filter(s => /^[a-z]+$/.test(s));
+    fc.assert(fc.property(
+      fontName,
+      fc.integer({ min: 1, max: 5 }),
+      (newFont, headingIdx) => {
+        const styleId = 'Heading' + headingIdx;
+        const headingFonts = new Map<string, string>();
+        headingFonts.set(styleId, newFont);
+        const overrides: FontOverrides = { headingFonts };
+        const templateXml = buildTemplateXml({});
+        const bytes = new TextEncoder().encode(templateXml);
+        const result = applyFontOverridesToTemplate(bytes, overrides);
+        // Modified style should have new font
+        const modifiedBlock = extractStyleBlock(result, styleId);
+        expect(modifiedBlock).not.toBeNull();
+        expect(modifiedBlock).toContain('w:ascii="' + newFont + '"');
+        // Unmodified styles should keep original font
+        for (let i = 1; i <= 6; i++) {
+          const otherId = 'Heading' + i;
+          if (otherId === styleId) continue;
+          const otherBlock = extractStyleBlock(result, otherId);
+          expect(otherBlock).not.toBeNull();
+          expect(otherBlock).toContain('w:ascii="Calibri"');
+        }
+      }
+    ), { numRuns: 50 });
+  });
+
+  it('applies heading style overrides (bold/italic/underline)', () => {
+    const headingStyles = new Map<string, string>();
+    headingStyles.set('Heading1', 'italic');
+    const overrides: FontOverrides = { headingStyles };
+    const templateXml = buildTemplateXml({});
+    const bytes = new TextEncoder().encode(templateXml);
+    const result = applyFontOverridesToTemplate(bytes, overrides);
+    const h1Block = extractStyleBlock(result, 'Heading1');
+    expect(h1Block).not.toBeNull();
+    const rpr = extractRPr(h1Block!);
+    expect(rpr).toContain('<w:i/>');
+    expect(rpr).not.toContain('<w:b/>');
+    // Heading2 should still have bold (unchanged)
+    const h2Block = extractStyleBlock(result, 'Heading2');
+    expect(h2Block).not.toBeNull();
+    expect(extractRPr(h2Block!)).toContain('<w:b/>');
+  });
+
+  it('applies title font/style overrides', () => {
+    const overrides: FontOverrides = {
+      titleFonts: ['Georgia'],
+      titleSizesHp: [48],
+      titleStyles: ['bold-underline'],
+    };
+    const templateXml = buildTemplateXml({});
+    const bytes = new TextEncoder().encode(templateXml);
+    const result = applyFontOverridesToTemplate(bytes, overrides);
+    const titleBlock = extractStyleBlock(result, 'Title');
+    expect(titleBlock).not.toBeNull();
+    const rpr = extractRPr(titleBlock!);
+    expect(rpr).toContain('w:ascii="Georgia"');
+    expect(rpr).toContain('<w:sz w:val="48"/>');
+    expect(rpr).toContain('<w:b/>');
+    expect(rpr).toContain('<w:u w:val="single"/>');
+  });
+
+  it('preserves Title when no title overrides', () => {
+    const overrides: FontOverrides = { bodyFont: 'Arial' };
+    const templateXml = buildTemplateXml({});
+    const bytes = new TextEncoder().encode(templateXml);
+    const result = applyFontOverridesToTemplate(bytes, overrides);
+    const titleBlock = extractStyleBlock(result, 'Title');
+    expect(titleBlock).not.toBeNull();
+    // Body font should be applied to Title (since it's in BODY_STYLE_IDS)
+    expect(titleBlock).toContain('w:ascii="Arial"');
+    // Size should be preserved
+    expect(titleBlock).toContain('<w:sz w:val="56"/>');
   });
 });

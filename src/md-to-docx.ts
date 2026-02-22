@@ -1591,27 +1591,40 @@ export function applyFontOverridesToTemplate(
     const closeTag = styleMatch[3];
 
     const isCodeStyle = CODE_STYLE_IDS.has(styleId);
-    const font = isCodeStyle ? overrides.codeFont : overrides.bodyFont;
+    const isHeading = /^Heading[1-6]$/.test(styleId);
+    const isTitle = styleId === 'Title';
+
+    // Determine font: heading-specific > title-specific > body/code font
+    let font: string | undefined;
+    if (isCodeStyle) {
+      font = overrides.codeFont;
+    } else if (isHeading && overrides.headingFonts?.has(styleId)) {
+      font = overrides.headingFonts.get(styleId);
+    } else if (isTitle && overrides.titleFonts?.[0]) {
+      font = overrides.titleFonts[0];
+    } else {
+      font = overrides.bodyFont;
+    }
 
     // Determine the size for this style
     let sizeHp: number | undefined;
     if (isCodeStyle) {
-      // CodeChar gets no size override (character style); CodeBlock gets codeSizeHp
-      if (styleId === 'CodeBlock') {
-        sizeHp = overrides.codeSizeHp;
-      }
-    } else {
-      // Check headingSizesHp map first (headings, Title, FootnoteText, EndnoteText)
-      if (overrides.headingSizesHp && overrides.headingSizesHp.has(styleId)) {
-        sizeHp = overrides.headingSizesHp.get(styleId);
-      } else if (styleId === 'Normal') {
-        sizeHp = overrides.bodySizeHp;
-      }
-      // Quote and IntenseQuote inherit size from Normal — no explicit size override
+      if (styleId === 'CodeBlock') sizeHp = overrides.codeSizeHp;
+    } else if (isTitle && overrides.titleSizesHp?.[0]) {
+      sizeHp = overrides.titleSizesHp[0];
+    } else if (overrides.headingSizesHp && overrides.headingSizesHp.has(styleId)) {
+      sizeHp = overrides.headingSizesHp.get(styleId);
+    } else if (styleId === 'Normal') {
+      sizeHp = overrides.bodySizeHp;
     }
 
+    // Determine style override for headings and title
+    let fontStyleOverride: string | undefined;
+    if (isHeading) fontStyleOverride = overrides.headingStyles?.get(styleId);
+    else if (isTitle) fontStyleOverride = overrides.titleStyles?.[0];
+
     // Nothing to do for this style
-    if (font === undefined && sizeHp === undefined) continue;
+    if (font === undefined && sizeHp === undefined && fontStyleOverride === undefined) continue;
 
     // Build the replacement fragments
     const rFontsEl = font !== undefined
@@ -1662,6 +1675,22 @@ export function applyFontOverridesToTemplate(
         }
       }
 
+      // Apply font-style overrides (bold, italic, underline) for headings and title
+      if (fontStyleOverride !== undefined) {
+        // Remove existing b, i, u elements
+        rPrContent = rPrContent.replace(/<w:b\/>/g, '');
+        rPrContent = rPrContent.replace(/<w:i\/>/g, '');
+        rPrContent = rPrContent.replace(/<w:u\b[^/]*\/>/g, '');
+        // Add new style elements at the start
+        let styleEls = '';
+        if (fontStyleOverride !== 'normal') {
+          if (fontStyleOverride.includes('bold')) styleEls += '<w:b/>';
+          if (fontStyleOverride.includes('italic')) styleEls += '<w:i/>';
+          if (fontStyleOverride.includes('underline')) styleEls += '<w:u w:val="single"/>';
+        }
+        rPrContent = styleEls + rPrContent;
+      }
+
       const newRPr = rPrMatch[1] + rPrContent + rPrMatch[3];
       const matchStart = rPrSearchStart + rPrMatch.index;
       const matchEnd = matchStart + rPrMatch[0].length;
@@ -1669,10 +1698,14 @@ export function applyFontOverridesToTemplate(
     } else {
       // No <w:rPr> section — insert one
       let rPrContent = '';
+      if (fontStyleOverride !== undefined && fontStyleOverride !== 'normal') {
+        if (fontStyleOverride.includes('bold')) rPrContent += '<w:b/>';
+        if (fontStyleOverride.includes('italic')) rPrContent += '<w:i/>';
+        if (fontStyleOverride.includes('underline')) rPrContent += '<w:u w:val="single"/>';
+      }
       if (rFontsEl !== undefined) rPrContent += rFontsEl;
       if (szEl !== undefined) rPrContent += szEl;
       if (szCsEl !== undefined) rPrContent += szCsEl;
-      // Insert <w:rPr> before the closing </w:style> (at end of inner content)
       innerContent = innerContent + '<w:rPr>' + rPrContent + '</w:rPr>';
     }
 
