@@ -312,6 +312,42 @@ connection.onCompletion(async (params: CompletionParams): Promise<CompletionItem
 		return { isIncomplete: items.length > 0, items };
 	}
 
+	// Frontmatter key completions
+	const fmEnd = text.indexOf('\n---', text.indexOf('---') + 3);
+	if (text.trimStart().startsWith('---') && fmEnd !== -1 && offset < fmEnd + 4) {
+		const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+		const lineText = text.substring(lineStart, offset);
+		if (!lineText.includes(':')) {
+			const prefix = lineText.trim().toLowerCase();
+			const fmKeys: [string, string][] = [
+				['header-font', 'Heading font family (e.g., header-font: Georgia)'],
+				['header-font-size', 'Heading font sizes (e.g., header-font-size: [24, 20, 16])'],
+				['header-font-style', 'Heading font styles (e.g., header-font-style: bold-italic)'],
+				['title-font', 'Title font family (e.g., title-font: Georgia)'],
+				['title-font-size', 'Title font sizes (e.g., title-font-size: [28, 24])'],
+				['title-font-style', 'Title font styles (e.g., title-font-style: bold)'],
+				['font', 'Body font family (e.g., font: Georgia)'],
+				['code-font', 'Code font family (e.g., code-font: Fira Code)'],
+				['font-size', 'Body font size in points (e.g., font-size: 12)'],
+				['code-font-size', 'Code font size in points (e.g., code-font-size: 10)'],
+			];
+			const replaceRange = Range.create(doc.positionAt(lineStart + lineText.length - lineText.trimStart().length), params.position);
+			const items: CompletionItem[] = [];
+			for (const [key, detail] of fmKeys) {
+				if (prefix && !key.startsWith(prefix)) continue;
+				items.push({
+					label: key,
+					kind: CompletionItemKind.Property,
+					detail,
+					textEdit: { range: replaceRange, newText: key + ': ' },
+					filterText: key,
+					sortText: key,
+				});
+			}
+			if (items.length > 0) return items;
+		}
+	}
+
 	const completionContext = getCompletionContextAtOffset(text, offset);
 	if (!completionContext) {
 		return [];
