@@ -1,10 +1,10 @@
 # Scientific Markdown
 
-A specification, converter, and VS Code extension for roundtrip manuscript and documentation editing between [Markdown](https://daringfireball.net/projects/markdown/) and Microsoft Word. Preserves change tracking, comments, tables, [LaTeX](https://www.latex-project.org/) equations, and citations in both directions, including [Zotero](https://www.zotero.org/) bibliographic data.
+A specification, converter, and VS Code extension for roundtrip research paper and documentation editing between [Markdown](https://daringfireball.net/projects/markdown/) and Microsoft Word. Preserves change tracking, comments, tables, [LaTeX](https://www.latex-project.org/) equations, and citations in both directions, including [Zotero](https://www.zotero.org/) bibliographic data.
 
 ## Background
 
-- Wanted plain-text editing for manuscripts
+- Wanted plain-text editing for research papers
 - Found [CriticMarkup](https://github.com/CriticMarkup/CriticMarkup-toolkit) and a [VS Code extension](https://github.com/jloow/vscode-criticmarkup) for it, which were used as starting points
 - Needed a more comprehensive spec, and a converter, to collaborate with people who use Word and Zotero
 
