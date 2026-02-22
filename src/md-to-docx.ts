@@ -679,7 +679,7 @@ function annotateBlockquoteAlert(tokens: MdToken[], level: number): MdToken[] {
     ...t,
     type: 'blockquote' as const,
     level: t.type === 'blockquote' ? t.level : level,
-    ...(alertType ? { alertType } : {}),
+    ...(alertType && t.type !== 'blockquote' ? { alertType } : {}),
     ...(alertType && idx === firstIdx ? { alertLead: true } : {}),
     ...(idx === firstIdx ? { runs: parsed.runs } : {}),
   }));
