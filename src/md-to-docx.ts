@@ -2736,8 +2736,25 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
 
   // Emit title paragraphs from frontmatter before body content
   if (frontmatter?.title) {
-    for (const line of frontmatter.title) {
-      body += '<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>' + generateRun(line, '') + '</w:p>';
+    const fo = resolveFontOverrides(frontmatter);
+    for (let i = 0; i < frontmatter.title.length; i++) {
+      let rPr = '';
+      if (fo) {
+        let inner = '';
+        const style = resolveAtIndex(fo.titleStyles, i);
+        if (style === 'normal') { /* no style elements */ }
+        else if (style) {
+          if (style.includes('bold')) inner += '<w:b/>';
+          if (style.includes('italic')) inner += '<w:i/>';
+          if (style.includes('underline')) inner += '<w:u w:val="single"/>';
+        }
+        const font = resolveAtIndex(fo.titleFonts, i);
+        if (font) inner += '<w:rFonts w:ascii="' + escapeXml(font) + '" w:hAnsi="' + escapeXml(font) + '"/>';
+        const sizeHp = resolveAtIndex(fo.titleSizesHp, i);
+        if (sizeHp) inner += '<w:sz w:val="' + sizeHp + '"/><w:szCs w:val="' + sizeHp + '"/>';
+        if (inner) rPr = '<w:rPr>' + inner + '</w:rPr>';
+      }
+      body += '<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>' + generateRun(frontmatter.title[i], rPr) + '</w:p>';
     }
   }
 
