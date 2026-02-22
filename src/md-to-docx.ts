@@ -649,7 +649,7 @@ export function extractFootnoteDefinitions(markdown: string): { cleaned: string;
 }
 
 /** Mark first/last tokens in contiguous runs of blockquotes for spacing. */
-function annotateAlertBoundaries(tokens: MdToken[]): void {
+function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
   let i = 0;
   while (i < tokens.length) {
     if (tokens[i].type !== 'blockquote') {
@@ -674,7 +674,7 @@ export function parseMd(markdown: string): MdToken[] {
   const tokens = md.parse(processed, {});
 
   const result = convertTokens(tokens);
-  annotateAlertBoundaries(result);
+  annotateBlockquoteBoundaries(result);
   return result;
 }
 
@@ -693,46 +693,51 @@ function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; run
   return { alertType: parsed.type, runs: nextRuns };
 }
 
+/** Strip leading and trailing softbreak runs from an array. */
+function trimSoftbreaks(runs: MdRun[]): MdRun[] {
+  let start = 0, end = runs.length;
+  while (start < end && runs[start].type === 'softbreak') start++;
+  while (end > start && runs[end - 1].type === 'softbreak') end--;
+  return start === 0 && end === runs.length ? runs : runs.slice(start, end);
+}
+
 function annotateBlockquoteAlert(tokens: MdToken[], level: number): MdToken[] {
-  // Pre-pass: split merged paragraphs that contain multiple [!TYPE] markers
-  // (markdown-it merges consecutive > lines without blank lines into one
-  // paragraph separated by softbreaks).
+  // Pre-pass: split merged paragraphs that contain alert [!TYPE] markers
+  // separated by softbreaks (markdown-it merges consecutive > lines without
+  // blank lines into one paragraph).
   const expanded: MdToken[] = [];
   for (const token of tokens) {
     if (token.type === 'blockquote' || token.runs.length === 0) {
       expanded.push(token);
       continue;
     }
-    // Find all run indices that start with an alert marker
     const markerIndices: number[] = [];
     for (let r = 0; r < token.runs.length; r++) {
       if (token.runs[r].type === 'text' && parseGfmAlertMarker(token.runs[r].text)) {
         markerIndices.push(r);
       }
     }
-    if (markerIndices.length <= 1) {
+    // Skip splitting only when the first text run IS the sole marker
+    const firstTextRunIdx = token.runs.findIndex(r => r.type === 'text' && r.text.length > 0);
+    if (markerIndices.length === 0 ||
+        (markerIndices.length === 1 && markerIndices[0] === firstTextRunIdx)) {
       expanded.push(token);
       continue;
     }
-    // Split at each marker: each segment starts at a marker index
+    // Content before the first marker becomes a plain paragraph
+    if (markerIndices[0] > 0) {
+      const preRuns = trimSoftbreaks(token.runs.slice(0, markerIndices[0]));
+      if (preRuns.length > 0) {
+        expanded.push({ ...token, runs: preRuns });
+      }
+    }
+    // Each marker starts a new segment
     for (let m = 0; m < markerIndices.length; m++) {
       const start = markerIndices[m];
       const end = m + 1 < markerIndices.length ? markerIndices[m + 1] : token.runs.length;
-      let segRuns = token.runs.slice(start, end);
-      // Strip leading/trailing softbreaks from each segment
-      while (segRuns.length > 0 && segRuns[0].type === 'softbreak') segRuns = segRuns.slice(1);
-      while (segRuns.length > 0 && segRuns[segRuns.length - 1].type === 'softbreak') segRuns = segRuns.slice(0, -1);
+      const segRuns = trimSoftbreaks(token.runs.slice(start, end));
       if (segRuns.length > 0) {
         expanded.push({ ...token, runs: segRuns });
-      }
-    }
-    // Any runs before the first marker become a plain paragraph
-    if (markerIndices[0] > 0) {
-      let preRuns = token.runs.slice(0, markerIndices[0]);
-      while (preRuns.length > 0 && preRuns[preRuns.length - 1].type === 'softbreak') preRuns = preRuns.slice(0, -1);
-      if (preRuns.length > 0) {
-        // Insert at the position before the first expanded marker segment
-        expanded.splice(expanded.length - markerIndices.length, 0, { ...token, runs: preRuns });
       }
     }
   }
@@ -752,33 +757,18 @@ function annotateBlockquoteAlert(tokens: MdToken[], level: number): MdToken[] {
     return expanded.map(t => ({ ...t, type: 'blockquote' as const, level: t.type === 'blockquote' ? t.level : level }));
   }
 
-  // Single alert marker — original behavior
-  if (hits.length === 1) {
-    const hit = hits[0];
-    return expanded.map((t, idx) => ({
-      ...t,
-      type: 'blockquote' as const,
-      level: t.type === 'blockquote' ? t.level : level,
-      ...(t.type !== 'blockquote' ? { alertType: hit.type } : {}),
-      ...(idx === hit.idx ? { alertLead: true, runs: hit.runs } : {}),
-    }));
-  }
-
-  // Multiple alert markers — assign each group its own alertType.
-  // Tokens from one marker to the next belong to that alert; tokens before
-  // the first marker become a plain blockquote.
+  // Assign each group of tokens (from one marker to the next) its alert type.
+  // Tokens before the first marker become a plain blockquote.
   const result: MdToken[] = [];
   for (let idx = 0; idx < expanded.length; idx++) {
     const t = expanded[idx];
     const hit = hits.find(h => h.idx === idx);
-    // Determine which alert group this token belongs to
     let currentAlert: GfmAlertType | undefined;
     let isLead = false;
     if (hit) {
       currentAlert = hit.type;
       isLead = true;
     } else {
-      // Find the most recent hit before this index
       for (let h = hits.length - 1; h >= 0; h--) {
         if (hits[h].idx < idx) { currentAlert = hits[h].type; break; }
       }
@@ -2835,12 +2825,13 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   // rule extends symmetrically above/below content regardless of font size.
   if (token.type === 'blockquote' && (token.alertFirst || token.alertLast)) {
     const borderColor = token.alertType ? ALERT_COLOR_BY_TYPE[token.alertType] : 'D0D7DE';
-    const bqIndentUnit = (token.alertType || (options?.blockquoteStyle ?? 'GitHub') === 'GitHub') ? 240 : 720;
-    const bqLeftIndent = bqIndentUnit * (token.level || 1);
+    const spacerBqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
+    const spacerIndentUnit = spacerBqStyle.startsWith('GitHub') ? 240 : 720;
+    const spacerLeftIndent = spacerIndentUnit * (token.level || 1);
     const spacerPPr = '<w:pPr>' +
       '<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' +
       '<w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="' + borderColor + '"/></w:pBdr>' +
-      '<w:ind w:left="' + bqLeftIndent + '"/></w:pPr>';
+      '<w:ind w:left="' + spacerLeftIndent + '"/></w:pPr>';
     const spacer = '<w:p>' + spacerPPr + '</w:p>';
     if (token.alertFirst) xml = spacer + xml;
     if (token.alertLast) xml = xml + spacer;

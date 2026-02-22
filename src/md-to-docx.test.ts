@@ -14,6 +14,7 @@ import {
   type MdTableRow,
   type DocxGenState
 } from './md-to-docx';
+import { type GfmAlertType } from './gfm';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 
 function makeState(): DocxGenState {
@@ -39,6 +40,10 @@ function makeState(): DocxGenState {
     codeBlockIndex: 0,
     codeBlockLanguages: new Map(),
     codeFont: 'Consolas',
+    codeShadingMode: false,
+    citationIds: new Set(),
+    citedKeys: new Set(),
+    citationItemIds: new Map(),
   };
 }
 
@@ -435,7 +440,7 @@ describe('generateParagraph', () => {
       const token: MdToken = {
         type: 'blockquote',
         level: 1,
-        alertType: type as any,
+        alertType: type as GfmAlertType,
         alertLead: true,
         runs: [{ type: 'text', text: 'Content' }]
       };

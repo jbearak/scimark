@@ -35,6 +35,8 @@ function alertOcticonSvg(type: GfmAlertType): string {
   }
 }
 
+interface AlertHit { inlineIdx: number; paraOpenIdx: number; type: GfmAlertType; rest: string }
+
 function alertBlockquoteRule(state: any): void {
   const tokens = state.tokens;
   let i = 0;
@@ -120,7 +122,6 @@ function alertBlockquoteRule(state: any): void {
 
     // Collect all top-level inline tokens that start with an alert marker.
     // Track the paragraph_open index preceding each hit for splitting.
-    interface AlertHit { inlineIdx: number; paraOpenIdx: number; type: GfmAlertType; rest: string }
     const hits: AlertHit[] = [];
     let nestedDepth = 0;
     for (let j = i + 1; j < closeIdx; j++) {
@@ -143,7 +144,7 @@ function alertBlockquoteRule(state: any): void {
     for (const hit of hits) {
       const children = tokens[hit.inlineIdx].children;
       const firstText = children.find((child: any) => child.type === 'text' && child.content.length > 0);
-      firstText.content = hit.rest;
+      if (firstText) firstText.content = hit.rest;
     }
 
     if (hits.length === 1) {
@@ -1047,7 +1048,4 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
     return `<blockquote class="markdown-alert markdown-alert-${alertType}"><p class="markdown-alert-title">${alertOcticonSvg(alertType)} ${escapeHtmlText(title)}</p>\n`;
   };
 
-  md.renderer.rules.blockquote_close = (tokens, idx, options, env, self) => {
-    return self.renderToken(tokens, idx, options);
-  };
 }
