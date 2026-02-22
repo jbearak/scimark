@@ -19,22 +19,27 @@ function alertOcticonSvg(type: GfmAlertType): string {
   const common = 'class="octicon markdown-alert-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"';
   switch (type) {
     case 'note':
-      return '<svg ' + common + '><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8.93-3.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 .877-.252 1.02-.598l.088-.416c.066-.293.171-.352.47-.288l.451.088.082-.381-2.29-.287.87-4.084c.07-.288.176-.352.47-.287l.451.082.082-.381Zm-.93-2.412a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>';
+      return '<svg ' + common + '><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>';
     case 'tip':
       return '<svg ' + common + '><path d="M8 1.5a4.5 4.5 0 0 0-2.106 8.478.75.75 0 0 1 .356.643v.629h3.5v-.63a.75.75 0 0 1 .356-.642A4.5 4.5 0 0 0 8 1.5ZM2 6a6 6 0 1 1 11.693 1.897 6.5 6.5 0 0 1-2.044 2.213c-.015.01-.024.024-.024.04v.85A1.5 1.5 0 0 1 10.125 12h-4.25a1.5 1.5 0 0 1-1.5-1.5v-.85c0-.015-.009-.03-.024-.04A6.501 6.501 0 0 1 2 6Zm3.75 7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1-.75-.75Z"/></svg>';
     case 'important':
       return '<svg ' + common + '><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"/></svg>';
     case 'warning':
-      return '<svg ' + common + '><path d="M6.457 1.047a1.75 1.75 0 0 1 3.086 0l5.468 9.75A1.75 1.75 0 0 1 13.468 13H2.532A1.75 1.75 0 0 1 .99 10.797l5.468-9.75ZM8 4.75a.75.75 0 0 0-.75.75v2.5a.75.75 0 0 0 1.5 0V5.5A.75.75 0 0 0 8 4.75Zm0 6.5A1 1 0 1 0 8 9.25a1 1 0 0 0 0 2Z"/></svg>';
+      return '<svg ' + common + '><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"/></svg>';
     case 'caution':
-      return '<svg ' + common + '><path d="M7.467.133a1.748 1.748 0 0 1 1.066 0l6.25 2.5A1.75 1.75 0 0 1 15.875 4.258v5.484a1.75 1.75 0 0 1-1.092 1.625l-6.25 2.5a1.748 1.748 0 0 1-1.066 0l-6.25-2.5A1.75 1.75 0 0 1 .125 9.742V4.258a1.75 1.75 0 0 1 1.092-1.625l6.25-2.5ZM8 4.75a.75.75 0 0 0-.75.75v2.25a.75.75 0 0 0 1.5 0V5.5A.75.75 0 0 0 8 4.75Zm0 6.25a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"/></svg>';
+      return '<svg ' + common + '><path d="M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>';
+    default: {
+      const _exhaustive: never = type;
+      return '';
+    }
   }
 }
 
 function alertBlockquoteRule(state: any): void {
   const tokens = state.tokens;
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].type !== 'blockquote_open') continue;
+  let i = 0;
+  while (i < tokens.length) {
+    if (tokens[i].type !== 'blockquote_open') { i++; continue; }
     let depth = 1;
     let closeIdx = i + 1;
     while (closeIdx < tokens.length) {
@@ -45,29 +50,88 @@ function alertBlockquoteRule(state: any): void {
       }
       closeIdx++;
     }
-    if (closeIdx >= tokens.length) continue;
+    if (closeIdx >= tokens.length) { i++; continue; }
 
-    let firstInlineIdx = -1;
+    // Collect all top-level inline tokens that start with an alert marker.
+    // Track the paragraph_open index preceding each hit for splitting.
+    interface AlertHit { inlineIdx: number; paraOpenIdx: number; type: GfmAlertType; rest: string }
+    const hits: AlertHit[] = [];
+    let nestedDepth = 0;
     for (let j = i + 1; j < closeIdx; j++) {
-      if (tokens[j].type === 'inline') {
-        firstInlineIdx = j;
-        break;
-      }
+      if (tokens[j].type === 'blockquote_open') { nestedDepth++; continue; }
+      if (tokens[j].type === 'blockquote_close') { nestedDepth--; continue; }
+      if (nestedDepth > 0) continue;
+      if (tokens[j].type !== 'inline' || !tokens[j].children) continue;
+      const firstText = tokens[j].children.find((child: any) => child.type === 'text' && child.content.length > 0);
+      if (!firstText) continue;
+      const parsed = parseGfmAlertMarker(firstText.content);
+      if (!parsed) continue;
+      let paraOpenIdx = j - 1;
+      while (paraOpenIdx > i && tokens[paraOpenIdx].type !== 'paragraph_open') paraOpenIdx--;
+      hits.push({ inlineIdx: j, paraOpenIdx, type: parsed.type, rest: parsed.rest });
     }
-    if (firstInlineIdx === -1 || !tokens[firstInlineIdx].children) continue;
 
-    const children = tokens[firstInlineIdx].children;
-    const firstText = children.find((child: any) => child.type === 'text' && child.content.length > 0);
-    if (!firstText) continue;
-    const parsed = parseGfmAlertMarker(firstText.content);
-    if (!parsed) continue;
+    if (hits.length === 0) { i++; continue; }
 
-    firstText.content = parsed.rest;
-    tokens[i].meta = {
-      ...(tokens[i].meta || {}),
-      gfmAlertType: parsed.type,
-      gfmAlertTitle: gfmAlertTitle(parsed.type),
-    };
+    // Strip marker text from all hits
+    for (const hit of hits) {
+      const children = tokens[hit.inlineIdx].children;
+      const firstText = children.find((child: any) => child.type === 'text' && child.content.length > 0);
+      firstText.content = hit.rest;
+    }
+
+    if (hits.length === 1) {
+      // Single alert — just annotate the blockquote_open
+      tokens[i].meta = {
+        ...(tokens[i].meta || {}),
+        gfmAlertType: hits[0].type,
+        gfmAlertTitle: gfmAlertTitle(hits[0].type),
+      };
+      i = closeIdx + 1;
+      continue;
+    }
+
+    // Multiple alert markers — rebuild the token segment.
+    // Collect inner tokens (between blockquote_open and blockquote_close).
+    const inner = tokens.slice(i + 1, closeIdx);
+    // Map all hit paraOpenIdx to offsets within inner (subtract i+1)
+    const allOffsets = hits.map(h => h.paraOpenIdx - (i + 1));
+
+    const rebuilt: any[] = [];
+
+    // Content before the first alert marker becomes a plain blockquote
+    if (allOffsets[0] > 0) {
+      const bqOpen = new state.Token('blockquote_open', 'blockquote', 1);
+      bqOpen.markup = '>';
+      rebuilt.push(bqOpen);
+      for (let k = 0; k < allOffsets[0]; k++) {
+        rebuilt.push(inner[k]);
+      }
+      const bqClose = new state.Token('blockquote_close', 'blockquote', -1);
+      bqClose.markup = '>';
+      rebuilt.push(bqClose);
+    }
+
+    for (let h = 0; h < hits.length; h++) {
+      const startOffset = allOffsets[h];
+      const endOffset = h + 1 < hits.length ? allOffsets[h + 1] : inner.length;
+      const bqOpen = new state.Token('blockquote_open', 'blockquote', 1);
+      bqOpen.markup = '>';
+      bqOpen.meta = { gfmAlertType: hits[h].type, gfmAlertTitle: gfmAlertTitle(hits[h].type) };
+      rebuilt.push(bqOpen);
+      for (let k = startOffset; k < endOffset; k++) {
+        rebuilt.push(inner[k]);
+      }
+      const bqClose = new state.Token('blockquote_close', 'blockquote', -1);
+      bqClose.markup = '>';
+      rebuilt.push(bqClose);
+    }
+
+    // Replace original blockquote_open...blockquote_close with rebuilt
+    tokens.splice(i, closeIdx - i + 1, ...rebuilt);
+    // Don't increment i — re-process from same position since rebuilt tokens
+    // are already annotated and won't match the hits scan again
+    i += rebuilt.length;
   }
 }
 
@@ -904,7 +968,7 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
     const checked = tokens[idx].meta?.taskChecked;
     if (checked === undefined) return rendered;
     const checkbox = `<input class="task-list-item-checkbox" type="checkbox" disabled${checked ? ' checked' : ''}> `;
-    return rendered.replace(/^<li>/, '<li class="task-list-item">') + checkbox;
+    return rendered.replace(/^<li(?=>|\s)/, '<li class="task-list-item"') + checkbox;
   };
 
   md.renderer.rules.blockquote_open = (tokens, idx, options, env, self) => {

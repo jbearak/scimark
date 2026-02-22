@@ -24,6 +24,8 @@ export interface MdToken {
   taskChecked?: boolean;    // for GFM task list items
   alertType?: GfmAlertType; // for GFM alerts in blockquotes
   alertLead?: boolean;      // first blockquote paragraph carrying alert header
+  alertFirst?: boolean;     // first paragraph in an alert block (for spacing)
+  alertLast?: boolean;      // last paragraph in an alert block (for spacing)
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
@@ -84,6 +86,11 @@ const ALERT_STYLE_BY_TYPE: Record<GfmAlertType, string> = {
   important: 'GitHubImportant',
   warning: 'GitHubWarning',
   caution: 'GitHubCaution',
+};
+
+const ALERT_COLOR_BY_TYPE: Record<GfmAlertType, string> = {
+  note: '1F6FEB', tip: '238636', important: '8957E5',
+  warning: '9A6700', caution: 'CF222E',
 };
 
 const ALERT_GLYPH_BY_TYPE: Record<GfmAlertType, string> = {
@@ -641,13 +648,33 @@ export function extractFootnoteDefinitions(markdown: string): { cleaned: string;
   return { cleaned: cleanedLines.join('\n'), definitions };
 }
 
+/** Mark first/last tokens in contiguous runs of alert blockquotes for spacing. */
+function annotateAlertBoundaries(tokens: MdToken[]): void {
+  let i = 0;
+  while (i < tokens.length) {
+    if (tokens[i].type !== 'blockquote' || !tokens[i].alertType) {
+      i++;
+      continue;
+    }
+    const alertType = tokens[i].alertType;
+    const start = i;
+    while (i < tokens.length && tokens[i].type === 'blockquote' && tokens[i].alertType === alertType) {
+      i++;
+    }
+    tokens[start].alertFirst = true;
+    tokens[i - 1].alertLast = true;
+  }
+}
+
 export function parseMd(markdown: string): MdToken[] {
   const md = createMarkdownIt();
   const wrapped = wrapBareLatexEnvironments(markdown);
   const processed = preprocessCriticMarkup(wrapped);
   const tokens = md.parse(processed, {});
 
-  return convertTokens(tokens);
+  const result = convertTokens(tokens);
+  annotateAlertBoundaries(result);
+  return result;
 }
 
 function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; runs: MdRun[] } {
@@ -666,25 +693,61 @@ function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; run
 }
 
 function annotateBlockquoteAlert(tokens: MdToken[], level: number): MdToken[] {
-  const firstIdx = tokens.findIndex(t => t.runs.length > 0);
-  if (firstIdx === -1) {
+  // Find all tokens whose runs start with an alert marker
+  interface Hit { idx: number; type: GfmAlertType; runs: MdRun[] }
+  const hits: Hit[] = [];
+  for (let idx = 0; idx < tokens.length; idx++) {
+    if (tokens[idx].type === 'blockquote' || tokens[idx].runs.length === 0) continue;
+    const parsed = stripLeadingAlertMarker(tokens[idx].runs);
+    if (parsed.alertType) {
+      hits.push({ idx, type: parsed.alertType, runs: parsed.runs });
+    }
+  }
+
+  if (hits.length === 0) {
     return tokens.map(t => ({ ...t, type: 'blockquote' as const, level: t.type === 'blockquote' ? t.level : level }));
   }
 
-  const firstToken = tokens[firstIdx];
-  const parsed = stripLeadingAlertMarker(firstToken.runs);
-  const alertType = parsed.alertType;
+  // Single alert marker — original behavior
+  if (hits.length === 1) {
+    const hit = hits[0];
+    return tokens.map((t, idx) => ({
+      ...t,
+      type: 'blockquote' as const,
+      level: t.type === 'blockquote' ? t.level : level,
+      ...(t.type !== 'blockquote' ? { alertType: hit.type } : {}),
+      ...(idx === hit.idx ? { alertLead: true, runs: hit.runs } : {}),
+    }));
+  }
 
-  const mapped = tokens.map((t, idx) => ({
-    ...t,
-    type: 'blockquote' as const,
-    level: t.type === 'blockquote' ? t.level : level,
-    ...(alertType && t.type !== 'blockquote' ? { alertType } : {}),
-    ...(alertType && idx === firstIdx ? { alertLead: true } : {}),
-    ...(idx === firstIdx ? { runs: parsed.runs } : {}),
-  }));
-
-  return mapped;
+  // Multiple alert markers — assign each group its own alertType.
+  // Tokens from one marker to the next belong to that alert; tokens before
+  // the first marker become a plain blockquote.
+  const result: MdToken[] = [];
+  for (let idx = 0; idx < tokens.length; idx++) {
+    const t = tokens[idx];
+    const hit = hits.find(h => h.idx === idx);
+    // Determine which alert group this token belongs to
+    let currentAlert: GfmAlertType | undefined;
+    let isLead = false;
+    if (hit) {
+      currentAlert = hit.type;
+      isLead = true;
+    } else {
+      // Find the most recent hit before this index
+      for (let h = hits.length - 1; h >= 0; h--) {
+        if (hits[h].idx < idx) { currentAlert = hits[h].type; break; }
+      }
+    }
+    result.push({
+      ...t,
+      type: 'blockquote' as const,
+      level: t.type === 'blockquote' ? t.level : level,
+      ...(currentAlert && t.type !== 'blockquote' ? { alertType: currentAlert } : {}),
+      ...(isLead ? { alertLead: true, runs: hit!.runs } : {}),
+    });
+  }
+  return result;
 }
 
 function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdToken[] {
@@ -2669,12 +2732,19 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
         state.hasList = true;
       }
       break;
-    case 'blockquote':
+    case 'blockquote': {
       const bqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
       const bqIndentUnit = bqStyle.startsWith('GitHub') ? 240 : 720;
-      const leftIndent = bqIndentUnit * (token.level || 1);
-      pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/><w:ind w:left="' + leftIndent + '"/></w:pPr>';
+      const bqLeftIndent = bqIndentUnit * (token.level || 1);
+      let bqSpacing = '';
+      if (token.alertType) {
+        const before = token.alertFirst ? '80' : '0';
+        const after = token.alertLast ? '80' : '0';
+        bqSpacing = '<w:spacing w:before="' + before + '" w:after="' + after + '"/>';
+      }
+      pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/>' + bqSpacing + '<w:ind w:left="' + bqLeftIndent + '"/></w:pPr>';
       break;
+    }
     case 'code_block':
       pPr = '<w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr>';
       if (token.language) {
@@ -2716,7 +2786,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
     ? generateRun(token.taskChecked ? '☒ ' : '☐ ', '')
     : '';
   const alertPrefix = token.type === 'blockquote' && token.alertType && token.alertLead
-    ? generateRun(ALERT_GLYPH_BY_TYPE[token.alertType] + ' ' + gfmAlertTitle(token.alertType) + ' ', '')
+    ? generateRun(ALERT_GLYPH_BY_TYPE[token.alertType] + ' ' + gfmAlertTitle(token.alertType) + ' ', '<w:rPr><w:b/><w:color w:val="' + ALERT_COLOR_BY_TYPE[token.alertType] + '"/></w:rPr>')
     : '';
 
   return '<w:p>' + pPr + alertPrefix + taskPrefix + runs + '</w:p>';

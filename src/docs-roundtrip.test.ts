@@ -323,4 +323,27 @@ describe('alerts integration: md -> docx -> md', () => {
     expect(rt.markdown).toContain('First paragraph.');
     expect(rt.markdown).toContain('Second paragraph.');
   });
+
+  it('round-trips blockquotes.md fixture', async () => {
+    const md = readFileSync(join(repoRoot, 'test/fixtures/blockquotes.md'), 'utf-8');
+    const { docx, warnings } = await convertMdToDocx(md);
+    expect(warnings).toEqual([]);
+    const rt = await convertDocx(docx);
+
+    // All five alert types survived
+    for (const type of ['NOTE', 'WARNING', 'IMPORTANT', 'TIP', 'CAUTION']) {
+      expect(rt.markdown).toContain('[!' + type + ']');
+    }
+    // Plain blockquote preserved
+    expect(rt.markdown).toContain('This is a blockquote.');
+    // Content preserved
+    expect(rt.markdown).toContain('This is a note.');
+    expect(rt.markdown).toContain('This is a warning.');
+    // Glyphs stripped on roundtrip
+    for (const glyph of ['\u203B', '\u25C8', '\u203C', '\u25B2', '\u26D2']) {
+      expect(rt.markdown).not.toContain(glyph);
+    }
+    // Headings preserved
+    expect(rt.markdown).toContain('# Examples');
+  });
 });

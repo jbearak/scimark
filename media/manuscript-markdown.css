@@ -177,3 +177,15 @@ body.vscode-dark .manuscript-markdown-highlight-black { background-color: rgba(0
   color: #cf222e;
 }
 
+/* Dark Theme Overrides for Alerts */
+body.vscode-dark .markdown-alert-note { border-left-color: #58a6ff; }
+body.vscode-dark .markdown-alert-note .markdown-alert-title { color: #58a6ff; }
+body.vscode-dark .markdown-alert-tip { border-left-color: #3fb950; }
+body.vscode-dark .markdown-alert-tip .markdown-alert-title { color: #3fb950; }
+body.vscode-dark .markdown-alert-important { border-left-color: #a371f7; }
+body.vscode-dark .markdown-alert-important .markdown-alert-title { color: #a371f7; }
+body.vscode-dark .markdown-alert-warning { border-left-color: #d29922; }
+body.vscode-dark .markdown-alert-warning .markdown-alert-title { color: #d29922; }
+body.vscode-dark .markdown-alert-caution { border-left-color: #f85149; }
+body.vscode-dark .markdown-alert-caution .markdown-alert-title { color: #f85149; }
+
