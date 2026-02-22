@@ -119,6 +119,17 @@ body.vscode-dark .manuscript-markdown-highlight-gray-50 { background-color: rgba
 body.vscode-dark .manuscript-markdown-highlight-gray-25 { background-color: rgba(192, 192, 192, 0.25); }
 body.vscode-dark .manuscript-markdown-highlight-black { background-color: rgba(0, 0, 0, 0.40); }
 
+/* Plain blockquotes — padded with subtle shading to match alert treatment */
+blockquote:not(.markdown-alert) {
+  margin: 1em 0;
+  padding: 0.5rem 1rem;
+  border-left: 0.25rem solid var(--vscode-textBlockQuote-border, #d0d7de);
+  background: var(--vscode-textBlockQuote-background, rgba(175, 184, 193, 0.1));
+}
+blockquote:not(.markdown-alert) > p {
+  margin: 0.5em 0;
+}
+
 /* GitHub-style markdown alerts */
 .markdown-alert {
   margin: 1em 0;
