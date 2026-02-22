@@ -307,6 +307,14 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
       { type: 'highlight', open: '{==', close: '==}', cssClass: 'manuscript-markdown-highlight' }
     );
 
+    // Comments excluded: when adjacent to another CriticMarkup element, comments associate
+    // via data-comment rather than rendering with their own CSS class
+    const nonCommentPattern = fc.constantFrom(
+      { type: 'addition', open: '{++', close: '++}', cssClass: 'manuscript-markdown-addition' },
+      { type: 'deletion', open: '{--', close: '--}', cssClass: 'manuscript-markdown-deletion' },
+      { type: 'highlight', open: '{==', close: '==}', cssClass: 'manuscript-markdown-highlight' }
+    );
+
     it('should preserve unordered list structure with Manuscript Markdown', () => {
       fc.assert(
         fc.property(
@@ -403,9 +411,9 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
           fc.array(
             fc.tuple(
               validListItemContent,
-              manuscriptMarkdownPattern,
+              nonCommentPattern,
               validListItemContent,
-              manuscriptMarkdownPattern,
+              nonCommentPattern,
               validListItemContent
             ),
             { minLength: 2, maxLength: 4 }
