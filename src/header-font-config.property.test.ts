@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import { parseInlineArray, normalizeFontStyle, parseFrontmatter, serializeFrontmatter, type Frontmatter } from './frontmatter';
-import { resolveAtIndex, resolveFontOverrides } from './md-to-docx';
+import { resolveAtIndex, resolveFontOverrides, stylesXml, type FontOverrides } from './md-to-docx';
 
 // Feature: header-font-config, Property 1: Inline array parsing equivalence
 describe('Property 1: Inline array parsing equivalence', () => {
@@ -363,5 +363,116 @@ describe('Property 13: Backward compatibility of existing font fields', () => {
         }
       }
     ), { numRuns: 100 });
+  });
+});
+
+// --- Shared XML extraction helpers ---
+function extractStyleBlock(xml: string, styleId: string): string | null {
+  let searchFrom = 0;
+  while (true) {
+    const idx = xml.indexOf('<w:style ', searchFrom);
+    if (idx === -1) return null;
+    const closeTag = xml.indexOf('</w:style>', idx);
+    if (closeTag === -1) return null;
+    const block = xml.substring(idx, closeTag + '</w:style>'.length);
+    if (block.includes('w:styleId="' + styleId + '"')) return block;
+    searchFrom = closeTag + '</w:style>'.length;
+  }
+}
+
+function extractRPr(block: string): string {
+  const start = block.indexOf('<w:rPr>');
+  const end = block.indexOf('</w:rPr>');
+  if (start === -1 || end === -1) return '';
+  return block.substring(start, end + '</w:rPr>'.length);
+}
+
+// Feature: header-font-config, Property 11: stylesXml heading and title output correctness
+describe('Property 11: stylesXml heading and title output correctness', () => {
+  it('heading styles reflect per-heading font overrides', () => {
+    const fontName = fc.string({ minLength: 1, maxLength: 10 })
+      .filter(s => /^[a-z]+$/.test(s));
+    fc.assert(fc.property(
+      fc.array(fontName, { minLength: 1, maxLength: 6 }),
+      (fonts) => {
+        const headingFonts = new Map<string, string>();
+        const ids = ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6'];
+        for (let i = 0; i < 6; i++) {
+          const f = i < fonts.length ? fonts[i] : fonts[fonts.length - 1];
+          headingFonts.set(ids[i], f);
+        }
+        const overrides: FontOverrides = { headingFonts };
+        const xml = stylesXml(overrides);
+        for (let i = 0; i < 6; i++) {
+          const block = extractStyleBlock(xml, ids[i]);
+          expect(block).not.toBeNull();
+          const rpr = extractRPr(block!);
+          const expectedFont = i < fonts.length ? fonts[i] : fonts[fonts.length - 1];
+          expect(rpr).toContain('w:ascii="' + expectedFont + '"');
+        }
+      }
+    ), { numRuns: 50 });
+  });
+
+  it('heading styles reflect per-heading style overrides', () => {
+    const styleValues = ['bold', 'italic', 'underline', 'normal', 'bold-italic', 'bold-underline', 'italic-underline', 'bold-italic-underline'];
+    fc.assert(fc.property(
+      fc.array(fc.constantFrom(...styleValues), { minLength: 1, maxLength: 6 }),
+      (styles) => {
+        const headingStyles = new Map<string, string>();
+        const ids = ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6'];
+        for (let i = 0; i < 6; i++) {
+          const s = i < styles.length ? styles[i] : styles[styles.length - 1];
+          headingStyles.set(ids[i], s);
+        }
+        const overrides: FontOverrides = { headingStyles };
+        const xml = stylesXml(overrides);
+        for (let i = 0; i < 6; i++) {
+          const block = extractStyleBlock(xml, ids[i]);
+          expect(block).not.toBeNull();
+          const rpr = extractRPr(block!);
+          const s = i < styles.length ? styles[i] : styles[styles.length - 1];
+          if (s === 'normal') {
+            expect(rpr).not.toContain('<w:b/>');
+            expect(rpr).not.toContain('<w:i/>');
+            expect(rpr).not.toContain('<w:u ');
+          } else {
+            if (s.includes('bold')) expect(rpr).toContain('<w:b/>');
+            else expect(rpr).not.toContain('<w:b/>');
+            if (s.includes('italic')) expect(rpr).toContain('<w:i/>');
+            else expect(rpr).not.toContain('<w:i/>');
+            if (s.includes('underline')) expect(rpr).toContain('<w:u w:val="single"/>');
+            else expect(rpr).not.toContain('<w:u ');
+          }
+        }
+      }
+    ), { numRuns: 50 });
+  });
+
+  it('default heading style is bold when no override', () => {
+    const xml = stylesXml();
+    const ids = ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6'];
+    for (const id of ids) {
+      const block = extractStyleBlock(xml, id);
+      expect(block).not.toBeNull();
+      const rpr = extractRPr(block!);
+      expect(rpr).toContain('<w:b/>');
+    }
+  });
+
+  it('title style reflects title font/style overrides', () => {
+    const overrides: FontOverrides = {
+      titleFonts: ['Georgia'],
+      titleSizesHp: [48],
+      titleStyles: ['bold-italic'],
+    };
+    const xml = stylesXml(overrides);
+    const block = extractStyleBlock(xml, 'Title');
+    expect(block).not.toBeNull();
+    const rpr = extractRPr(block!);
+    expect(rpr).toContain('w:ascii="Georgia"');
+    expect(rpr).toContain('<w:sz w:val="48"/>');
+    expect(rpr).toContain('<w:b/>');
+    expect(rpr).toContain('<w:i/>');
   });
 });

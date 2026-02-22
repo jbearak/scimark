@@ -1707,14 +1707,27 @@ export function stylesXml(overrides?: FontOverrides): string {
     : szPair(22);
   const normalRpr = '<w:rPr>' + bodyFontStr + normalSz + '</w:rPr>\n';
 
-  // Heading helper: body font + heading size from map or default
-  function headingRpr(styleId: string, defaultHp: number, extraBefore?: string): string {
-    const font = bodyFontStr;
-    const extra = extraBefore || '';
+  // Heading helper: per-heading font/style/size overrides with defaults
+  function headingRpr(styleId: string, defaultHp: number): string {
+    const font = overrides?.headingFonts?.get(styleId)
+      ? rFonts(overrides.headingFonts.get(styleId)!)
+      : bodyFontStr;
     const sz = overrides?.headingSizesHp?.has(styleId)
       ? szPair(overrides.headingSizesHp.get(styleId)!)
       : szPair(defaultHp);
-    return '<w:rPr>' + extra + font + sz + '</w:rPr>\n';
+    const style = overrides?.headingStyles?.get(styleId);
+    let styleStr: string;
+    if (style === 'normal') {
+      styleStr = '';
+    } else if (style) {
+      styleStr = '';
+      if (style.includes('bold')) styleStr += '<w:b/>';
+      if (style.includes('italic')) styleStr += '<w:i/>';
+      if (style.includes('underline')) styleStr += '<w:u w:val="single"/>';
+    } else {
+      styleStr = '<w:b/>';
+    }
+    return '<w:rPr>' + styleStr + font + sz + '</w:rPr>\n';
   }
 
   // CodeChar: code font only (no size override for character style)
@@ -1726,11 +1739,25 @@ export function stylesXml(overrides?: FontOverrides): string {
     : szPair(DEFAULT_CODE_BLOCK_HP);
   const codeBlockRpr = '<w:rPr>' + codeFontStr + codeBlockSz + '</w:rPr>\n';
 
-  // Title: body font + title size from heading map or default 56hp
-  const titleSz = overrides?.headingSizesHp?.has('Title')
-    ? szPair(overrides.headingSizesHp.get('Title')!)
-    : szPair(56);
-  const titleRpr = '<w:rPr>' + bodyFontStr + titleSz + '</w:rPr>\n';
+  // Title: title-specific font/size/style overrides, falling back to body font
+  const titleFont = overrides?.titleFonts?.[0]
+    ? rFonts(overrides.titleFonts[0])
+    : bodyFontStr;
+  const titleSz = overrides?.titleSizesHp?.[0]
+    ? szPair(overrides.titleSizesHp[0])
+    : overrides?.headingSizesHp?.has('Title')
+      ? szPair(overrides.headingSizesHp.get('Title')!)
+      : szPair(56);
+  let titleStyleStr = '';
+  const titleStyle0 = overrides?.titleStyles?.[0];
+  if (titleStyle0 === 'normal') {
+    titleStyleStr = '';
+  } else if (titleStyle0) {
+    if (titleStyle0.includes('bold')) titleStyleStr += '<w:b/>';
+    if (titleStyle0.includes('italic')) titleStyleStr += '<w:i/>';
+    if (titleStyle0.includes('underline')) titleStyleStr += '<w:u w:val="single"/>';
+  }
+  const titleRpr = '<w:rPr>' + titleStyleStr + titleFont + titleSz + '</w:rPr>\n';
 
   // FootnoteText: body font + size from heading map or default 20hp
   const footnoteSz = overrides?.headingSizesHp?.has('FootnoteText')
@@ -1763,34 +1790,34 @@ export function stylesXml(overrides?: FontOverrides): string {
     '<w:name w:val="heading 1"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
     '<w:pPr><w:spacing w:before="240" w:after="0"/></w:pPr>\n' +
-    headingRpr('Heading1', 32, '<w:b/>') +
+    headingRpr('Heading1', 32) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading2">\n' +
     '<w:name w:val="heading 2"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
     '<w:pPr><w:spacing w:before="200" w:after="0"/></w:pPr>\n' +
-    headingRpr('Heading2', 26, '<w:b/>') +
+    headingRpr('Heading2', 26) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading3">\n' +
     '<w:name w:val="heading 3"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
     '<w:pPr><w:spacing w:before="200" w:after="0"/></w:pPr>\n' +
-    headingRpr('Heading3', 24, '<w:b/>') +
+    headingRpr('Heading3', 24) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading4">\n' +
     '<w:name w:val="heading 4"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    headingRpr('Heading4', 22, '<w:b/>') +
+    headingRpr('Heading4', 22) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading5">\n' +
     '<w:name w:val="heading 5"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    headingRpr('Heading5', 20, '<w:b/>') +
+    headingRpr('Heading5', 20) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading6">\n' +
     '<w:name w:val="heading 6"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    headingRpr('Heading6', 18, '<w:b/>') +
+    headingRpr('Heading6', 18) +
     '</w:style>\n' +
     '<w:style w:type="character" w:styleId="Hyperlink">\n' +
     '<w:name w:val="Hyperlink"/>\n' +
