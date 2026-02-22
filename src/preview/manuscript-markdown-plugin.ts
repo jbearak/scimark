@@ -1031,11 +1031,14 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
 
   // GFM task list rendering.
   md.renderer.rules.list_item_open = (tokens, idx, options, env, self) => {
-    const rendered = self.renderToken(tokens, idx, options);
     const checked = tokens[idx].meta?.taskChecked;
+    if (checked !== undefined) {
+      tokens[idx].attrJoin('class', 'task-list-item');
+    }
+    const rendered = self.renderToken(tokens, idx, options);
     if (checked === undefined) return rendered;
     const checkbox = `<input class="task-list-item-checkbox" type="checkbox" disabled${checked ? ' checked' : ''}> `;
-    return rendered.replace(/^<li(?=>|\s)/, '<li class="task-list-item"') + checkbox;
+    return rendered + checkbox;
   };
 
   md.renderer.rules.blockquote_open = (tokens, idx, options, env, self) => {
