@@ -242,6 +242,12 @@ export function serializeFrontmatter(metadata: Frontmatter): string {
   if (metadata.codeFont) lines.push('code-font: ' + metadata.codeFont);
   if (metadata.fontSize !== undefined) lines.push('font-size: ' + metadata.fontSize);
   if (metadata.codeFontSize !== undefined) lines.push('code-font-size: ' + metadata.codeFontSize);
+  if (metadata.headerFont && metadata.headerFont.length > 0) lines.push('header-font: [' + metadata.headerFont.join(', ') + ']');
+  if (metadata.headerFontSize && metadata.headerFontSize.length > 0) lines.push('header-font-size: [' + metadata.headerFontSize.join(', ') + ']');
+  if (metadata.headerFontStyle && metadata.headerFontStyle.length > 0) lines.push('header-font-style: [' + metadata.headerFontStyle.join(', ') + ']');
+  if (metadata.titleFont && metadata.titleFont.length > 0) lines.push('title-font: [' + metadata.titleFont.join(', ') + ']');
+  if (metadata.titleFontSize && metadata.titleFontSize.length > 0) lines.push('title-font-size: [' + metadata.titleFontSize.join(', ') + ']');
+  if (metadata.titleFontStyle && metadata.titleFontStyle.length > 0) lines.push('title-font-style: [' + metadata.titleFontStyle.join(', ') + ']');
   if (metadata.codeBackgroundColor) lines.push('code-background-color: ' + metadata.codeBackgroundColor);
   if (metadata.codeFontColor) lines.push('code-font-color: ' + metadata.codeFontColor);
   if (metadata.codeBlockInset !== undefined) lines.push('code-block-inset: ' + metadata.codeBlockInset);
