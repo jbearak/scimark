@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
-import { parseInlineArray, normalizeFontStyle, parseFrontmatter } from './frontmatter';
+import { parseInlineArray, normalizeFontStyle, parseFrontmatter, serializeFrontmatter, type Frontmatter } from './frontmatter';
 
 // Feature: header-font-config, Property 1: Inline array parsing equivalence
 describe('Property 1: Inline array parsing equivalence', () => {
@@ -149,6 +149,115 @@ describe('Property 5: Repeated keys use last occurrence', () => {
         const { metadata } = parseFrontmatter(yaml);
         const expected = normalizeFontStyle(vals[vals.length - 1]);
         expect(metadata.headerFontStyle).toEqual(expected ? [expected] : undefined);
+      }
+    ), { numRuns: 100 });
+  });
+});
+
+// Feature: header-font-config, Property 7: Serialization format correctness
+describe('Property 7: Serialization format correctness', () => {
+  it('single-element arrays serialize as plain values, multi as bracketed', () => {
+    const fontName = fc.string({ minLength: 1, maxLength: 10 })
+      .filter(s => /^[a-z]+$/.test(s));
+    fc.assert(fc.property(
+      fc.array(fontName, { minLength: 1, maxLength: 6 }),
+      (fonts) => {
+        const fm: Frontmatter = { headerFont: fonts };
+        const yaml = serializeFrontmatter(fm);
+        if (fonts.length === 1) {
+          expect(yaml).toContain('header-font: ' + fonts[0]);
+          expect(yaml).not.toContain('[');
+        } else {
+          expect(yaml).toContain('header-font: [' + fonts.join(', ') + ']');
+        }
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('undefined or empty arrays are omitted', () => {
+    const fm1: Frontmatter = { font: 'Arial' };
+    const yaml1 = serializeFrontmatter(fm1);
+    expect(yaml1).not.toContain('header-font');
+    expect(yaml1).not.toContain('title-font');
+
+    const fm2: Frontmatter = { headerFont: [] };
+    const yaml2 = serializeFrontmatter(fm2);
+    expect(yaml2).not.toContain('header-font');
+  });
+
+  it('title serializes as repeated keys', () => {
+    fc.assert(fc.property(
+      fc.array(
+        fc.string({ minLength: 1, maxLength: 15 }).filter(s => /^[a-z ]+$/.test(s)),
+        { minLength: 1, maxLength: 3 }
+      ),
+      (titles) => {
+        const fm: Frontmatter = { title: titles };
+        const yaml = serializeFrontmatter(fm);
+        for (const t of titles) {
+          expect(yaml).toContain('title: ' + t);
+        }
+        // Should NOT use bracketed format for title
+        expect(yaml).not.toMatch(/title: \[/);
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('numeric arrays serialize correctly', () => {
+    fc.assert(fc.property(
+      fc.array(fc.double({ min: 1, max: 100, noNaN: true, noDefaultInfinity: true }), { minLength: 1, maxLength: 6 }),
+      (sizes) => {
+        const fm: Frontmatter = { headerFontSize: sizes };
+        const yaml = serializeFrontmatter(fm);
+        expect(yaml).toContain('header-font-size:');
+      }
+    ), { numRuns: 100 });
+  });
+});
+
+// Feature: header-font-config, Property 8: Parse-serialize-parse round-trip
+describe('Property 8: Parse-serialize-parse round-trip', () => {
+  it('parse(serialize(fm)) produces equivalent metadata for header/title font fields', () => {
+    const fontName = fc.string({ minLength: 1, maxLength: 10 })
+      .filter(s => /^[a-z]+$/.test(s));
+    const fontSize = fc.double({ min: 1, max: 100, noNaN: true, noDefaultInfinity: true });
+    const fontStyle = fc.constantFrom('bold', 'italic', 'underline', 'normal', 'bold-italic', 'bold-underline', 'italic-underline', 'bold-italic-underline');
+
+    fc.assert(fc.property(
+      fc.record({
+        headerFont: fc.option(fc.array(fontName, { minLength: 1, maxLength: 4 }), { nil: undefined }),
+        headerFontStyle: fc.option(fc.array(fontStyle, { minLength: 1, maxLength: 4 }), { nil: undefined }),
+        titleFont: fc.option(fc.array(fontName, { minLength: 1, maxLength: 3 }), { nil: undefined }),
+        titleFontStyle: fc.option(fc.array(fontStyle, { minLength: 1, maxLength: 3 }), { nil: undefined }),
+      }),
+      (fields) => {
+        const fm: Frontmatter = { ...fields };
+        const yaml = serializeFrontmatter(fm);
+        if (!yaml) return; // empty frontmatter, nothing to round-trip
+        const { metadata } = parseFrontmatter(yaml + '\nBody.');
+        if (fm.headerFont) expect(metadata.headerFont).toEqual(fm.headerFont);
+        else expect(metadata.headerFont).toBeUndefined();
+        if (fm.headerFontStyle) expect(metadata.headerFontStyle).toEqual(fm.headerFontStyle);
+        else expect(metadata.headerFontStyle).toBeUndefined();
+        if (fm.titleFont) expect(metadata.titleFont).toEqual(fm.titleFont);
+        else expect(metadata.titleFont).toBeUndefined();
+        if (fm.titleFontStyle) expect(metadata.titleFontStyle).toEqual(fm.titleFontStyle);
+        else expect(metadata.titleFontStyle).toBeUndefined();
+      }
+    ), { numRuns: 150 });
+  });
+
+  it('round-trips font sizes through parse-serialize-parse', () => {
+    const fontSize = fc.integer({ min: 1, max: 100 });
+    fc.assert(fc.property(
+      fc.array(fontSize, { minLength: 1, maxLength: 4 }),
+      fc.array(fontSize, { minLength: 1, maxLength: 3 }),
+      (hSizes, tSizes) => {
+        const fm: Frontmatter = { headerFontSize: hSizes, titleFontSize: tSizes };
+        const yaml = serializeFrontmatter(fm);
+        const { metadata } = parseFrontmatter(yaml + '\nBody.');
+        expect(metadata.headerFontSize).toEqual(hSizes);
+        expect(metadata.titleFontSize).toEqual(tSizes);
       }
     ), { numRuns: 100 });
   });

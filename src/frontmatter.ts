@@ -218,6 +218,17 @@ export function serializeFrontmatter(metadata: Frontmatter): string {
   if (metadata.codeFont) lines.push('code-font: ' + metadata.codeFont);
   if (metadata.fontSize !== undefined) lines.push('font-size: ' + metadata.fontSize);
   if (metadata.codeFontSize !== undefined) lines.push('code-font-size: ' + metadata.codeFontSize);
+  const emitArr = (key: string, arr: (string | number)[] | undefined) => {
+    if (!arr || arr.length === 0) return;
+    if (arr.length === 1) lines.push(key + ': ' + arr[0]);
+    else lines.push(key + ': [' + arr.join(', ') + ']');
+  };
+  emitArr('header-font', metadata.headerFont);
+  emitArr('header-font-size', metadata.headerFontSize);
+  emitArr('header-font-style', metadata.headerFontStyle);
+  emitArr('title-font', metadata.titleFont);
+  emitArr('title-font-size', metadata.titleFontSize);
+  emitArr('title-font-style', metadata.titleFontStyle);
   if (lines.length === 0) return '';
   return '---\n' + lines.join('\n') + '\n---\n';
 }
