@@ -27,6 +27,36 @@ export function noteTypeToNumber(nt: NoteType): number {
 
 export type NotesMode = 'footnotes' | 'endnotes';
 
+/** Parse a value that may be a YAML inline array `[v1, v2, ...]` or bare comma-separated values. */
+export function parseInlineArray(value: string): string[] {
+  let inner = value;
+  if (inner.startsWith('[') && inner.endsWith(']')) inner = inner.slice(1, -1);
+  if (!inner.includes(',')) return [inner.trim()].filter(s => s.length > 0);
+  return inner.split(',').map(s => s.trim()).filter(s => s.length > 0);
+}
+
+// Design rationale: A single combined header-font-style field was chosen over
+// separate CSS-style fields (font-style, font-weight, font-decoration) because:
+// 1. One field is simpler for authors than three separate fields.
+// 2. Manuscript authors are not web developers — CSS distinctions between
+//    font-style, font-weight, and text-decoration are unfamiliar.
+// 3. Word only supports bold on/off (no numeric weights 100–900), so a
+//    separate font-weight field accepting numbers would be misleading.
+const VALID_STYLE_PARTS = new Set(['bold', 'italic', 'underline']);
+const CANONICAL_ORDER = ['bold', 'italic', 'underline'];
+
+/** Validate and normalize a Font_Style value to canonical order (bold-italic-underline). */
+export function normalizeFontStyle(raw: string): string | undefined {
+  const lower = raw.toLowerCase().trim();
+  if (!lower) return undefined;
+  if (lower === 'normal') return 'normal';
+  const parts = lower.split('-');
+  const unique = [...new Set(parts)];
+  if (unique.length !== parts.length) return undefined;
+  if (!unique.every(p => VALID_STYLE_PARTS.has(p))) return undefined;
+  return unique.sort((a, b) => CANONICAL_ORDER.indexOf(a) - CANONICAL_ORDER.indexOf(b)).join('-');
+}
+
 export interface Frontmatter {
   title?: string[];
   author?: string;
@@ -40,6 +70,12 @@ export interface Frontmatter {
   codeFont?: string;
   fontSize?: number;
   codeFontSize?: number;
+  headerFont?: string[];
+  headerFontSize?: number[];
+  headerFontStyle?: string[];
+  titleFont?: string[];
+  titleFontSize?: number[];
+  titleFontStyle?: string[];
 }
 
 /**
