@@ -43,6 +43,64 @@ The frontmatter may also include citation-related fields (`csl`, `locale`, `zote
 | `code-font` | Monospace font family for code styles. Default: Consolas. |
 | `font-size` | Body font size in points. Default: 11. |
 | `code-font-size` | Code font size in points. Default: 10. When `font-size` is specified without `code-font-size`, the code font size is automatically set to 1pt less than the body font size, preserving the default size difference. |
+| `header-font` | Heading font family. Accepts a single value or a comma-separated list for per-level control (H1–H6). Falls back to `font` if not set. |
+| `header-font-size` | Heading font sizes in points. Accepts a single value or a comma-separated list. Overrides proportional scaling from `font-size`. |
+| `header-font-style` | Heading font styles. Values: `bold`, `italic`, `underline`, `normal`, or hyphenated combinations (e.g., `bold-italic`). Default: `bold`. |
+| `title-font` | Title paragraph font family. Accepts a single value or a comma-separated list (one per title paragraph). Falls back to `font` if not set. |
+| `title-font-size` | Title paragraph font sizes in points. Accepts a single value or a comma-separated list. |
+| `title-font-style` | Title paragraph font styles. Same values as `header-font-style`. No default style. |
+
+### Heading and Title Font Configuration
+
+The `header-font`, `header-font-size`, and `header-font-style` fields control heading typography independently of body text. Each field accepts a single value (applied to all heading levels) or a comma-separated list of up to six values (one per heading level H1–H6).
+
+The `title-font`, `title-font-size`, and `title-font-style` fields provide the same per-element control over title paragraphs, where each array element maps to a successive title paragraph.
+
+Two equivalent syntaxes are available for specifying multiple values:
+
+**Bare comma-separated** (simpler, more casual):
+```yaml
+---
+header-font: Georgia, Arial, Helvetica
+header-font-size: 24, 20, 16
+header-font-style: bold-italic, bold, normal
+---
+```
+
+**YAML inline array** (more formal):
+```yaml
+---
+header-font: [Georgia, Arial, Helvetica]
+header-font-size: [24, 20, 16]
+header-font-style: [bold-italic, bold, normal]
+---
+```
+
+Both syntaxes are equivalent and produce identical results.
+
+When an array has fewer than six elements, deeper heading levels inherit the last specified value. For example, `header-font: Georgia, Arial` sets H1 to Georgia and H2–H6 to Arial.
+
+Title font fields work the same way, with array elements mapping to title paragraphs by position:
+
+```yaml
+---
+title: Main Title
+title: Subtitle
+title-font: Georgia, Arial
+title-font-size: 28, 20
+title-font-style: bold, italic
+---
+```
+
+The `title` field also supports inline array syntax as a secondary alternative to repeated keys:
+
+```yaml
+---
+title: [Main Title, Subtitle]
+---
+```
+
+Valid font style values: `bold`, `italic`, `underline`, `normal`, and any hyphenated combination of `bold`, `italic`, and `underline` in any order (e.g., `bold-italic`, `italic-underline-bold`). Hyphenated combinations are order-independent.
 
 ### Font Customization Example
 

@@ -207,7 +207,18 @@ export function findCitekeyAtOffset(text: string, offset: number): string | unde
 	let scanEnd = offset;
 
 	// Prefer a nearby bracket-bounded scan (can span newlines).
-	const openBracket = text.lastIndexOf('[', offset);
+	// Walk backward past unclosed '[' to find the outermost one, since
+	// the citation regex [^\]]*@[^\]]*] can match inner '[' characters.
+	let openBracket = text.lastIndexOf('[', offset);
+	while (openBracket > 0) {
+		const prevOpen = text.lastIndexOf('[', openBracket - 1);
+		const prevClose = text.lastIndexOf(']', openBracket - 1);
+		if (prevOpen !== -1 && prevOpen > prevClose && (offset - prevOpen) <= maxScanDistance) {
+			openBracket = prevOpen;
+		} else {
+			break;
+		}
+	}
 	const closeBracketBefore = text.lastIndexOf(']', Math.max(0, offset - 1));
 	if (openBracket !== -1 && openBracket > closeBracketBefore && (offset - openBracket) <= maxScanDistance) {
 		const closeBracket = text.indexOf(']', offset);

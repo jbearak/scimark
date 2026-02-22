@@ -1458,11 +1458,24 @@ export interface FontOverrides {
   bodySizeHp?: number;
   codeSizeHp?: number;
   headingSizesHp?: Map<string, number>;
+  headingFonts?: Map<string, string>;
+  headingStyles?: Map<string, string>;
+  titleFonts?: string[];
+  titleSizesHp?: number[];
+  titleStyles?: string[];
+}
+
+/** Resolve value at index with Array_Inheritance: use arr[i] if i < length, else arr[last]. */
+export function resolveAtIndex<T>(arr: T[] | undefined, index: number): T | undefined {
+  if (!arr || arr.length === 0) return undefined;
+  return index < arr.length ? arr[index] : arr[arr.length - 1];
 }
 
 export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined {
   const hasAnyField = !!fm.font || !!fm.codeFont ||
-    fm.fontSize !== undefined || fm.codeFontSize !== undefined;
+    fm.fontSize !== undefined || fm.codeFontSize !== undefined ||
+    !!fm.headerFont || !!fm.headerFontSize || !!fm.headerFontStyle ||
+    !!fm.titleFont || !!fm.titleFontSize || !!fm.titleFontStyle;
   if (!hasAnyField) return undefined;
 
   const overrides: FontOverrides = {};
@@ -1493,6 +1506,48 @@ export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined
 
   if (fm.codeFontSize !== undefined) {
     overrides.codeSizeHp = Math.round(fm.codeFontSize * 2);
+  }
+
+  // Per-heading font overrides
+  const HEADING_IDS = ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6'];
+  if (fm.headerFont || fm.font) {
+    const headingFonts = new Map<string, string>();
+    for (let i = 0; i < 6; i++) {
+      const font = resolveAtIndex(fm.headerFont, i) ?? fm.font;
+      if (font) headingFonts.set(HEADING_IDS[i], font);
+    }
+    if (headingFonts.size > 0) overrides.headingFonts = headingFonts;
+  }
+
+  // Per-heading style overrides
+  if (fm.headerFontStyle) {
+    const headingStyles = new Map<string, string>();
+    for (let i = 0; i < 6; i++) {
+      const style = resolveAtIndex(fm.headerFontStyle, i);
+      if (style) headingStyles.set(HEADING_IDS[i], style);
+    }
+    if (headingStyles.size > 0) overrides.headingStyles = headingStyles;
+  }
+
+  // Per-heading explicit size overrides (take precedence over proportional scaling)
+  if (fm.headerFontSize) {
+    if (!overrides.headingSizesHp) overrides.headingSizesHp = new Map<string, number>();
+    for (let i = 0; i < 6; i++) {
+      const size = resolveAtIndex(fm.headerFontSize, i);
+      if (size !== undefined) overrides.headingSizesHp.set(HEADING_IDS[i], Math.round(size * 2));
+    }
+  }
+
+  // Title font overrides
+  if (fm.titleFont || fm.font) {
+    const arr = fm.titleFont ?? (fm.font ? [fm.font] : undefined);
+    if (arr) overrides.titleFonts = arr;
+  }
+  if (fm.titleFontSize) {
+    overrides.titleSizesHp = fm.titleFontSize.map(s => Math.round(s * 2));
+  }
+  if (fm.titleFontStyle) {
+    overrides.titleStyles = fm.titleFontStyle;
   }
 
   return overrides;
@@ -1536,27 +1591,40 @@ export function applyFontOverridesToTemplate(
     const closeTag = styleMatch[3];
 
     const isCodeStyle = CODE_STYLE_IDS.has(styleId);
-    const font = isCodeStyle ? overrides.codeFont : overrides.bodyFont;
+    const isHeading = /^Heading[1-6]$/.test(styleId);
+    const isTitle = styleId === 'Title';
+
+    // Determine font: heading-specific > title-specific > body/code font
+    let font: string | undefined;
+    if (isCodeStyle) {
+      font = overrides.codeFont;
+    } else if (isHeading && overrides.headingFonts?.has(styleId)) {
+      font = overrides.headingFonts.get(styleId);
+    } else if (isTitle && overrides.titleFonts?.[0]) {
+      font = overrides.titleFonts[0];
+    } else {
+      font = overrides.bodyFont;
+    }
 
     // Determine the size for this style
     let sizeHp: number | undefined;
     if (isCodeStyle) {
-      // CodeChar gets no size override (character style); CodeBlock gets codeSizeHp
-      if (styleId === 'CodeBlock') {
-        sizeHp = overrides.codeSizeHp;
-      }
-    } else {
-      // Check headingSizesHp map first (headings, Title, FootnoteText, EndnoteText)
-      if (overrides.headingSizesHp && overrides.headingSizesHp.has(styleId)) {
-        sizeHp = overrides.headingSizesHp.get(styleId);
-      } else if (styleId === 'Normal') {
-        sizeHp = overrides.bodySizeHp;
-      }
-      // Quote and IntenseQuote inherit size from Normal — no explicit size override
+      if (styleId === 'CodeBlock') sizeHp = overrides.codeSizeHp;
+    } else if (isTitle && overrides.titleSizesHp?.[0]) {
+      sizeHp = overrides.titleSizesHp[0];
+    } else if (overrides.headingSizesHp && overrides.headingSizesHp.has(styleId)) {
+      sizeHp = overrides.headingSizesHp.get(styleId);
+    } else if (styleId === 'Normal') {
+      sizeHp = overrides.bodySizeHp;
     }
 
+    // Determine style override for headings and title
+    let fontStyleOverride: string | undefined;
+    if (isHeading) fontStyleOverride = overrides.headingStyles?.get(styleId);
+    else if (isTitle) fontStyleOverride = overrides.titleStyles?.[0];
+
     // Nothing to do for this style
-    if (font === undefined && sizeHp === undefined) continue;
+    if (font === undefined && sizeHp === undefined && fontStyleOverride === undefined) continue;
 
     // Build the replacement fragments
     const rFontsEl = font !== undefined
@@ -1607,6 +1675,22 @@ export function applyFontOverridesToTemplate(
         }
       }
 
+      // Apply font-style overrides (bold, italic, underline) for headings and title
+      if (fontStyleOverride !== undefined) {
+        // Remove existing b, i, u elements (all toggle forms: self-closing, with attributes, open+close)
+        rPrContent = rPrContent.replace(/<w:b\b[^>]*(?:\/>|><\/w:b>)/g, '');
+        rPrContent = rPrContent.replace(/<w:i\b[^>]*(?:\/>|><\/w:i>)/g, '');
+        rPrContent = rPrContent.replace(/<w:u\b[^>]*(?:\/>|><\/w:u>)/g, '');
+        // Add new style elements at the start
+        let styleEls = '';
+        if (fontStyleOverride !== 'normal') {
+          if (fontStyleOverride.includes('bold')) styleEls += '<w:b/>';
+          if (fontStyleOverride.includes('italic')) styleEls += '<w:i/>';
+          if (fontStyleOverride.includes('underline')) styleEls += '<w:u w:val="single"/>';
+        }
+        rPrContent = styleEls + rPrContent;
+      }
+
       const newRPr = rPrMatch[1] + rPrContent + rPrMatch[3];
       const matchStart = rPrSearchStart + rPrMatch.index;
       const matchEnd = matchStart + rPrMatch[0].length;
@@ -1614,10 +1698,14 @@ export function applyFontOverridesToTemplate(
     } else {
       // No <w:rPr> section — insert one
       let rPrContent = '';
+      if (fontStyleOverride !== undefined && fontStyleOverride !== 'normal') {
+        if (fontStyleOverride.includes('bold')) rPrContent += '<w:b/>';
+        if (fontStyleOverride.includes('italic')) rPrContent += '<w:i/>';
+        if (fontStyleOverride.includes('underline')) rPrContent += '<w:u w:val="single"/>';
+      }
       if (rFontsEl !== undefined) rPrContent += rFontsEl;
       if (szEl !== undefined) rPrContent += szEl;
       if (szCsEl !== undefined) rPrContent += szCsEl;
-      // Insert <w:rPr> before the closing </w:style> (at end of inner content)
       innerContent = innerContent + '<w:rPr>' + rPrContent + '</w:rPr>';
     }
 
@@ -1652,14 +1740,27 @@ export function stylesXml(overrides?: FontOverrides): string {
     : szPair(22);
   const normalRpr = '<w:rPr>' + bodyFontStr + normalSz + '</w:rPr>\n';
 
-  // Heading helper: body font + heading size from map or default
-  function headingRpr(styleId: string, defaultHp: number, extraBefore?: string): string {
-    const font = bodyFontStr;
-    const extra = extraBefore || '';
+  // Heading helper: per-heading font/style/size overrides with defaults
+  function headingRpr(styleId: string, defaultHp: number): string {
+    const font = overrides?.headingFonts?.get(styleId)
+      ? rFonts(overrides.headingFonts.get(styleId)!)
+      : bodyFontStr;
     const sz = overrides?.headingSizesHp?.has(styleId)
       ? szPair(overrides.headingSizesHp.get(styleId)!)
       : szPair(defaultHp);
-    return '<w:rPr>' + extra + font + sz + '</w:rPr>\n';
+    const style = overrides?.headingStyles?.get(styleId);
+    let styleStr: string;
+    if (style === 'normal') {
+      styleStr = '';
+    } else if (style) {
+      styleStr = '';
+      if (style.includes('bold')) styleStr += '<w:b/>';
+      if (style.includes('italic')) styleStr += '<w:i/>';
+      if (style.includes('underline')) styleStr += '<w:u w:val="single"/>';
+    } else {
+      styleStr = '<w:b/>';
+    }
+    return '<w:rPr>' + styleStr + font + sz + '</w:rPr>\n';
   }
 
   // CodeChar: code font only (no size override for character style)
@@ -1671,11 +1772,25 @@ export function stylesXml(overrides?: FontOverrides): string {
     : szPair(DEFAULT_CODE_BLOCK_HP);
   const codeBlockRpr = '<w:rPr>' + codeFontStr + codeBlockSz + '</w:rPr>\n';
 
-  // Title: body font + title size from heading map or default 56hp
-  const titleSz = overrides?.headingSizesHp?.has('Title')
-    ? szPair(overrides.headingSizesHp.get('Title')!)
-    : szPair(56);
-  const titleRpr = '<w:rPr>' + bodyFontStr + titleSz + '</w:rPr>\n';
+  // Title: title-specific font/size/style overrides, falling back to body font
+  const titleFont = overrides?.titleFonts?.[0]
+    ? rFonts(overrides.titleFonts[0])
+    : bodyFontStr;
+  const titleSz = overrides?.titleSizesHp?.[0]
+    ? szPair(overrides.titleSizesHp[0])
+    : overrides?.headingSizesHp?.has('Title')
+      ? szPair(overrides.headingSizesHp.get('Title')!)
+      : szPair(56);
+  let titleStyleStr = '';
+  const titleStyle0 = overrides?.titleStyles?.[0];
+  if (titleStyle0 === 'normal') {
+    titleStyleStr = '';
+  } else if (titleStyle0) {
+    if (titleStyle0.includes('bold')) titleStyleStr += '<w:b/>';
+    if (titleStyle0.includes('italic')) titleStyleStr += '<w:i/>';
+    if (titleStyle0.includes('underline')) titleStyleStr += '<w:u w:val="single"/>';
+  }
+  const titleRpr = '<w:rPr>' + titleStyleStr + titleFont + titleSz + '</w:rPr>\n';
 
   // FootnoteText: body font + size from heading map or default 20hp
   const footnoteSz = overrides?.headingSizesHp?.has('FootnoteText')
@@ -1708,34 +1823,34 @@ export function stylesXml(overrides?: FontOverrides): string {
     '<w:name w:val="heading 1"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
     '<w:pPr><w:spacing w:before="240" w:after="0"/></w:pPr>\n' +
-    headingRpr('Heading1', 32, '<w:b/>') +
+    headingRpr('Heading1', 32) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading2">\n' +
     '<w:name w:val="heading 2"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
     '<w:pPr><w:spacing w:before="200" w:after="0"/></w:pPr>\n' +
-    headingRpr('Heading2', 26, '<w:b/>') +
+    headingRpr('Heading2', 26) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading3">\n' +
     '<w:name w:val="heading 3"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
     '<w:pPr><w:spacing w:before="200" w:after="0"/></w:pPr>\n' +
-    headingRpr('Heading3', 24, '<w:b/>') +
+    headingRpr('Heading3', 24) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading4">\n' +
     '<w:name w:val="heading 4"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    headingRpr('Heading4', 22, '<w:b/>') +
+    headingRpr('Heading4', 22) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading5">\n' +
     '<w:name w:val="heading 5"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    headingRpr('Heading5', 20, '<w:b/>') +
+    headingRpr('Heading5', 20) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading6">\n' +
     '<w:name w:val="heading 6"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    headingRpr('Heading6', 18, '<w:b/>') +
+    headingRpr('Heading6', 18) +
     '</w:style>\n' +
     '<w:style w:type="character" w:styleId="Hyperlink">\n' +
     '<w:name w:val="Hyperlink"/>\n' +
@@ -2654,8 +2769,25 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
 
   // Emit title paragraphs from frontmatter before body content
   if (frontmatter?.title) {
-    for (const line of frontmatter.title) {
-      body += '<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>' + generateRun(line, '') + '</w:p>';
+    const fo = resolveFontOverrides(frontmatter);
+    for (let i = 0; i < frontmatter.title.length; i++) {
+      let rPr = '';
+      if (fo) {
+        let inner = '';
+        const style = resolveAtIndex(fo.titleStyles, i);
+        if (style) {
+          // Explicitly enable or disable each toggle to override inherited Title style
+          inner += style.includes('bold') ? '<w:b/>' : '<w:b w:val="0"/>';
+          inner += style.includes('italic') ? '<w:i/>' : '<w:i w:val="0"/>';
+          inner += style.includes('underline') ? '<w:u w:val="single"/>' : '<w:u w:val="none"/>';
+        }
+        const font = resolveAtIndex(fo.titleFonts, i);
+        if (font) inner += '<w:rFonts w:ascii="' + escapeXml(font) + '" w:hAnsi="' + escapeXml(font) + '"/>';
+        const sizeHp = resolveAtIndex(fo.titleSizesHp, i);
+        if (sizeHp) inner += '<w:sz w:val="' + sizeHp + '"/><w:szCs w:val="' + sizeHp + '"/>';
+        if (inner) rPr = '<w:rPr>' + inner + '</w:rPr>';
+      }
+      body += '<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>' + generateRun(frontmatter.title[i], rPr) + '</w:p>';
     }
   }
 
