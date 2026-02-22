@@ -26,6 +26,7 @@ export interface MdToken {
   alertLead?: boolean;      // first blockquote paragraph carrying alert header
   alertFirst?: boolean;     // first paragraph in an alert block (for spacing)
   alertLast?: boolean;      // last paragraph in an alert block (for spacing)
+  blockquoteGroupIndex?: number; // sequential index of the blockquote group this token belongs to
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
@@ -648,7 +649,10 @@ export function extractFootnoteDefinitions(markdown: string): { cleaned: string;
   return { cleaned: cleanedLines.join('\n'), definitions };
 }
 
-/** Mark first/last tokens in contiguous runs of blockquotes for spacing. */
+/** Mark first/last tokens in contiguous runs of blockquotes for spacing.
+ *  Learning: when two same-type alerts are adjacent (zero-gap or merged by
+ *  markdown-it), each alertLead token starts a new group — the inner loop
+ *  must break on alertLead boundaries, not just alertType/level changes. */
 function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
   let i = 0;
   while (i < tokens.length) {
@@ -659,13 +663,126 @@ function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
     const alertType = tokens[i].alertType;
     const level = tokens[i].level;
     const start = i;
-    while (i < tokens.length && tokens[i].type === 'blockquote' && tokens[i].alertType === alertType && tokens[i].level === level) {
+    i++;
+    // Continue the group while the next token has the same alertType/level
+    // AND is not an alertLead (which signals a new [!TYPE] marker group).
+    while (i < tokens.length && tokens[i].type === 'blockquote' && tokens[i].alertType === alertType && tokens[i].level === level && !tokens[i].alertLead) {
       i++;
     }
     tokens[start].alertFirst = true;
     tokens[i - 1].alertLast = true;
   }
 }
+
+// Blockquote gap metadata: compute blank-line counts between consecutive
+// blockquote groups in the original markdown source.  A "blockquote group"
+// is a maximal run of lines starting with '>'.  The gap between two groups
+// is the number of blank lines separating them (0 means directly adjacent
+// with no blank line).
+//
+// Learning: this function operates on the raw markdown *before* markdown-it
+// parsing, because markdown-it merges adjacent blockquotes with zero blank
+// lines into a single blockquote_open/close pair, losing the gap info.
+// Learning: within a contiguous run of '>' lines, a line matching
+// '> [!TYPE]' (where TYPE is a GFM alert keyword) starts a new group —
+// this handles zero-gap same-type alerts that have no blank line between them.
+export function computeBlockquoteGaps(markdown: string): Map<number, number> {
+  const gaps = new Map<number, number>();
+  const lines = markdown.split('\n');
+  const alertMarkerRe = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+
+  // Identify blockquote group spans (start/end line indices).
+  // A new group starts when: (a) a '>' line follows a non-'>' line, or
+  // (b) a '>' line contains an alert [!TYPE] marker (except the very first
+  // line of a contiguous '>' run, which already starts a group).
+  const groups: Array<{ start: number; end: number }> = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (/^>/.test(lines[i])) {
+      const runStart = i;
+      // First line of a contiguous '>' run always starts a group
+      let groupStart = i;
+      i++;
+      while (i < lines.length && /^>/.test(lines[i])) {
+        if (alertMarkerRe.test(lines[i]) && i > runStart) {
+          // This alert marker starts a new group within the same '>' run
+          groups.push({ start: groupStart, end: i - 1 });
+          groupStart = i;
+        }
+        i++;
+      }
+      groups.push({ start: groupStart, end: i - 1 });
+    } else {
+      i++;
+    }
+  }
+
+  // Compute blank-line count between each pair of consecutive groups
+  for (let g = 0; g < groups.length - 1; g++) {
+    const afterEnd = groups[g].end + 1;
+    const nextStart = groups[g + 1].start;
+    let blankCount = 0;
+    for (let li = afterEnd; li < nextStart; li++) {
+      if (lines[li].trim() === '') {
+        blankCount++;
+      } else {
+        // Non-blank, non-blockquote content between groups — not a direct
+        // blockquote-to-blockquote gap; store -1 as sentinel.
+        blankCount = -1;
+        break;
+      }
+    }
+    gaps.set(g, blankCount);
+  }
+
+  return gaps;
+}
+
+// Assign a sequential blockquoteGroupIndex to each blockquote token so the
+// gap map can be correlated during docx→md conversion.  Groups are delimited
+// by alertFirst/alertLast boundaries set by annotateBlockquoteBoundaries.
+export function annotateBlockquoteGroupIndices(tokens: MdToken[]): void {
+  let groupIndex = 0;
+  let inGroup = false;
+  for (const token of tokens) {
+    if (token.type !== 'blockquote') {
+      if (inGroup) {
+        groupIndex++;
+        inGroup = false;
+      }
+      continue;
+    }
+    if (!inGroup) {
+      inGroup = true;
+    }
+    token.blockquoteGroupIndex = groupIndex;
+    if (token.alertLast) {
+      groupIndex++;
+      inGroup = false;
+    }
+  }
+}
+
+// Serialize blockquote gap metadata as custom XML properties, following the
+// same chunked-JSON pattern used by codeBlockLanguageProps.
+export function blockquoteGapProps(gaps: Map<number, number>): CustomPropEntry[] {
+  if (gaps.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, count] of gaps) {
+    mapping[String(index)] = count;
+  }
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_BLOCKQUOTE_GAPS_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+
 
 export function parseMd(markdown: string): MdToken[] {
   const md = createMarkdownIt();
@@ -1538,6 +1655,7 @@ export interface DocxGenState {
   citedKeys: Set<string>;
   codeFont: string;
   codeShadingMode: boolean;
+  blockquoteGaps: Map<number, number>; // gap (blank-line count) after each blockquote group, keyed by group index
 }
 
 interface CommentEntry {
@@ -2820,6 +2938,15 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
 
   let xml = '<w:p>' + pPr + alertPrefix + taskPrefix + runs + '</w:p>';
 
+  // Encode blockquoteGroupIndex as a hidden (vanish) run so the docx→md
+  // converter can reconstruct group boundaries and correlate with the gap map.
+  if (token.type === 'blockquote' && token.blockquoteGroupIndex !== undefined) {
+    const groupTag = '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">' +
+      '\u200B_bqg' + token.blockquoteGroupIndex + '</w:t></w:r>';
+    // Insert the hidden run right after pPr inside the <w:p>
+    xml = '<w:p>' + pPr + groupTag + alertPrefix + taskPrefix + runs + '</w:p>';
+  }
+
   // Blockquote spacer paragraphs: exact-height empty paragraphs with an
   // inline left border (no pStyle, so the converter ignores them).  The left
   // rule extends symmetrically above/below content regardless of font size.
@@ -3153,6 +3280,11 @@ export async function convertMdToDocx(
   const { cleaned: bodyWithoutFootnotes, definitions: footnoteDefs } = extractFootnoteDefinitions(body);
   const tokens = parseMd(bodyWithoutFootnotes);
 
+  // Compute inter-blockquote-group gap metadata from the original markdown
+  // source and annotate tokens with sequential group indices.
+  const blockquoteGaps = computeBlockquoteGaps(bodyWithoutFootnotes);
+  annotateBlockquoteGroupIndices(tokens);
+
   // Parse BibTeX if provided
   let bibEntries: Map<string, BibtexEntry> | undefined;
   if (options?.bibtex) {
@@ -3260,6 +3392,7 @@ export async function convertMdToDocx(
     citedKeys: new Set(),
     codeFont: fontOverrides?.codeFont || 'Consolas',
     codeShadingMode: !isInsetMode,
+    blockquoteGaps: blockquoteGaps,
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -3414,6 +3547,7 @@ export async function convertMdToDocx(
   customProps.push(...footnoteIdMappingProps(state.footnoteLabelToId));
   customProps.push(...codeBlockLanguageProps(state.codeBlockLanguages));
   customProps.push(...codeBlockStylingProps(frontmatter));
+  customProps.push(...blockquoteGapProps(state.blockquoteGaps));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));
