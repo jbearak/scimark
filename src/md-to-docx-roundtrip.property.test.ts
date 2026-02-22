@@ -1,61 +1,88 @@
 import { describe, it, expect } from 'bun:test';
 import fc from 'fast-check';
-import { convertMdToDocx } from './md-to-docx';
+import { convertMdToDocx, parseMd, type MdRun, type MdToken } from './md-to-docx';
 import { convertDocx } from './converter';
 
-function extractPlainText(md: string): string {
-  return md
-    .replace(/^```[^\n]*$/gm, '')         // strip code fence markers
-    .replace(/^#+\s*/gm, '')           // strip heading markers
-    .replace(/^(> )+/gm, '')          // strip blockquote markers
-    .replace(/^[-*]\s+/gm, '')         // strip bullet markers
-    .replace(/^\d+\.\s+/gm, '')       // strip ordered list markers
-    .replace(/\*\*([^*]+)\*\*/g, '$1') // strip bold
-    .replace(/\*([^*]+)\*/g, '$1')     // strip italic
-    .replace(/~~([^~]+)~~/g, '$1')     // strip strikethrough
-    .replace(/`([^`]+)`/g, '$1')       // strip inline code
-    .replace(/\n{2,}/g, '\n')          // collapse blank lines
-    .trim();
+function stripFrontmatter(md: string): string {
+  return md.replace(/^---\n[\s\S]*?\n---\n?/, '');
 }
 
-const safeText = fc.array(
-  fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz '.split('')),
-  { minLength: 3, maxLength: 15 }
-).map(arr => arr.join('').trim()).filter(s => s.length > 0);
+function runText(runs: MdRun[]): string {
+  const raw = runs
+    .map(r => {
+      if (r.type === 'softbreak') return '\n';
+      if (r.type === 'text') return r.text;
+      if (r.type === 'critic_add' || r.type === 'critic_del' || r.type === 'critic_highlight' || r.type === 'critic_comment') return r.text;
+      if (r.type === 'critic_sub') return (r.text || '') + '=>' + (r.newText || '');
+      if (r.type === 'citation') return (r.keys || []).join(';');
+      if (r.type === 'math') return (r.display ? '$$' : '$') + r.text;
+      return r.text || '';
+    })
+    .join('');
+  return raw
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/`([^`]+)`/g, '$1');
+}
 
-const paragraphGen = safeText;
-const headingGen = fc.tuple(fc.integer({ min: 1, max: 3 }), safeText)
-  .map(([level, text]) => '#'.repeat(level) + ' ' + text);
-const bulletGen = safeText.map(text => '- ' + text);
-const orderedGen = safeText.map(text => '1. ' + text);
-const boldGen = safeText.map(text => '**' + text + '**');
-const blockquoteGen = safeText.map(text => '> ' + text);
-const inlineCodeGen = safeText.map(text => '`' + text + '`');
-const codeBlockLang = fc.constantFrom('', 'python', 'stata', 'r', 'javascript');
-const codeBlockGen = fc.tuple(codeBlockLang, safeText)
-  .map(([lang, text]) => '```' + lang + '\n' + text + '\n```');
+function tokenSignature(tokens: MdToken[]): string[] {
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  return tokens.map(t => {
+    if (t.type === 'table') {
+      const rows = (t.rows || []).map(r => r.cells.map(c => norm(runText(c.runs))).join('|')).join('||');
+      return 'table:' + rows;
+    }
+    const base = [t.type, String(t.level || 0), t.ordered ? '1' : '0', t.taskChecked === undefined ? 'n' : (t.taskChecked ? '1' : '0'), t.alertType || '-', t.language || '-'].join(':');
+    return base + ':' + norm(runText(t.runs));
+  });
+}
 
-const elementGen = fc.oneof(paragraphGen, headingGen, bulletGen, orderedGen, boldGen, blockquoteGen, codeBlockGen, inlineCodeGen);
-const documentGen = fc.array(elementGen, { minLength: 1, maxLength: 5 })
-  .map(elements => elements.join('\n\n'));
+function paragraphFromPieces(pieces: string[]): string {
+  return pieces.join(' ');
+}
+
+const wordArb = fc.constantFrom('alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'theta', 'lambda');
+const sentenceArb = fc.array(wordArb, { minLength: 2, maxLength: 6 }).map(parts => parts.join(' '));
+const paragraphArb = fc.array(sentenceArb, { minLength: 1, maxLength: 2 }).map(paragraphFromPieces);
+
+const headingArb = fc.tuple(fc.integer({ min: 1, max: 3 }), sentenceArb).map(([lvl, s]) => '#'.repeat(lvl) + ' ' + s);
+const bulletArb = fc.array(sentenceArb, { minLength: 1, maxLength: 3 }).map(items => items.map(i => '- ' + i).join('\n'));
+const orderedArb = fc.array(sentenceArb, { minLength: 1, maxLength: 3 }).map(items => items.map(i => '1. ' + i).join('\n'));
+const codeArb = fc.tuple(fc.constantFrom('', 'js', 'ts', 'python'), sentenceArb).map(([lang, s]) => '```' + lang + '\n' + s + '\n```');
+const quoteArb = sentenceArb.map(s => '> ' + s);
+const alertArb = fc.tuple(fc.constantFrom('NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'), sentenceArb).map(([t, s]) => '> [!' + t + ']\n> ' + s);
+const alertPlusParaArb = fc.tuple(
+  fc.constantFrom('NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'),
+  sentenceArb,
+  sentenceArb,
+  fc.constantFrom('\n', '\n\n'),
+).map(([t, alertBody, para, sep]) => '> [!' + t + ']\n> ' + alertBody + sep + para);
+
+const blockArb = fc.oneof(
+  paragraphArb,
+  headingArb,
+  bulletArb,
+  orderedArb,
+  codeArb,
+  quoteArb,
+  alertArb,
+  alertPlusParaArb,
+);
+
+const documentArb = fc.array(blockArb, { minLength: 2, maxLength: 8 }).map(parts => parts.join('\n\n'));
 
 describe('Feature: md-to-docx-conversion', () => {
-  it('Property 15: Full MD→DOCX→MD round-trip', async () => {
+  it('Property: spec feature combinations preserve markdown semantics in md->docx->md roundtrip', async () => {
     await fc.assert(
-      fc.asyncProperty(documentGen, async (markdown) => {
-        const docxResult = await convertMdToDocx(markdown);
-        const mdResult = await convertDocx(docxResult.docx);
-        
-        const originalText = extractPlainText(markdown);
-        const roundTripText = extractPlainText(mdResult.markdown);
-        
-        // Each word from the original should appear in the round-trip
-        const originalWords = originalText.split(/\s+/).filter(w => w.length > 0);
-        for (const word of originalWords) {
-          expect(roundTripText).toContain(word);
-        }
+      fc.asyncProperty(documentArb, async markdown => {
+        const { docx } = await convertMdToDocx(markdown);
+        const rt = await convertDocx(docx);
+        const originalSig = tokenSignature(parseMd(markdown));
+        const roundTripSig = tokenSignature(parseMd(stripFrontmatter(rt.markdown)));
+        expect(roundTripSig).toEqual(originalSig);
       }),
-      { numRuns: 50 } // Fewer runs since async is slower
+      { numRuns: 120, verbose: true },
     );
-  });
+  }, { timeout: 120000 });
 });

@@ -323,6 +323,22 @@ describe('alerts integration: md -> docx -> md', () => {
     expect(rt.markdown).toContain('First paragraph.');
     expect(rt.markdown).toContain('Second paragraph.');
   });
+  it('does not merge alert body with immediately following non-blockquote paragraph', async () => {
+    const md = [
+      '> [!NOTE]',
+      '> alpha alpha',
+      'alpha alpha',
+    ].join('\n');
+
+    const { docx } = await convertMdToDocx(md);
+    const rt = await convertDocx(docx);
+
+    expect(rt.markdown).toBe([
+      '> [!NOTE] alpha alpha',
+      '',
+      'alpha alpha',
+    ].join('\n'));
+  });
 
   it('round-trips blockquotes.md fixture', async () => {
     const md = readFileSync(join(repoRoot, 'test/fixtures/blockquotes.md'), 'utf-8');

@@ -1786,6 +1786,7 @@ export async function extractDocumentContent(
           let alertType: GfmAlertType | undefined;
           let isCodeBlock = false;
           let paraFormatting = currentFormatting;
+          let isSpacerParagraph = false;
 
           const paraChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
           for (const child of paraChildren) {
@@ -1807,7 +1808,8 @@ export async function extractDocumentContent(
                   const pBdrChildren = Array.isArray(pBdrNode['w:pBdr']) ? pBdrNode['w:pBdr'] : [pBdrNode['w:pBdr']];
                   const hasLeftBorder = pBdrChildren.some((c: any) => c['w:left'] !== undefined);
                   if (lineVal === '1' && lineRule === 'exact' && hasLeftBorder) {
-                    continue; // skip spacer paragraph entirely
+                    isSpacerParagraph = true;
+                    break;
                   }
                 }
               }
@@ -1826,16 +1828,27 @@ export async function extractDocumentContent(
               break;
             }
           }
+          if (isSpacerParagraph) {
+            continue; // skip spacer paragraph entirely
+          }
 
           // Always push a new para when heading/list/title/blockquote/codeblock metadata is present (so metadata
           // isn't silently dropped after empty paragraphs).  For plain paragraphs,
-          // push only when the previous item isn't already a para separator — except
-          // after a code-block para, where a plain para acts as a group boundary.
+          // push only when the previous item isn't already a plain para separator.
+          // If the previous para is structural (heading/list/title/blockquote/codeblock),
+          // we must push a new plain para to preserve paragraph boundaries.
           const prevItem = target.length > 0 ? target[target.length - 1] : undefined;
           const prevIsCodeBlockPara = prevItem?.type === 'para' && prevItem.isCodeBlock;
+          const prevIsStructuralPara = prevItem?.type === 'para' && (
+            prevItem.headingLevel !== undefined ||
+            prevItem.listMeta !== undefined ||
+            prevItem.isTitle === true ||
+            prevItem.blockquoteLevel !== undefined ||
+            prevItem.isCodeBlock === true
+          );
           const needsPara = inTableCell || (headingLevel || listMeta || isTitle || blockquoteLevel || isCodeBlock)
             ? true
-            : target.length > 0 && (prevItem!.type !== 'para' || prevIsCodeBlockPara);
+            : target.length > 0 && (prevItem!.type !== 'para' || prevIsCodeBlockPara || prevIsStructuralPara);
 
           if (needsPara) {
             const paraItem: ContentItem = { type: 'para' };
@@ -2682,11 +2695,12 @@ export function buildMarkdown(
         ) {
           // Non-blockquote empty para between blockquote groups: check if
           // the gap metadata indicates a direct blockquote-to-blockquote gap
-          // (>= 0).  If so, suppress this separator — the gap will be emitted
-          // when we reach the next blockquote para.  If the gap is -1 (non-
-          // blockquote content between groups), emit the default separator.
+          // (>= 0). Suppress only when the *next* para is a blockquote, so
+          // real content paragraphs are never swallowed by this optimization.
           const gapCount = blockquoteGaps.get(lastBlockquoteGroupIndex);
-          if (gapCount !== undefined && gapCount >= 0) {
+          const next = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
+          const nextIsBlockquotePara = next?.type === 'para' && !!next.blockquoteLevel;
+          if (gapCount !== undefined && gapCount >= 0 && nextIsBlockquotePara) {
             // Suppress — gap handled at next blockquote para transition
           } else {
             output.push('\n\n');

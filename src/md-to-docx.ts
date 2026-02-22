@@ -786,13 +786,52 @@ export function blockquoteGapProps(gaps: Map<number, number>): CustomPropEntry[]
 
 export function parseMd(markdown: string): MdToken[] {
   const md = createMarkdownIt();
-  const wrapped = wrapBareLatexEnvironments(markdown);
+  // Preserve explicit source semantics for blockquotes by disabling markdown-it
+  // lazy continuation behavior (where a non-`>` line can be absorbed into a
+  // preceding blockquote paragraph). For roundtrip fidelity we treat a missing
+  // `>` as a hard blockquote boundary.
+  const deLazified = deLazifyBlockquotes(markdown);
+  const wrapped = wrapBareLatexEnvironments(deLazified);
   const processed = preprocessCriticMarkup(wrapped);
   const tokens = md.parse(processed, {});
 
   const result = convertTokens(tokens);
   annotateBlockquoteBoundaries(result);
   return result;
+}
+
+function deLazifyBlockquotes(markdown: string): string {
+  const lines = markdown.split('\n');
+  const out: string[] = [];
+  let inBlockquoteRun = false;
+
+  for (const line of lines) {
+    const isBlank = line.trim() === '';
+    const isBlockquoteLine = /^ {0,3}>/.test(line);
+
+    if (isBlockquoteLine) {
+      inBlockquoteRun = true;
+      out.push(line);
+      continue;
+    }
+
+    if (isBlank) {
+      inBlockquoteRun = false;
+      out.push(line);
+      continue;
+    }
+
+    if (inBlockquoteRun) {
+      // Insert a blank line to end the previous blockquote before this
+      // non-blank, non-`>` line.
+      out.push('');
+      inBlockquoteRun = false;
+    }
+
+    out.push(line);
+  }
+
+  return out.join('\n');
 }
 
 function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; runs: MdRun[] } {
