@@ -1451,6 +1451,10 @@ const DEFAULT_HEADING_SIZES_HP: Record<string, number> = {
 const DEFAULT_CODE_BLOCK_HP = 20;
 // Uniform padding (horizontal indent + vertical spacing) for code blocks, in twips (~8pt / 0.11in)
 const CODE_BLOCK_INSET_TWIPS = 160;
+const DEFAULT_CODE_BACKGROUND = 'E8E8E8';
+const DEFAULT_CODE_COLOR = '2E2E2E';
+const DEFAULT_CODE_BORDER_SIZE = 48;
+const CODE_BORDER_SPACE = 8;
 
 export interface FontOverrides {
   bodyFont?: string;
@@ -1458,6 +1462,13 @@ export interface FontOverrides {
   bodySizeHp?: number;
   codeSizeHp?: number;
   headingSizesHp?: Map<string, number>;
+}
+
+export interface CodeBlockConfig {
+  background?: string;
+  insetMode: boolean;
+  codeFontColor?: string;
+  codeBlockInset?: number;
 }
 
 export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined {
@@ -1629,7 +1640,7 @@ export function applyFontOverridesToTemplate(
 
 
 
-export function stylesXml(overrides?: FontOverrides): string {
+export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlockConfig): string {
   // Helper: build w:rFonts element for a given font name
   function rFonts(font: string): string {
     return '<w:rFonts w:ascii="' + escapeXml(font) + '" w:hAnsi="' + escapeXml(font) + '"/>';
@@ -1663,13 +1674,29 @@ export function stylesXml(overrides?: FontOverrides): string {
   }
 
   // CodeChar: code font only (no size override for character style)
-  const codeCharRpr = '<w:rPr>' + codeFontStr + '</w:rPr>\n';
+  const isInsetMode = codeBlockConfig?.insetMode ?? false;
+  const codeBg = isInsetMode ? undefined : (codeBlockConfig?.background || DEFAULT_CODE_BACKGROUND);
+  const codeFontColor = codeBlockConfig?.codeFontColor || (isInsetMode ? undefined : DEFAULT_CODE_COLOR);
+  const codeBorderSize = isInsetMode ? undefined : (codeBlockConfig?.codeBlockInset || DEFAULT_CODE_BORDER_SIZE);
+  
+  let codeCharRprInner = codeFontStr;
+  if (codeBg) {
+    codeCharRprInner += '<w:shd w:val="clear" w:color="auto" w:fill="' + codeBg + '"/>';
+  }
+  if (codeFontColor) {
+    codeCharRprInner += '<w:color w:val="' + codeFontColor + '"/>';
+  }
+  const codeCharRpr = '<w:rPr>' + codeCharRprInner + '</w:rPr>\n';
 
   // CodeBlock: code font + code size (default 20hp)
   const codeBlockSz = overrides?.codeSizeHp
     ? szPair(overrides.codeSizeHp)
     : szPair(DEFAULT_CODE_BLOCK_HP);
-  const codeBlockRpr = '<w:rPr>' + codeFontStr + codeBlockSz + '</w:rPr>\n';
+  let codeBlockRprInner = codeFontStr + codeBlockSz;
+  if (codeFontColor) {
+    codeBlockRprInner += '<w:color w:val="' + codeFontColor + '"/>';
+  }
+  const codeBlockRpr = '<w:rPr>' + codeBlockRprInner + '</w:rPr>\n';
 
   // Title: body font + title size from heading map or default 56hp
   const titleSz = overrides?.headingSizesHp?.has('Title')
@@ -1696,6 +1723,21 @@ export function stylesXml(overrides?: FontOverrides): string {
 
   // IntenseQuote: body font + existing italic/color
   const intenseQuoteRpr = '<w:rPr><w:i/><w:color w:val="4472C4"/>' + bodyFontStr + '</w:rPr>\n';
+
+  // CodeBlock pPr: conditional inset vs shading mode
+  let codeBlockPPr: string;
+  if (isInsetMode) {
+    codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="' + CODE_BLOCK_INSET_TWIPS + '" w:right="' + CODE_BLOCK_INSET_TWIPS + '"/></w:pPr>\n';
+  } else {
+    codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/>' +
+      '<w:shd w:val="clear" w:color="auto" w:fill="' + codeBg + '"/>' +
+      '<w:pBdr>' +
+      '<w:top w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
+      '<w:bottom w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
+      '<w:left w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
+      '<w:right w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
+      '</w:pBdr></w:pPr>\n';
+  }
 
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">\n' +
@@ -1760,10 +1802,7 @@ export function stylesXml(overrides?: FontOverrides): string {
     '<w:style w:type="paragraph" w:styleId="CodeBlock">\n' +
     '<w:name w:val="Code Block"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    // Word paragraph shading (w:shd) does not extend into the indent/inset area (w:ind),
-    // a known OOXML limitation. Background color intentionally omitted to avoid an
-    // abrupt visual gap between the shaded text area and the paragraph border.
-    '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="' + CODE_BLOCK_INSET_TWIPS + '" w:right="' + CODE_BLOCK_INSET_TWIPS + '"/></w:pPr>\n' +
+    codeBlockPPr +
     codeBlockRpr +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Title">\n' +

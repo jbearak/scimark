@@ -1,11 +1,25 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import { parseFrontmatter, serializeFrontmatter, type Frontmatter } from './frontmatter';
+import { stylesXml, type CodeBlockConfig } from './md-to-docx';
 
 describe('Code Block Styling Property Tests', () => {
   const hexColorArb = fc.array(fc.constantFrom('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'), { minLength: 6, maxLength: 6 }).map(arr => arr.join(''));
   const codeBackgroundColorArb = fc.oneof(hexColorArb, fc.constant('none'), fc.constant('transparent'));
   const positiveIntArb = fc.integer({ min: 1, max: 200 });
+
+  function extractStyleBlock(xml: string, styleId: string): string | null {
+    let searchFrom = 0;
+    while (true) {
+      const idx = xml.indexOf('<w:style ', searchFrom);
+      if (idx === -1) return null;
+      const closeTag = xml.indexOf('</w:style>', idx);
+      if (closeTag === -1) return null;
+      const block = xml.substring(idx, closeTag + '</w:style>'.length);
+      if (block.includes('w:styleId="' + styleId + '"')) return block;
+      searchFrom = closeTag + '</w:style>'.length;
+    }
+  }
 
   it('Property 4: Frontmatter round-trip preservation', () => {
     fc.assert(fc.property(
@@ -31,12 +45,17 @@ describe('Code Block Styling Property Tests', () => {
 
   it('Property 5: Invalid frontmatter values are ignored', () => {
     const invalidBackgroundArb = fc.string({ minLength: 1, maxLength: 10 })
-      .filter(s => !/^[0-9A-Fa-f]{6}$/.test(s) && s !== 'none' && s !== 'transparent' && !s.includes(':') && !s.includes('\n'));
+      .filter(s => { const t = s.trim().replace(/^["']|["']$/g, ''); return !/^[0-9A-Fa-f]{6}$/.test(t) && t !== 'none' && t !== 'transparent' && !s.includes(':') && !s.includes('\n'); });
     const invalidColorArb = fc.string({ minLength: 1, maxLength: 10 })
-      .filter(s => !/^[0-9A-Fa-f]{6}$/.test(s) && !s.includes(':') && !s.includes('\n'));
+      .filter(s => { const t = s.trim().replace(/^["']|["']$/g, ''); return !/^[0-9A-Fa-f]{6}$/.test(t) && !s.includes(':') && !s.includes('\n'); });
     const invalidInsetArb = fc.oneof(
       fc.integer({ max: 0 }).map(String),
-      fc.string({ minLength: 1, maxLength: 10 }).filter(s => !/^\d+$/.test(s) && !s.includes(':') && !s.includes('\n'))
+      fc.string({ minLength: 1, maxLength: 10 }).filter(s => {
+        const t = s.trim().replace(/^["']|["']$/g, '');
+        const n = parseInt(t, 10);
+        const isValidPositiveInt = Number.isInteger(n) && n > 0 && t === String(n);
+        return !isValidPositiveInt && !s.includes(':') && !s.includes('\n');
+      })
     );
 
     fc.assert(fc.property(
@@ -67,6 +86,104 @@ describe('Code Block Styling Property Tests', () => {
         expect(serialized).toContain('code-font-color:');
         expect(serialized).not.toMatch(/code-background:\s/);
         expect(serialized).not.toMatch(/code-color:\s/);
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('Property 1: Shading mode style structure', () => {
+    fc.assert(fc.property(
+      hexColorArb,
+      positiveIntArb,
+      (color, inset) => {
+        const xml = stylesXml(undefined, { background: color, insetMode: false, codeBlockInset: inset });
+        const codeBlock = extractStyleBlock(xml, 'CodeBlock');
+        
+        expect(codeBlock).not.toBeNull();
+        expect(codeBlock!).toContain('w:shd');
+        expect(codeBlock!).toContain('w:fill="' + color + '"');
+        expect(codeBlock!).toContain('w:pBdr');
+        expect(codeBlock!).toContain('w:color="' + color + '"');
+        expect(codeBlock!).toContain('w:sz="' + inset + '"');
+        expect(codeBlock!).not.toContain('w:ind');
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('Property 2: Spacing invariant across modes', () => {
+    fc.assert(fc.property(
+      fc.boolean(),
+      (insetMode) => {
+        const config: CodeBlockConfig = { insetMode };
+        const xml = stylesXml(undefined, config);
+        const codeBlock = extractStyleBlock(xml, 'CodeBlock');
+        
+        expect(codeBlock).not.toBeNull();
+        expect(codeBlock!).toContain('w:spacing w:after="0" w:line="240" w:lineRule="auto"');
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('Property 3: Code font color in style run properties', () => {
+    fc.assert(fc.property(
+      hexColorArb,
+      (color) => {
+        const xml = stylesXml(undefined, { insetMode: false, codeFontColor: color });
+        const codeBlock = extractStyleBlock(xml, 'CodeBlock');
+        const codeChar = extractStyleBlock(xml, 'CodeChar');
+        
+        expect(codeBlock).not.toBeNull();
+        expect(codeChar).not.toBeNull();
+        expect(codeBlock!).toContain('w:color w:val="' + color + '"');
+        expect(codeChar!).toContain('w:color w:val="' + color + '"');
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('Property 8: Inline code shading in shading mode', () => {
+    fc.assert(fc.property(
+      hexColorArb,
+      (color) => {
+        const xml = stylesXml(undefined, { background: color, insetMode: false });
+        const codeChar = extractStyleBlock(xml, 'CodeChar');
+        
+        expect(codeChar).not.toBeNull();
+        expect(codeChar!).toContain('w:shd');
+        expect(codeChar!).toContain('w:fill="' + color + '"');
+        expect(codeChar!).toContain('w:type="character"');
+        expect(codeChar!).not.toContain('w:pPr');
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('Property 9: Inline code has no shading in inset mode', () => {
+    fc.assert(fc.property(
+      fc.constant(true),
+      () => {
+        const xml = stylesXml(undefined, { insetMode: true });
+        const codeChar = extractStyleBlock(xml, 'CodeChar');
+        
+        expect(codeChar).not.toBeNull();
+        expect(codeChar!).not.toContain('w:shd');
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('Property 10: code-block-inset does not affect inline code', () => {
+    fc.assert(fc.property(
+      positiveIntArb,
+      positiveIntArb,
+      hexColorArb,
+      (inset1, inset2, color) => {
+        fc.pre(inset1 !== inset2);
+        
+        const xml1 = stylesXml(undefined, { background: color, insetMode: false, codeBlockInset: inset1 });
+        const xml2 = stylesXml(undefined, { background: color, insetMode: false, codeBlockInset: inset2 });
+        const codeChar1 = extractStyleBlock(xml1, 'CodeChar');
+        const codeChar2 = extractStyleBlock(xml2, 'CodeChar');
+        
+        expect(codeChar1).not.toBeNull();
+        expect(codeChar2).not.toBeNull();
+        expect(codeChar1).toBe(codeChar2);
       }
     ), { numRuns: 100 });
   });
