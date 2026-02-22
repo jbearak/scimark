@@ -147,7 +147,7 @@ Manuscript Markdown supports CommonMark plus the implemented [GitHub Flavored Ma
 - **Blockquotes**: `> quoted text`
 - **Tables**: pipe-delimited with alignment support
 
-### GitHub-Flavored Markdown Extension Notes
+### GitHub Flavored Markdown Extension Notes
 
 - **Autolink literals** are enabled in parser and preview (for example, `https://example.com` is linkified without explicit `[]()` markup).
 - **Strikethrough** uses standard GitHub `~~text~~` behavior.

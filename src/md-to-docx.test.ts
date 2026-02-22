@@ -322,6 +322,40 @@ describe('generateParagraph', () => {
     expect(state.hasList).toBe(true);
   });
 
+  it('generates unchecked task list item with indent and checkbox prefix', () => {
+    const token: MdToken = {
+      type: 'list_item',
+      level: 1,
+      taskChecked: false,
+      runs: [{ type: 'text', text: 'todo item' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state);
+    expect(result).toBe(
+      '<w:p><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>' +
+      '<w:r><w:t xml:space="preserve">☐ </w:t></w:r>' +
+      '<w:r><w:t xml:space="preserve">todo item</w:t></w:r></w:p>'
+    );
+    expect(state.hasList).toBe(false);
+  });
+
+  it('generates checked task list item with indent and checkbox prefix', () => {
+    const token: MdToken = {
+      type: 'list_item',
+      level: 1,
+      taskChecked: true,
+      runs: [{ type: 'text', text: 'done item' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state);
+    expect(result).toBe(
+      '<w:p><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>' +
+      '<w:r><w:t xml:space="preserve">☒ </w:t></w:r>' +
+      '<w:r><w:t xml:space="preserve">done item</w:t></w:r></w:p>'
+    );
+    expect(state.hasList).toBe(false);
+  });
+
   it('generates blockquote', () => {
     const token: MdToken = {
       type: 'blockquote',
