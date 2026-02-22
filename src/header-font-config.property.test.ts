@@ -503,7 +503,7 @@ describe('Property 12: Template application preserves unmodified styles', () => 
       .filter(s => /^[a-z]+$/.test(s));
     fc.assert(fc.property(
       fontName,
-      fc.integer({ min: 1, max: 5 }),
+      fc.integer({ min: 1, max: 6 }),
       (newFont, headingIdx) => {
         const styleId = 'Heading' + headingIdx;
         const headingFonts = new Map<string, string>();

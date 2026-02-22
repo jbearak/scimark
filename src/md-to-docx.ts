@@ -2775,11 +2775,11 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
       if (fo) {
         let inner = '';
         const style = resolveAtIndex(fo.titleStyles, i);
-        if (style === 'normal') { /* no style elements */ }
-        else if (style) {
-          if (style.includes('bold')) inner += '<w:b/>';
-          if (style.includes('italic')) inner += '<w:i/>';
-          if (style.includes('underline')) inner += '<w:u w:val="single"/>';
+        if (style) {
+          // Explicitly enable or disable each toggle to override inherited Title style
+          inner += style.includes('bold') ? '<w:b/>' : '<w:b w:val="0"/>';
+          inner += style.includes('italic') ? '<w:i/>' : '<w:i w:val="0"/>';
+          inner += style.includes('underline') ? '<w:u w:val="single"/>' : '<w:u w:val="none"/>';
         }
         const font = resolveAtIndex(fo.titleFonts, i);
         if (font) inner += '<w:rFonts w:ascii="' + escapeXml(font) + '" w:hAnsi="' + escapeXml(font) + '"/>';
