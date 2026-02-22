@@ -2023,6 +2023,15 @@ function codeBlockLanguageProps(codeBlockLanguages: Map<number, string>): Custom
   return props;
 }
 
+function codeBlockStylingProps(fm: Frontmatter): CustomPropEntry[] {
+  const obj: Record<string, string> = {};
+  if (fm.codeBackgroundColor) obj.bg = fm.codeBackgroundColor;
+  if (fm.codeFontColor) obj.fc = fm.codeFontColor;
+  if (fm.codeBlockInset !== undefined) obj.inset = String(fm.codeBlockInset);
+  if (Object.keys(obj).length === 0) return [];
+  return [{ name: 'MANUSCRIPT_CODE_BLOCK_STYLING', value: JSON.stringify(obj) }];
+}
+
 function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
@@ -3011,6 +3020,7 @@ export async function convertMdToDocx(
   customProps.push(...commentIdMappingProps(state.commentIdMap));
   customProps.push(...footnoteIdMappingProps(state.footnoteLabelToId));
   customProps.push(...codeBlockLanguageProps(state.codeBlockLanguages));
+  customProps.push(...codeBlockStylingProps(frontmatter));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));

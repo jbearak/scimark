@@ -2,6 +2,8 @@ import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import { parseFrontmatter, serializeFrontmatter, type Frontmatter } from './frontmatter';
 import { stylesXml, type CodeBlockConfig, generateParagraph, type DocxGenState, type MdToken } from './md-to-docx';
+import { convertMdToDocx } from './md-to-docx';
+import { convertDocx } from './converter';
 
 describe('Code Block Styling Property Tests', () => {
   const hexColorArb = fc.array(fc.constantFrom('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'), { minLength: 6, maxLength: 6 }).map(arr => arr.join(''));
@@ -187,6 +189,74 @@ describe('Code Block Styling Property Tests', () => {
       }
     ), { numRuns: 100 });
   });
+
+describe('Code Block Styling Round-Trip Tests', () => {
+  it('preserves code-background-color through round-trip', async () => {
+    const md = '---\ncode-background-color: ADD8E6\n---\n\nHello\n\n```\ncode here\n```\n';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.codeBackgroundColor).toBe('ADD8E6');
+  });
+
+  it('preserves code-font-color through round-trip', async () => {
+    const md = '---\ncode-font-color: FF0000\n---\n\nHello\n\n```\ncode here\n```\n';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.codeFontColor).toBe('FF0000');
+  });
+
+  it('preserves code-block-inset through round-trip', async () => {
+    const md = '---\ncode-block-inset: 72\n---\n\nHello\n\n```\ncode here\n```\n';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.codeBlockInset).toBe(72);
+  });
+
+  it('does not emit code-background-color when absent', async () => {
+    const md = 'Hello\n\n```\ncode here\n```\n';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.codeBackgroundColor).toBeUndefined();
+  });
+
+  it('does not emit code-font-color when absent', async () => {
+    const md = 'Hello\n\n```\ncode here\n```\n';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.codeFontColor).toBeUndefined();
+  });
+
+  it('does not emit code-block-inset when absent', async () => {
+    const md = 'Hello\n\n```\ncode here\n```\n';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.codeBlockInset).toBeUndefined();
+  });
+
+  it('preserves all three fields together', async () => {
+    const md = '---\ncode-background-color: AABBCC\ncode-font-color: 112233\ncode-block-inset: 96\n---\n\nHello\n\n```\ncode\n```\n';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.codeBackgroundColor).toBe('AABBCC');
+    expect(metadata.codeFontColor).toBe('112233');
+    expect(metadata.codeBlockInset).toBe(96);
+  });
+
+  it('preserves none value for code-background-color', async () => {
+    const md = '---\ncode-background-color: none\n---\n\nHello\n\n```\ncode here\n```\n';
+    const { docx } = await convertMdToDocx(md);
+    const { markdown } = await convertDocx(docx);
+    const { metadata } = parseFrontmatter(markdown);
+    expect(metadata.codeBackgroundColor).toBe('none');
+  });
+});
 });
 function makeState(codeShadingMode: boolean): DocxGenState {
   return {

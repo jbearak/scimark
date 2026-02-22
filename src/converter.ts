@@ -810,6 +810,10 @@ export async function extractCodeBlockLanguageMapping(data: Uint8Array | JSZip):
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_CODE_BLOCK_LANGS');
 }
 
+export async function extractCodeBlockStyling(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_CODE_BLOCK_STYLING');
+}
+
 async function extractNotes(
   zip: JSZip,
   xmlPath: string,
@@ -2761,7 +2765,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -2770,6 +2774,7 @@ export async function convertDocx(
     extractFootnoteIdMapping(zip),
     extractCodeBlockLanguageMapping(zip),
     extractCommentThreads(zip),
+    extractCodeBlockStyling(zip),
   ]);
 
   // Group reply comments under their parents and get IDs to exclude from ranges
@@ -2894,6 +2899,14 @@ export async function convertDocx(
   const hasCommentDates = [...comments.values()].some(c => !!c.date);
   if (hasCommentDates) {
     fm.timezone = getLocalTimezoneOffset();
+  }
+  if (codeBlockStyling) {
+    const bg = codeBlockStyling.get('bg');
+    if (bg) fm.codeBackgroundColor = bg;
+    const fc = codeBlockStyling.get('fc');
+    if (fc) fm.codeFontColor = fc;
+    const insetStr = codeBlockStyling.get('inset');
+    if (insetStr) { const n = parseInt(insetStr, 10); if (n > 0) fm.codeBlockInset = n; }
   }
   const frontmatterStr = serializeFrontmatter(fm);
   if (frontmatterStr) {
