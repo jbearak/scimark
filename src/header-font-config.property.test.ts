@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import { parseInlineArray, normalizeFontStyle, parseFrontmatter, serializeFrontmatter, type Frontmatter } from './frontmatter';
+import { resolveAtIndex, resolveFontOverrides } from './md-to-docx';
 
 // Feature: header-font-config, Property 1: Inline array parsing equivalence
 describe('Property 1: Inline array parsing equivalence', () => {
@@ -258,6 +259,108 @@ describe('Property 8: Parse-serialize-parse round-trip', () => {
         const { metadata } = parseFrontmatter(yaml + '\nBody.');
         expect(metadata.headerFontSize).toEqual(hSizes);
         expect(metadata.titleFontSize).toEqual(tSizes);
+      }
+    ), { numRuns: 100 });
+  });
+});
+
+// Feature: header-font-config, Property 6: Array inheritance resolution
+describe('Property 6: Array inheritance resolution', () => {
+  it('returns arr[i] when i < length, arr[last] when i >= length', () => {
+    fc.assert(fc.property(
+      fc.array(fc.integer({ min: 1, max: 100 }), { minLength: 1, maxLength: 8 }),
+      fc.integer({ min: 0, max: 7 }),
+      (arr, idx) => {
+        const result = resolveAtIndex(arr, idx);
+        if (idx < arr.length) {
+          expect(result).toBe(arr[idx]);
+        } else {
+          expect(result).toBe(arr[arr.length - 1]);
+        }
+      }
+    ), { numRuns: 200 });
+  });
+
+  it('returns undefined for empty or undefined arrays', () => {
+    expect(resolveAtIndex(undefined, 0)).toBeUndefined();
+    expect(resolveAtIndex([], 0)).toBeUndefined();
+  });
+});
+
+// Feature: header-font-config, Property 9: Font fallback to body font
+describe('Property 9: Font fallback to body font', () => {
+  it('heading levels use font value when headerFont is undefined', () => {
+    const fontName = fc.string({ minLength: 1, maxLength: 10 }).filter(s => /^[a-z]+$/.test(s));
+    fc.assert(fc.property(fontName, (font) => {
+      const fm: Frontmatter = { font };
+      const overrides = resolveFontOverrides(fm);
+      expect(overrides).toBeDefined();
+      if (overrides?.headingFonts) {
+        for (const [, f] of overrides.headingFonts) {
+          expect(f).toBe(font);
+        }
+      }
+    }), { numRuns: 100 });
+  });
+
+  it('title uses font value when titleFont is undefined', () => {
+    const fm: Frontmatter = { font: 'Georgia' };
+    const overrides = resolveFontOverrides(fm);
+    expect(overrides?.titleFonts).toEqual(['Georgia']);
+  });
+});
+
+// Feature: header-font-config, Property 10: header-font-size takes precedence over proportional scaling
+describe('Property 10: header-font-size takes precedence over proportional scaling', () => {
+  it('explicit headerFontSize overrides proportional scaling from fontSize', () => {
+    fc.assert(fc.property(
+      fc.integer({ min: 8, max: 30 }),
+      fc.array(fc.integer({ min: 8, max: 72 }), { minLength: 1, maxLength: 6 }),
+      (bodySize, headerSizes) => {
+        const fm: Frontmatter = { fontSize: bodySize, headerFontSize: headerSizes };
+        const overrides = resolveFontOverrides(fm);
+        expect(overrides).toBeDefined();
+        const ids = ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6'];
+        for (let i = 0; i < 6; i++) {
+          const expected = resolveAtIndex(headerSizes, i);
+          if (expected !== undefined) {
+            expect(overrides!.headingSizesHp!.get(ids[i])).toBe(Math.round(expected * 2));
+          }
+        }
+      }
+    ), { numRuns: 100 });
+  });
+});
+
+// Feature: header-font-config, Property 13: Backward compatibility of existing font fields
+describe('Property 13: Backward compatibility of existing font fields', () => {
+  it('produces identical results when only pre-existing fields are set', () => {
+    const fontName = fc.string({ minLength: 1, maxLength: 10 }).filter(s => /^[a-z]+$/.test(s));
+    fc.assert(fc.property(
+      fc.option(fontName, { nil: undefined }),
+      fc.option(fontName, { nil: undefined }),
+      fc.option(fc.integer({ min: 8, max: 30 }), { nil: undefined }),
+      fc.option(fc.integer({ min: 6, max: 20 }), { nil: undefined }),
+      (font, codeFont, fontSize, codeFontSize) => {
+        const fm: Frontmatter = {};
+        if (font) fm.font = font;
+        if (codeFont) fm.codeFont = codeFont;
+        if (fontSize !== undefined) fm.fontSize = fontSize;
+        if (codeFontSize !== undefined) fm.codeFontSize = codeFontSize;
+        const overrides = resolveFontOverrides(fm);
+        if (!font && !codeFont && fontSize === undefined && codeFontSize === undefined) {
+          expect(overrides).toBeUndefined();
+          return;
+        }
+        expect(overrides).toBeDefined();
+        if (font) expect(overrides!.bodyFont).toBe(font);
+        if (codeFont) expect(overrides!.codeFont).toBe(codeFont);
+        if (fontSize !== undefined) {
+          expect(overrides!.bodySizeHp).toBe(Math.round(fontSize * 2));
+        }
+        if (codeFontSize !== undefined) {
+          expect(overrides!.codeSizeHp).toBe(Math.round(codeFontSize * 2));
+        }
       }
     ), { numRuns: 100 });
   });

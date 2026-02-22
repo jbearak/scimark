@@ -1458,11 +1458,24 @@ export interface FontOverrides {
   bodySizeHp?: number;
   codeSizeHp?: number;
   headingSizesHp?: Map<string, number>;
+  headingFonts?: Map<string, string>;
+  headingStyles?: Map<string, string>;
+  titleFonts?: string[];
+  titleSizesHp?: number[];
+  titleStyles?: string[];
+}
+
+/** Resolve value at index with Array_Inheritance: use arr[i] if i < length, else arr[last]. */
+export function resolveAtIndex<T>(arr: T[] | undefined, index: number): T | undefined {
+  if (!arr || arr.length === 0) return undefined;
+  return index < arr.length ? arr[index] : arr[arr.length - 1];
 }
 
 export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined {
   const hasAnyField = !!fm.font || !!fm.codeFont ||
-    fm.fontSize !== undefined || fm.codeFontSize !== undefined;
+    fm.fontSize !== undefined || fm.codeFontSize !== undefined ||
+    !!fm.headerFont || !!fm.headerFontSize || !!fm.headerFontStyle ||
+    !!fm.titleFont || !!fm.titleFontSize || !!fm.titleFontStyle;
   if (!hasAnyField) return undefined;
 
   const overrides: FontOverrides = {};
@@ -1493,6 +1506,48 @@ export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined
 
   if (fm.codeFontSize !== undefined) {
     overrides.codeSizeHp = Math.round(fm.codeFontSize * 2);
+  }
+
+  // Per-heading font overrides
+  const HEADING_IDS = ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6'];
+  if (fm.headerFont || fm.font) {
+    const headingFonts = new Map<string, string>();
+    for (let i = 0; i < 6; i++) {
+      const font = resolveAtIndex(fm.headerFont, i) ?? fm.font;
+      if (font) headingFonts.set(HEADING_IDS[i], font);
+    }
+    if (headingFonts.size > 0) overrides.headingFonts = headingFonts;
+  }
+
+  // Per-heading style overrides
+  if (fm.headerFontStyle) {
+    const headingStyles = new Map<string, string>();
+    for (let i = 0; i < 6; i++) {
+      const style = resolveAtIndex(fm.headerFontStyle, i);
+      if (style) headingStyles.set(HEADING_IDS[i], style);
+    }
+    if (headingStyles.size > 0) overrides.headingStyles = headingStyles;
+  }
+
+  // Per-heading explicit size overrides (take precedence over proportional scaling)
+  if (fm.headerFontSize) {
+    if (!overrides.headingSizesHp) overrides.headingSizesHp = new Map<string, number>();
+    for (let i = 0; i < 6; i++) {
+      const size = resolveAtIndex(fm.headerFontSize, i);
+      if (size !== undefined) overrides.headingSizesHp.set(HEADING_IDS[i], Math.round(size * 2));
+    }
+  }
+
+  // Title font overrides
+  if (fm.titleFont || fm.font) {
+    const arr = fm.titleFont ?? (fm.font ? [fm.font] : undefined);
+    if (arr) overrides.titleFonts = arr;
+  }
+  if (fm.titleFontSize) {
+    overrides.titleSizesHp = fm.titleFontSize.map(s => Math.round(s * 2));
+  }
+  if (fm.titleFontStyle) {
+    overrides.titleStyles = fm.titleFontStyle;
   }
 
   return overrides;
