@@ -2060,3 +2060,263 @@ describe('Comment association in preview', () => {
     });
   });
 });
+
+// Bugfix spec: comment-whitespace
+// Property 1: Fault Condition — Whitespace-Separated Comment Association
+// **Validates: Requirements 1.1, 1.2, 1.3, 2.1, 2.2, 2.3**
+describe('Property 1: Whitespace-Separated Comment Association (Bug Condition Exploration)', () => {
+  // CriticMarkup element definitions: syntax wrappers and the HTML tag they produce
+  const elementTypes = [
+    { name: 'highlight',        open: '{==', close: '==}', tag: 'mark' },
+    { name: 'addition',         open: '{++', close: '++}', tag: 'ins'  },
+    { name: 'deletion',         open: '{--', close: '--}', tag: 'del'  },
+    { name: 'substitution',     open: '{~~', close: '~~}', tag: 'del'  },
+    { name: 'format highlight', open: '==',  close: '==',  tag: 'mark' },
+  ];
+
+  // Generator: pick a random element type
+  const elementTypeArb = fc.constantFrom(...elementTypes);
+
+  // Generator: whitespace string (spaces/tabs, 1-5 chars)
+  const whitespaceArb = fc.array(
+    fc.constantFrom(' ', '\t'),
+    { minLength: 1, maxLength: 5 }
+  ).map(arr => arr.join(''));
+
+  // Generator: comment text — short, safe, non-empty alphanumeric
+  const commentTextArb = fc.string({ minLength: 1, maxLength: 10 }).filter(
+    s => /^[a-zA-Z0-9 ]+$/.test(s) && s.trim().length > 0
+  );
+
+  it('should associate comment with preceding CriticMarkup element when separated by whitespace', () => {
+    fc.assert(
+      fc.property(
+        elementTypeArb,
+        whitespaceArb,
+        commentTextArb,
+        (elemType, ws, commentText) => {
+          const md = new MarkdownIt();
+          md.use(manuscriptMarkdownPlugin);
+
+          // Build input: element + whitespace + comment
+          // For substitution, use {~~old~>new~~} form
+          let input: string;
+          if (elemType.name === 'substitution') {
+            input = elemType.open + 'old~>new' + elemType.close + ws + '{>>' + commentText + '<<}';
+          } else {
+            input = elemType.open + 'text' + elemType.close + ws + '{>>' + commentText + '<<}';
+          }
+
+          const output = md.render(input);
+
+          // Expected: data-comment attribute appears on the element's open tag
+          expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+          // Expected: comment should NOT render as a standalone indicator
+          expect(output).not.toContain('manuscript-markdown-comment-indicator');
+        }
+      ),
+      { numRuns: 50 }
+    );
+  });
+});
+
+
+// Bugfix spec: comment-whitespace
+// Property 2: Preservation — Non-Whitespace-Separated Behavior
+// **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6**
+describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () => {
+
+  // CriticMarkup element definitions reused across sub-properties
+  const elementTypes = [
+    { name: 'highlight',        open: '{==', close: '==}', tag: 'mark',  cssClass: 'manuscript-markdown-highlight' },
+    { name: 'addition',         open: '{++', close: '++}', tag: 'ins',   cssClass: 'manuscript-markdown-addition' },
+    { name: 'deletion',         open: '{--', close: '--}', tag: 'del',   cssClass: 'manuscript-markdown-deletion' },
+    { name: 'substitution',     open: '{~~', close: '~~}', tag: 'span',  cssClass: 'manuscript-markdown-substitution' },
+    { name: 'format highlight', open: '==',  close: '==',  tag: 'mark',  cssClass: 'manuscript-markdown-format-highlight' },
+  ];
+
+  const elementTypeArb = fc.constantFrom(...elementTypes);
+
+  // Generator: safe comment text — short alphanumeric, non-empty
+  const commentTextArb = fc.stringMatching(/^[a-zA-Z0-9]+$/).filter(
+    s => s.length >= 1 && s.length <= 10
+  );
+
+  // Generator: non-whitespace separator text (letters/digits only, no CriticMarkup chars)
+  const nonWsSeparatorArb = fc.stringMatching(/^[a-zA-Z0-9]+$/).filter(
+    s => s.length >= 1 && s.length <= 10
+  );
+
+  // Helper: build element input string
+  function buildElementInput(elemType: typeof elementTypes[number]): string {
+    if (elemType.name === 'substitution') {
+      return elemType.open + 'old~>new' + elemType.close;
+    }
+    return elemType.open + 'text' + elemType.close;
+  }
+
+  // --- Sub-property: Direct adjacency association (Req 3.1) ---
+  // Observed: {==text==}{>>comment<<} → data-comment="comment" on <mark>, no standalone indicator
+  describe('Direct adjacency association', () => {
+    it('should set data-comment on element tag when comment is directly adjacent', () => {
+      fc.assert(
+        fc.property(
+          elementTypeArb,
+          commentTextArb,
+          (elemType, commentText) => {
+            const md = new MarkdownIt();
+            md.use(manuscriptMarkdownPlugin);
+
+            const input = buildElementInput(elemType) + '{>>' + commentText + '<<}';
+            const output = md.render(input);
+
+            // Observed: data-comment attribute is set on the element
+            expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+            // Observed: no standalone indicator
+            expect(output).not.toContain('manuscript-markdown-comment-indicator');
+            // Observed: element CSS class is present
+            expect(output).toContain(elemType.cssClass);
+          }
+        ),
+        { numRuns: 50 }
+      );
+    });
+  });
+
+  // --- Sub-property: Non-whitespace separation renders standalone indicator (Req 3.2) ---
+  // Observed: {==text==}some text{>>comment<<} → comment as standalone indicator
+  describe('Non-whitespace separation renders standalone indicator', () => {
+    it('should render comment as standalone indicator when non-whitespace text separates it from element', () => {
+      fc.assert(
+        fc.property(
+          elementTypeArb,
+          nonWsSeparatorArb,
+          commentTextArb,
+          (elemType, separator, commentText) => {
+            const md = new MarkdownIt();
+            md.use(manuscriptMarkdownPlugin);
+
+            const input = buildElementInput(elemType) + separator + '{>>' + commentText + '<<}';
+            const output = md.render(input);
+
+            // Observed: comment renders as standalone indicator
+            expect(output).toContain('manuscript-markdown-comment-indicator');
+            expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+          }
+        ),
+        { numRuns: 50 }
+      );
+    });
+  });
+
+  // --- Sub-property: Standalone comment with no preceding element (Req 3.3) ---
+  // Observed: {>>standalone<<} → <span class="manuscript-markdown-comment-indicator" data-comment="standalone">
+  describe('Standalone comment with no preceding element', () => {
+    it('should render comment as indicator when no CriticMarkup element precedes it', () => {
+      fc.assert(
+        fc.property(
+          commentTextArb,
+          (commentText) => {
+            const md = new MarkdownIt();
+            md.use(manuscriptMarkdownPlugin);
+
+            const input = '{>>' + commentText + '<<}';
+            const output = md.render(input);
+
+            // Observed: renders as standalone indicator
+            expect(output).toContain('manuscript-markdown-comment-indicator');
+            expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+          }
+        ),
+        { numRuns: 50 }
+      );
+    });
+
+    it('should render comment as indicator when preceded only by plain text', () => {
+      fc.assert(
+        fc.property(
+          nonWsSeparatorArb,
+          commentTextArb,
+          (plainText, commentText) => {
+            const md = new MarkdownIt();
+            md.use(manuscriptMarkdownPlugin);
+
+            const input = plainText + ' {>>' + commentText + '<<}';
+            const output = md.render(input);
+
+            // Observed: renders as standalone indicator (plain text is not a CriticMarkup element)
+            expect(output).toContain('manuscript-markdown-comment-indicator');
+            expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+          }
+        ),
+        { numRuns: 50 }
+      );
+    });
+  });
+
+  // --- Sub-property: Empty comment removal (Req 3.5) ---
+  // Observed: {>><<} → removed silently, no comment markup at all
+  describe('Empty comment removal', () => {
+    it('should silently remove empty comments', () => {
+      const md = new MarkdownIt();
+      md.use(manuscriptMarkdownPlugin);
+
+      const output = md.render('{>><<}');
+      // Observed: no comment indicator, no data-comment attribute
+      expect(output).not.toContain('manuscript-markdown-comment');
+      expect(output).not.toContain('data-comment');
+      expect(output).toBe('<p></p>\n');
+    });
+
+    it('should silently remove empty comment adjacent to element without affecting element', () => {
+      fc.assert(
+        fc.property(
+          elementTypeArb,
+          (elemType) => {
+            const md = new MarkdownIt();
+            md.use(manuscriptMarkdownPlugin);
+
+            const input = buildElementInput(elemType) + '{>><<}';
+            const output = md.render(input);
+
+            // Observed: element renders normally, no comment association
+            expect(output).toContain(elemType.cssClass);
+            expect(output).not.toContain('data-comment');
+            expect(output).not.toContain('manuscript-markdown-comment-indicator');
+          }
+        ),
+        { numRuns: 50 }
+      );
+    });
+  });
+
+  // --- Sub-property: Multiple comment concatenation (Req 3.6) ---
+  // Observed: {==text==}{>>a<<}{>>b<<} → data-comment="a\nb" on element
+  describe('Multiple comment concatenation', () => {
+    it('should concatenate multiple adjacent comments with newline in data-comment', () => {
+      fc.assert(
+        fc.property(
+          elementTypeArb,
+          commentTextArb,
+          commentTextArb,
+          (elemType, commentA, commentB) => {
+            const md = new MarkdownIt();
+            md.use(manuscriptMarkdownPlugin);
+
+            const input = buildElementInput(elemType) + '{>>' + commentA + '<<}{>>' + commentB + '<<}';
+            const output = md.render(input);
+
+            // Observed: both comments concatenated with newline on the element
+            const expectedAttr = 'data-comment="' + escapeHtml(commentA) + '\n' + escapeHtml(commentB) + '"';
+            expect(output).toContain(expectedAttr);
+            // Observed: no standalone indicator
+            expect(output).not.toContain('manuscript-markdown-comment-indicator');
+            // Observed: element CSS class present
+            expect(output).toContain(elemType.cssClass);
+          }
+        ),
+        { numRuns: 50 }
+      );
+    });
+  });
+});

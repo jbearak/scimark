@@ -584,10 +584,14 @@ function associateCommentsRule(state: any): void {
           continue;
         }
 
-        // Check for adjacent CriticMarkup close token
-        const prevToken = newChildren.length > 0 ? newChildren[newChildren.length - 1] : null;
-        if (prevToken && isCriticMarkupClose(prevToken.type)) {
-          const openIdx = findMatchingOpenIdx(newChildren, newChildren.length - 1);
+        // Check for adjacent CriticMarkup close token, skipping whitespace-only text tokens
+        let candidateIdx = newChildren.length - 1;
+        while (candidateIdx >= 0 && newChildren[candidateIdx].type === 'text' && /^\s+$/.test(newChildren[candidateIdx].content)) {
+          candidateIdx--;
+        }
+        const candidateToken = candidateIdx >= 0 ? newChildren[candidateIdx] : null;
+        if (candidateToken && isCriticMarkupClose(candidateToken.type)) {
+          const openIdx = findMatchingOpenIdx(newChildren, candidateIdx);
           if (openIdx !== -1) {
             const openToken = newChildren[openIdx];
             const existing = openToken.attrGet('data-comment');
