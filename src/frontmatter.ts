@@ -156,6 +156,40 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
         if (isFinite(n) && n > 0) metadata.codeFontSize = n;
         break;
       }
+      case 'header-font':
+        if (value) metadata.headerFont = parseInlineArray(value);
+        break;
+      case 'header-font-size': {
+        const arr = parseInlineArray(value).map(s => parseFloat(s)).filter(n => isFinite(n) && n > 0);
+        if (arr.length > 0) metadata.headerFontSize = arr;
+        break;
+      }
+      case 'header-font-style': {
+        const arr = parseInlineArray(value).map(s => normalizeFontStyle(s)).filter((s): s is string => s !== undefined);
+        if (arr.length > 0) metadata.headerFontStyle = arr;
+        break;
+      }
+      case 'title-font':
+        if (value) metadata.titleFont = parseInlineArray(value);
+        break;
+      case 'title-font-size': {
+        const arr = parseInlineArray(value).map(s => parseFloat(s)).filter(n => isFinite(n) && n > 0);
+        if (arr.length > 0) metadata.titleFontSize = arr;
+        break;
+      }
+      case 'title-font-style': {
+        const arr = parseInlineArray(value).map(s => normalizeFontStyle(s)).filter((s): s is string => s !== undefined);
+        if (arr.length > 0) metadata.titleFontStyle = arr;
+        break;
+      }
+    }
+  }
+
+  // Title inline array: if exactly one title entry looks like [v1, v2, ...], expand it
+  if (metadata.title && metadata.title.length === 1) {
+    const t = metadata.title[0];
+    if (t.startsWith('[') && t.endsWith(']')) {
+      metadata.title = parseInlineArray(t);
     }
   }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
-import { parseInlineArray, normalizeFontStyle } from './frontmatter';
+import { parseInlineArray, normalizeFontStyle, parseFrontmatter } from './frontmatter';
 
 // Feature: header-font-config, Property 1: Inline array parsing equivalence
 describe('Property 1: Inline array parsing equivalence', () => {
@@ -90,5 +90,66 @@ describe('Property 3: Invalid font styles are rejected', () => {
   it('rejects empty and whitespace-only strings', () => {
     expect(normalizeFontStyle('')).toBeUndefined();
     expect(normalizeFontStyle('  ')).toBeUndefined();
+  });
+});
+
+// Feature: header-font-config, Property 4: Invalid font sizes are filtered
+describe('Property 4: Invalid font sizes are filtered', () => {
+  it('only valid positive finite numbers survive parsing', () => {
+    const validNum = fc.double({ min: 0.5, max: 200, noNaN: true, noDefaultInfinity: true });
+    const invalidStr = fc.constantFrom('abc', '-5', '0', 'NaN', 'Infinity', '', '-Infinity', '0.0');
+    fc.assert(fc.property(
+      fc.array(fc.oneof(validNum.map(n => String(n)), invalidStr), { minLength: 1, maxLength: 6 }),
+      (values) => {
+        const yaml = '---\nheader-font-size: [' + values.join(', ') + ']\n---\n\nBody.';
+        const { metadata } = parseFrontmatter(yaml);
+        if (metadata.headerFontSize) {
+          for (const n of metadata.headerFontSize) {
+            expect(n).toBeGreaterThan(0);
+            expect(isFinite(n)).toBe(true);
+          }
+        }
+        // Also test title-font-size
+        const yaml2 = '---\ntitle-font-size: [' + values.join(', ') + ']\n---\n\nBody.';
+        const { metadata: m2 } = parseFrontmatter(yaml2);
+        if (m2.titleFontSize) {
+          for (const n of m2.titleFontSize) {
+            expect(n).toBeGreaterThan(0);
+            expect(isFinite(n)).toBe(true);
+          }
+        }
+      }
+    ), { numRuns: 150 });
+  });
+});
+
+// Feature: header-font-config, Property 5: Repeated keys use last occurrence
+describe('Property 5: Repeated keys use last occurrence', () => {
+  it('last header-font value wins on repeated keys', () => {
+    const fontName = fc.string({ minLength: 1, maxLength: 10 })
+      .filter(s => /^[a-z]+$/.test(s));
+    fc.assert(fc.property(
+      fc.array(fontName, { minLength: 2, maxLength: 4 }),
+      (fonts) => {
+        const lines = fonts.map(f => 'header-font: ' + f);
+        const yaml = '---\n' + lines.join('\n') + '\n---\n\nBody.';
+        const { metadata } = parseFrontmatter(yaml);
+        expect(metadata.headerFont).toEqual([fonts[fonts.length - 1]]);
+      }
+    ), { numRuns: 100 });
+  });
+
+  it('last header-font-style value wins on repeated keys', () => {
+    const styles = ['bold', 'italic', 'underline', 'normal', 'bold-italic'];
+    fc.assert(fc.property(
+      fc.array(fc.constantFrom(...styles), { minLength: 2, maxLength: 4 }),
+      (vals) => {
+        const lines = vals.map(v => 'header-font-style: ' + v);
+        const yaml = '---\n' + lines.join('\n') + '\n---\n\nBody.';
+        const { metadata } = parseFrontmatter(yaml);
+        const expected = normalizeFontStyle(vals[vals.length - 1]);
+        expect(metadata.headerFontStyle).toEqual(expected ? [expected] : undefined);
+      }
+    ), { numRuns: 100 });
   });
 });
