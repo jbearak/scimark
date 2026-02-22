@@ -76,6 +76,9 @@ export interface Frontmatter {
   titleFont?: string[];
   titleFontSize?: number[];
   titleFontStyle?: string[];
+  codeBackgroundColor?: string;
+  codeFontColor?: string;
+  codeBlockInset?: number;
 }
 
 /**
@@ -182,6 +185,27 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
         if (arr.length > 0) metadata.titleFontStyle = arr;
         break;
       }
+      case 'code-background-color':
+      case 'code-background': {
+        if (/^[0-9A-Fa-f]{6}$/.test(value) || value === 'none' || value === 'transparent') {
+          metadata.codeBackgroundColor = value;
+        }
+        break;
+      }
+      case 'code-font-color':
+      case 'code-color': {
+        if (/^[0-9A-Fa-f]{6}$/.test(value)) {
+          metadata.codeFontColor = value;
+        }
+        break;
+      }
+      case 'code-block-inset': {
+        const n = parseInt(value, 10);
+        if (Number.isInteger(n) && n > 0 && value.trim() === String(n)) {
+          metadata.codeBlockInset = n;
+        }
+        break;
+      }
     }
   }
 
@@ -218,6 +242,9 @@ export function serializeFrontmatter(metadata: Frontmatter): string {
   if (metadata.codeFont) lines.push('code-font: ' + metadata.codeFont);
   if (metadata.fontSize !== undefined) lines.push('font-size: ' + metadata.fontSize);
   if (metadata.codeFontSize !== undefined) lines.push('code-font-size: ' + metadata.codeFontSize);
+  if (metadata.codeBackgroundColor) lines.push('code-background-color: ' + metadata.codeBackgroundColor);
+  if (metadata.codeFontColor) lines.push('code-font-color: ' + metadata.codeFontColor);
+  if (metadata.codeBlockInset !== undefined) lines.push('code-block-inset: ' + metadata.codeBlockInset);
   if (lines.length === 0) return '';
   return '---\n' + lines.join('\n') + '\n---\n';
 }
