@@ -1677,10 +1677,10 @@ export function applyFontOverridesToTemplate(
 
       // Apply font-style overrides (bold, italic, underline) for headings and title
       if (fontStyleOverride !== undefined) {
-        // Remove existing b, i, u elements
-        rPrContent = rPrContent.replace(/<w:b\/>/g, '');
-        rPrContent = rPrContent.replace(/<w:i\/>/g, '');
-        rPrContent = rPrContent.replace(/<w:u\b[^/]*\/>/g, '');
+        // Remove existing b, i, u elements (all toggle forms: self-closing, with attributes, open+close)
+        rPrContent = rPrContent.replace(/<w:b\b[^>]*(?:\/>|><\/w:b>)/g, '');
+        rPrContent = rPrContent.replace(/<w:i\b[^>]*(?:\/>|><\/w:i>)/g, '');
+        rPrContent = rPrContent.replace(/<w:u\b[^>]*(?:\/>|><\/w:u>)/g, '');
         // Add new style elements at the start
         let styleEls = '';
         if (fontStyleOverride !== 'normal') {

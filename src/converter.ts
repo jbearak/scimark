@@ -2862,16 +2862,17 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
   }
 
   // headerFontSize: emit if any heading size differs from default
+  // Fill undefined entries with defaults to preserve positional alignment
   if (sizes.some((s, i) => s !== undefined && s !== defaultHp[ids[i]])) {
-    const ptSizes = sizes.map(s => s !== undefined ? s / 2 : undefined);
-    const valid = ptSizes.filter((s): s is number => s !== undefined);
-    if (valid.length > 0) result.headerFontSize = trimTrailing(valid);
+    const ptSizes = sizes.map((s, i) => (s !== undefined ? s : defaultHp[ids[i]]) / 2);
+    result.headerFontSize = trimTrailing(ptSizes);
   }
 
   // headerFontStyle: emit if any heading style differs from default (bold)
+  // Fill undefined entries with 'bold' (default heading style) to preserve positional alignment
   if (styles.some(s => s !== undefined && s !== 'bold')) {
-    const valid = styles.filter((s): s is string => s !== undefined);
-    if (valid.length > 0) result.headerFontStyle = trimTrailing(valid);
+    const filled = styles.map(s => s !== undefined ? s : 'bold');
+    result.headerFontStyle = trimTrailing(filled);
   }
 
   // Title extraction

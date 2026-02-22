@@ -38,7 +38,6 @@ describe('Property 2: Font style normalization is canonical and idempotent', () 
   it('normalizes any permutation to canonical order and is idempotent', () => {
     fc.assert(fc.property(
       fc.subarray(ALL_PARTS, { minLength: 1, maxLength: 3 }),
-      fc.shuffledSubarray(ALL_PARTS, { minLength: 0, maxLength: 0 }), // dummy to get shuffling
       (subset) => {
         // Generate all permutations of subset
         const permute = (a: string[]): string[][] => {
