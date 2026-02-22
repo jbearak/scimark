@@ -43,6 +43,9 @@ The frontmatter may also include citation-related fields (`csl`, `locale`, `zote
 | `code-font` | Monospace font family for code styles. Default: Consolas. |
 | `font-size` | Body font size in points. Default: 11. |
 | `code-font-size` | Code font size in points. Default: 10. When `font-size` is specified without `code-font-size`, the code font size is automatically set to 1pt less than the body font size, preserving the default size difference. |
+| `code-background-color` | Code block and inline code background color. A 6-digit hex value (e.g., `E8E8E8`) enables shading mode; `none` or `transparent` falls back to indentation-based inset mode. Default: `E8E8E8` (shading mode). Alias: `code-background`. |
+| `code-font-color` | Code block and inline code text color. A 6-digit hex value (e.g., `2E2E2E`). Default: `2E2E2E`. Alias: `code-color`. |
+| `code-block-inset` | Border width for code blocks in shading mode, in eighths of a point (`w:sz`). A positive integer. Default: `48`. Does not affect inline code. |
 
 ### Font Customization Example
 
@@ -52,6 +55,24 @@ font: Georgia
 code-font: Fira Code
 font-size: 12
 code-font-size: 10
+---
+```
+
+### Code Block Styling Example
+
+```yaml
+---
+code-background-color: E8E8E8
+code-font-color: 2E2E2E
+code-block-inset: 48
+---
+```
+
+To disable the colored background and use indentation-based inset mode:
+
+```yaml
+---
+code-background-color: none
 ---
 ```
 
