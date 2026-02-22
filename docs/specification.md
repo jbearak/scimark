@@ -65,7 +65,7 @@ Two equivalent syntaxes are available for specifying multiple values:
 **Bare comma-separated** (simpler, more casual):
 ```yaml
 ---
-header-font: Georgia, Arial, Helvetica
+header-font: Georgia, Palatino, Helvetica
 header-font-size: 24, 20, 16
 header-font-style: bold-italic, bold, normal
 ---
@@ -74,7 +74,7 @@ header-font-style: bold-italic, bold, normal
 **YAML inline array** (more formal):
 ```yaml
 ---
-header-font: [Georgia, Arial, Helvetica]
+header-font: [Georgia, Palatino, Helvetica]
 header-font-size: [24, 20, 16]
 header-font-style: [bold-italic, bold, normal]
 ---
@@ -82,7 +82,7 @@ header-font-style: [bold-italic, bold, normal]
 
 Both syntaxes are equivalent and produce identical results.
 
-When an array has fewer than six elements, deeper heading levels inherit the last specified value. For example, `header-font: Georgia, Arial` sets H1 to Georgia and H2–H6 to Arial.
+When an array has fewer than six elements, deeper heading levels inherit the last specified value. For example, `header-font: Georgia, Palatino` sets H1 to Georgia and H2–H6 to Palatino.
 
 Title font fields work the same way, with array elements mapping to title paragraphs by position:
 
@@ -90,7 +90,7 @@ Title font fields work the same way, with array elements mapping to title paragr
 ---
 title: Main Title
 title: Subtitle
-title-font: Georgia, Arial
+title-font: Georgia, Palatino
 title-font-size: 28, 20
 title-font-style: bold, italic
 ---

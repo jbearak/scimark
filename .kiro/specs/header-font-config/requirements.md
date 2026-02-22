@@ -10,7 +10,7 @@ Add per-heading-level font configuration to the YAML frontmatter of Manuscript M
 - **Converter**: The bidirectional conversion pipeline: `convertDocx()` (docx→md) in `src/converter.ts` and `convertMdToDocx()` (md→docx) in `src/md-to-docx.ts`.
 - **FontOverrides**: The internal interface in `src/md-to-docx.ts` that carries resolved font configuration from Frontmatter to the docx generation functions (`stylesXml()` and `applyFontOverridesToTemplate()`).
 - **Heading_Level**: An integer 1–6 corresponding to Markdown heading depths `#` through `######` and Word style IDs `Heading1` through `Heading6`.
-- **Inline_Array**: A multi-value syntax for header font fields in Frontmatter. The canonical form uses YAML inline array brackets: `[val1, val2, ...]`. Brackets are optional: bare comma-separated values (e.g., `header-font: Georgia, Arial, Helvetica`) are also accepted and treated identically to the bracketed form. The Frontmatter_Parser detects either format — a value starting with `[` and ending with `]`, or a value containing commas without brackets — splits on commas, and trims whitespace from each element.
+- **Inline_Array**: A multi-value syntax for header font fields in Frontmatter. The canonical form uses YAML inline array brackets: `[val1, val2, ...]`. Brackets are optional: bare comma-separated values (e.g., `header-font: Georgia, Palatino, Helvetica`) are also accepted and treated identically to the bracketed form. The Frontmatter_Parser detects either format — a value starting with `[` and ending with `]`, or a value containing commas without brackets — splits on commas, and trims whitespace from each element.
 - **Array_Inheritance**: The rule that when a font field array has fewer than six elements, heading levels beyond the array length inherit the value of the last element.
 - **Font_Style**: A typographic style value: one of `bold`, `italic`, `underline`, `normal`, or any hyphenated combination of `bold`, `italic`, and `underline` in any order (e.g., `bold-italic`, `italic-bold`, `underline-bold-italic`). Hyphenated combinations are order-independent: the Parser normalizes them to a canonical form so that `italic-bold` and `bold-italic` are equivalent.
 - **Title_Element**: A positional entry in the `title` array. Element 0 corresponds to the first title paragraph, element 1 to the second, and so on. Title font field arrays map to Title_Elements by index.
@@ -25,8 +25,8 @@ Add per-heading-level font configuration to the YAML frontmatter of Manuscript M
 #### Acceptance Criteria
 
 1. WHEN the Frontmatter contains a `header-font` field with a single value (no brackets, no commas), THE Frontmatter_Parser SHALL store the value as a one-element array in `headerFont`.
-2. WHEN the Frontmatter contains a `header-font` field with Inline_Array syntax (e.g., `header-font: [Georgia, Arial, Helvetica]`), THE Frontmatter_Parser SHALL parse the bracketed value, split on commas, trim whitespace from each element, and store the results as the `headerFont` array in order.
-3. WHEN the Frontmatter contains a `header-font` field with bare comma-separated values (no brackets, e.g., `header-font: Georgia, Arial, Helvetica`), THE Frontmatter_Parser SHALL split on commas, trim whitespace from each element, and store the results as the `headerFont` array in order, identically to the bracketed Inline_Array form.
+2. WHEN the Frontmatter contains a `header-font` field with Inline_Array syntax (e.g., `header-font: [Georgia, Palatino, Helvetica]`), THE Frontmatter_Parser SHALL parse the bracketed value, split on commas, trim whitespace from each element, and store the results as the `headerFont` array in order.
+3. WHEN the Frontmatter contains a `header-font` field with bare comma-separated values (no brackets, e.g., `header-font: Georgia, Palatino, Helvetica`), THE Frontmatter_Parser SHALL split on commas, trim whitespace from each element, and store the results as the `headerFont` array in order, identically to the bracketed Inline_Array form.
 4. IF the Frontmatter contains a `header-font` field using repeated YAML keys (multiple `header-font:` lines), THEN THE Frontmatter_Parser SHALL use only the last occurrence and ignore earlier lines.
 5. WHEN the Frontmatter does not contain a `header-font` field, THE Frontmatter_Parser SHALL leave `headerFont` undefined.
 6. WHEN `headerFont` is undefined and `font` is defined, THE Font_Resolver SHALL use the `font` value as the effective header font for all six heading levels.
@@ -78,7 +78,7 @@ Add per-heading-level font configuration to the YAML frontmatter of Manuscript M
 #### Acceptance Criteria
 
 1. WHEN `headerFont` contains exactly one value, THE Frontmatter_Serializer SHALL emit a single `header-font:` line with the plain value (no brackets).
-2. WHEN `headerFont` contains two or more values, THE Frontmatter_Serializer SHALL emit a single `header-font:` line using Inline_Array syntax (e.g., `header-font: [Georgia, Arial, Helvetica]`).
+2. WHEN `headerFont` contains two or more values, THE Frontmatter_Serializer SHALL emit a single `header-font:` line using Inline_Array syntax (e.g., `header-font: [Georgia, Palatino, Helvetica]`).
 3. WHEN `headerFontSize` contains exactly one value, THE Frontmatter_Serializer SHALL emit a single `header-font-size:` line with the plain value (no brackets).
 4. WHEN `headerFontSize` contains two or more values, THE Frontmatter_Serializer SHALL emit a single `header-font-size:` line using Inline_Array syntax (e.g., `header-font-size: [24, 20, 16]`).
 5. WHEN `headerFontStyle` contains exactly one value, THE Frontmatter_Serializer SHALL emit a single `header-font-style:` line with the plain value (no brackets).
@@ -86,7 +86,7 @@ Add per-heading-level font configuration to the YAML frontmatter of Manuscript M
 7. WHEN a header font field is undefined or an empty array, THE Frontmatter_Serializer SHALL omit the corresponding YAML key entirely.
 8. WHEN `title` contains one or more values, THE Frontmatter_Serializer SHALL emit one `title:` line per array element in order (repeated-key format), preserving backward compatibility.
 9. WHEN `titleFont` contains exactly one value, THE Frontmatter_Serializer SHALL emit a single `title-font:` line with the plain value (no brackets).
-10. WHEN `titleFont` contains two or more values, THE Frontmatter_Serializer SHALL emit a single `title-font:` line using Inline_Array syntax (e.g., `title-font: [Georgia, Arial]`).
+10. WHEN `titleFont` contains two or more values, THE Frontmatter_Serializer SHALL emit a single `title-font:` line using Inline_Array syntax (e.g., `title-font: [Georgia, Palatino]`).
 11. WHEN `titleFontSize` contains exactly one value, THE Frontmatter_Serializer SHALL emit a single `title-font-size:` line with the plain value (no brackets).
 12. WHEN `titleFontSize` contains two or more values, THE Frontmatter_Serializer SHALL emit a single `title-font-size:` line using Inline_Array syntax (e.g., `title-font-size: [24, 18]`).
 13. WHEN `titleFontStyle` contains exactly one value, THE Frontmatter_Serializer SHALL emit a single `title-font-style:` line with the plain value (no brackets).
@@ -174,8 +174,8 @@ Add per-heading-level font configuration to the YAML frontmatter of Manuscript M
 #### Acceptance Criteria
 
 1. THE Spec_Documentation SHALL include a section in `specification.md` that documents two equivalent syntaxes for specifying multiple values in `header-font`, `header-font-size`, `header-font-style`, `title-font`, `title-font-size`, and `title-font-style` fields.
-2. THE Spec_Documentation SHALL present the bare comma-separated format (e.g., `header-font: Georgia, Arial, Helvetica`) as the simpler, more casual option for authors who prefer minimal syntax.
-3. THE Spec_Documentation SHALL present the YAML inline array format with brackets (e.g., `header-font: [Georgia, Arial, Helvetica]`) as the more formal option for authors who prefer explicit YAML syntax.
+2. THE Spec_Documentation SHALL present the bare comma-separated format (e.g., `header-font: Georgia, Palatino, Helvetica`) as the simpler, more casual option for authors who prefer minimal syntax.
+3. THE Spec_Documentation SHALL present the YAML inline array format with brackets (e.g., `header-font: [Georgia, Palatino, Helvetica]`) as the more formal option for authors who prefer explicit YAML syntax.
 4. THE Spec_Documentation SHALL state that both syntaxes are equivalent and produce identical results.
 5. THE Spec_Documentation SHALL include at least one concrete example of each syntax for a header font field.
 6. THE Spec_Documentation SHALL document the title font fields (`title-font`, `title-font-size`, `title-font-style`) alongside the header font fields, explaining that array elements map to title paragraphs by position.
@@ -188,8 +188,8 @@ Add per-heading-level font configuration to the YAML frontmatter of Manuscript M
 #### Acceptance Criteria
 
 1. WHEN the Frontmatter contains a `title-font` field with a single value (no brackets, no commas), THE Frontmatter_Parser SHALL store the value as a one-element array in `titleFont`.
-2. WHEN the Frontmatter contains a `title-font` field with Inline_Array syntax (e.g., `title-font: [Georgia, Arial]`), THE Frontmatter_Parser SHALL parse the bracketed value, split on commas, trim whitespace from each element, and store the results as the `titleFont` array in order.
-3. WHEN the Frontmatter contains a `title-font` field with bare comma-separated values (no brackets, e.g., `title-font: Georgia, Arial`), THE Frontmatter_Parser SHALL split on commas, trim whitespace from each element, and store the results as the `titleFont` array in order, identically to the bracketed Inline_Array form.
+2. WHEN the Frontmatter contains a `title-font` field with Inline_Array syntax (e.g., `title-font: [Georgia, Palatino]`), THE Frontmatter_Parser SHALL parse the bracketed value, split on commas, trim whitespace from each element, and store the results as the `titleFont` array in order.
+3. WHEN the Frontmatter contains a `title-font` field with bare comma-separated values (no brackets, e.g., `title-font: Georgia, Palatino`), THE Frontmatter_Parser SHALL split on commas, trim whitespace from each element, and store the results as the `titleFont` array in order, identically to the bracketed Inline_Array form.
 4. IF the Frontmatter contains a `title-font` field using repeated YAML keys (multiple `title-font:` lines), THEN THE Frontmatter_Parser SHALL use only the last occurrence and ignore earlier lines.
 5. WHEN the Frontmatter does not contain a `title-font` field, THE Frontmatter_Parser SHALL leave `titleFont` undefined.
 6. WHEN `titleFont` is undefined and `font` is defined, THE Font_Resolver SHALL use the `font` value as the effective title font for all Title_Elements.

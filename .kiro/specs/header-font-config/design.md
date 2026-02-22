@@ -518,8 +518,8 @@ Properties to implement as property-based tests:
 Unit tests cover specific examples and edge cases:
 
 - Parse single `header-font` value
-- Parse bracketed `header-font: [Georgia, Arial, Helvetica]`
-- Parse bare `header-font: Georgia, Arial, Helvetica`
+- Parse bracketed `header-font: [Georgia, Palatino, Helvetica]`
+- Parse bare `header-font: Georgia, Palatino, Helvetica`
 - Parse `header-font-size: [24, 20, 16]` with valid numbers
 - Parse `header-font-size: [24, abc, 16]` — invalid element filtered
 - Parse `header-font-style: bold-italic` → normalized to `bold-italic`
