@@ -44,7 +44,7 @@ jobs:
       - name: Calculate checksums
         run: |
           cd bin
-          for file in manuscript-markdown-*; do
+          for file in scimark-*; do
             sha256sum "$file" > "$file.sha256"
           done
           cd ..
@@ -61,6 +61,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
-            bin/manuscript-markdown-*
+            bin/scimark-*
             *.vsix
             *.vsix.sha256
