@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import * as formatting from './formatting';
 import MarkdownIt from 'markdown-it';
-import { manuscriptMarkdownPlugin } from './preview/manuscript-markdown-plugin';
+import { scimarkPlugin } from './preview/scimark-plugin';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -290,54 +290,54 @@ describe('Command Handler Unit Tests', () => {
 
 describe('Syntax grammar invariants', () => {
   it('uses begin/end for comment rule so multi-line comments are tokenized', () => {
-    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'manuscript-markdown.json');
+    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'scimark.json');
     const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf-8'));
     const commentRule = grammar?.repository?.comment;
 
     expect(commentRule).toBeDefined();
     expect(commentRule.begin).toBe('(\\{)(>>)');
     expect(commentRule.end).toBe('(<<)(\\})');
-    expect(commentRule.beginCaptures?.['1']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
-    expect(commentRule.beginCaptures?.['2']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
-    expect(commentRule.endCaptures?.['1']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
-    expect(commentRule.endCaptures?.['2']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
-    expect(commentRule.name).toBe('meta.comment.manuscript-markdown');
+    expect(commentRule.beginCaptures?.['1']?.name).toBe('punctuation.definition.tag.begin.scimark');
+    expect(commentRule.beginCaptures?.['2']?.name).toBe('punctuation.definition.tag.begin.scimark');
+    expect(commentRule.endCaptures?.['1']?.name).toBe('punctuation.definition.tag.end.scimark');
+    expect(commentRule.endCaptures?.['2']?.name).toBe('punctuation.definition.tag.end.scimark');
+    expect(commentRule.name).toBe('meta.comment.scimark');
     expect(commentRule.contentName).toBe('meta.comment');
     expect(commentRule.match).toBeUndefined();
   });
 
   it('uses begin/end captures for comment_with_id so closing <<} is delimiter-scoped', () => {
-    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'manuscript-markdown.json');
+    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'scimark.json');
     const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf-8'));
     const commentWithIdRule = grammar?.repository?.comment_with_id;
 
     expect(commentWithIdRule).toBeDefined();
     expect(commentWithIdRule.begin).toBe('(\\{#)([a-zA-Z0-9_-]++)(>>)');
     expect(commentWithIdRule.end).toBe('<<\\}');
-    expect(commentWithIdRule.beginCaptures?.['1']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
-    expect(commentWithIdRule.beginCaptures?.['3']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
-    expect(commentWithIdRule.endCaptures?.['0']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
-    expect(commentWithIdRule.contentName).toBe('meta.comment.manuscript-markdown');
+    expect(commentWithIdRule.beginCaptures?.['1']?.name).toBe('punctuation.definition.tag.begin.scimark');
+    expect(commentWithIdRule.beginCaptures?.['3']?.name).toBe('punctuation.definition.tag.begin.scimark');
+    expect(commentWithIdRule.endCaptures?.['0']?.name).toBe('punctuation.definition.tag.end.scimark');
+    expect(commentWithIdRule.contentName).toBe('meta.comment.scimark');
     expect(commentWithIdRule.match).toBeUndefined();
   });
 
   it('uses begin/end captures for highlight rule with tag punctuation scopes', () => {
-    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'manuscript-markdown.json');
+    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'scimark.json');
     const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf-8'));
     const highlightRule = grammar?.repository?.highlight;
 
     expect(highlightRule).toBeDefined();
     expect(highlightRule.begin).toBe('(\\{)(==)');
     expect(highlightRule.end).toBe('(==)(\\})');
-    expect(highlightRule.beginCaptures?.['1']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
-    expect(highlightRule.beginCaptures?.['2']?.name).toBe('punctuation.definition.tag.begin.manuscript-markdown');
-    expect(highlightRule.endCaptures?.['1']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
-    expect(highlightRule.endCaptures?.['2']?.name).toBe('punctuation.definition.tag.end.manuscript-markdown');
+    expect(highlightRule.beginCaptures?.['1']?.name).toBe('punctuation.definition.tag.begin.scimark');
+    expect(highlightRule.beginCaptures?.['2']?.name).toBe('punctuation.definition.tag.begin.scimark');
+    expect(highlightRule.endCaptures?.['1']?.name).toBe('punctuation.definition.tag.end.scimark');
+    expect(highlightRule.endCaptures?.['2']?.name).toBe('punctuation.definition.tag.end.scimark');
     expect(highlightRule.match).toBeUndefined();
   });
 
   it('no repository rule contains both while and end (while silently overrides end)', () => {
-    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'manuscript-markdown.json');
+    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'scimark.json');
     const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf-8'));
     const repo = grammar?.repository ?? {};
 
@@ -350,7 +350,7 @@ describe('Syntax grammar invariants', () => {
   });
 
   it('comment scopes use meta.comment family (not comment.block)', () => {
-    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'manuscript-markdown.json');
+    const grammarPath = path.join(__dirname, '..', 'syntaxes', 'scimark.json');
     const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf-8'));
 
     const commentRule = grammar?.repository?.comment;
@@ -367,43 +367,43 @@ describe('Syntax grammar invariants', () => {
 // Integration tests for markdown-it plugin registration (Requirements 7.1)
 describe('Markdown Preview Integration', () => {
   describe('Plugin registration', () => {
-    it('should register Manuscript Markdown plugin with markdown-it', () => {
+    it('should register Scientific Markdown plugin with markdown-it', () => {
       const md = new MarkdownIt();
       
       // Apply the plugin (simulating what extendMarkdownIt does)
-      const extendedMd = md.use(manuscriptMarkdownPlugin);
+      const extendedMd = md.use(scimarkPlugin);
       
       expect(extendedMd).toBeDefined();
       
-      // Test that Manuscript Markdown is processed
+      // Test that Scientific Markdown is processed
       const html = extendedMd.render('{++addition++}');
-      expect(html).toContain('manuscript-markdown-addition');
+      expect(html).toContain('scimark-addition');
       expect(html).toContain('<ins');
     });
 
-    it('should process all Manuscript Markdown types through the plugin', () => {
+    it('should process all Scientific Markdown types through the plugin', () => {
       const md = new MarkdownIt();
-      const extendedMd = md.use(manuscriptMarkdownPlugin);
+      const extendedMd = md.use(scimarkPlugin);
       
       // Test addition
       const additionHtml = extendedMd.render('{++added text++}');
-      expect(additionHtml).toContain('manuscript-markdown-addition');
+      expect(additionHtml).toContain('scimark-addition');
       
       // Test deletion
       const deletionHtml = extendedMd.render('{--deleted text--}');
-      expect(deletionHtml).toContain('manuscript-markdown-deletion');
+      expect(deletionHtml).toContain('scimark-deletion');
       
       // Test substitution
       const substitutionHtml = extendedMd.render('{~~old~>new~~}');
-      expect(substitutionHtml).toContain('manuscript-markdown-substitution');
+      expect(substitutionHtml).toContain('scimark-substitution');
       
       // Test comment
       const commentHtml = extendedMd.render('{>>comment text<<}');
-      expect(commentHtml).toContain('manuscript-markdown-comment');
+      expect(commentHtml).toContain('scimark-comment');
       
       // Test highlight
       const highlightHtml = extendedMd.render('{==highlighted text==}');
-      expect(highlightHtml).toContain('manuscript-markdown-highlight');
+      expect(highlightHtml).toContain('scimark-highlight');
     });
   });
 
@@ -415,7 +415,7 @@ describe('Markdown Preview Integration', () => {
       expect(packageJson.contributes).toBeDefined();
       expect(packageJson.contributes['markdown.previewStyles']).toBeDefined();
       expect(Array.isArray(packageJson.contributes['markdown.previewStyles'])).toBe(true);
-      expect(packageJson.contributes['markdown.previewStyles']).toContain('./media/manuscript-markdown.css');
+      expect(packageJson.contributes['markdown.previewStyles']).toContain('./media/scimark.css');
     });
 
     it('should declare markdown.markdownItPlugins in package.json', () => {
@@ -427,15 +427,15 @@ describe('Markdown Preview Integration', () => {
     });
 
     it('should have CSS file at declared path', () => {
-      const cssPath = path.join(__dirname, '..', 'media', 'manuscript-markdown.css');
+      const cssPath = path.join(__dirname, '..', 'media', 'scimark.css');
       expect(fs.existsSync(cssPath)).toBe(true);
       
       const cssContent = fs.readFileSync(cssPath, 'utf-8');
-      expect(cssContent).toContain('.manuscript-markdown-addition');
-      expect(cssContent).toContain('.manuscript-markdown-deletion');
-      expect(cssContent).toContain('.manuscript-markdown-substitution');
-      expect(cssContent).toContain('.manuscript-markdown-comment');
-      expect(cssContent).toContain('.manuscript-markdown-highlight');
+      expect(cssContent).toContain('.scimark-addition');
+      expect(cssContent).toContain('.scimark-deletion');
+      expect(cssContent).toContain('.scimark-substitution');
+      expect(cssContent).toContain('.scimark-comment');
+      expect(cssContent).toContain('.scimark-highlight');
     });
   });
 });

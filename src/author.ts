@@ -7,15 +7,15 @@ import * as os from 'os';
  * Always returns synchronously - never blocks
  *
  * Priority order:
- * 1. Check manuscriptMarkdown.includeAuthorNameInComments - if false, return null
- * 2. Check manuscriptMarkdown.authorName - if set, return this value
+ * 1. Check scimark.includeAuthorNameInComments - if false, return null
+ * 2. Check scimark.authorName - if set, return this value
  * 3. Fallback to OS username from os.userInfo()
  * 4. Return null if all methods fail
  */
 export function getAuthorName(): string | null {
 	try {
 		// Get configuration
-		const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
+		const config = vscode.workspace.getConfiguration('scimark');
 		
 		// Priority 1: Check include setting
 		const includeAuthorName = config.get<boolean>('includeAuthorNameInComments', true);
@@ -59,7 +59,7 @@ export function getFormattedAuthorName(): string | null {
 	}
 	
 	try {
-		const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
+		const config = vscode.workspace.getConfiguration('scimark');
 		const includeTimestamp = config.get<boolean>('includeTimestampInComments', true);
 		
 		if (!includeTimestamp) {

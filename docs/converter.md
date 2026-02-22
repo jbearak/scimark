@@ -1,6 +1,6 @@
 # DOCX Converter
 
-The DOCX converter transforms Microsoft Word documents into Manuscript Markdown format, preserving formatting, comments, citations, and equations.
+The DOCX converter transforms Microsoft Word documents into Scientific Markdown format, preserving formatting, comments, citations, and equations.
 
 ## Round-Trip Features
 
@@ -99,7 +99,7 @@ HTML comment delimiters inside code spans, fenced code blocks, LaTeX math, or Cr
 
 ## Citation Key Formats
 
-Configurable via `manuscriptMarkdown.citationKeyFormat`:
+Configurable via `scimark.citationKeyFormat`:
 
 | Format | Example | Description |
 |--------|---------|-------------|

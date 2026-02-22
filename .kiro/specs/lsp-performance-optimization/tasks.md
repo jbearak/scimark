@@ -2,7 +2,7 @@
 
 ## Overview
 
-Incremental optimization of the Manuscript Markdown extension across LSP server, editor decorations, citation scanning, CriticMarkup preprocessing, preview parser, and TextMate grammar. Each task preserves behavioral equivalence with the existing implementation while improving performance.
+Incremental optimization of the Scientific Markdown extension across LSP server, editor decorations, citation scanning, CriticMarkup preprocessing, preview parser, and TextMate grammar. Each task preserves behavioral equivalence with the existing implementation while improving performance.
 
 ## Tasks
 
@@ -88,7 +88,7 @@ Incremental optimization of the Manuscript Markdown extension across LSP server,
     - **Validates: Requirements 7.1, 7.2**
 
 - [x] 9. Preview parser micro-optimizations
-  - [x] 9.1 Optimize `manuscriptMarkdownBlock` in `src/preview/manuscript-markdown-plugin.ts`
+  - [x] 9.1 Optimize `manuscriptMarkdownBlock` in `src/preview/scimark-plugin.ts`
     - Replace `src.slice(pos, pos+3)` + `patterns.includes()` with direct charCode checks
     - _Requirements: 8.1, 8.2_
   - [x] 9.2 Add posMax bounds checking to `parseManuscriptMarkdown` closing marker searches
@@ -96,10 +96,10 @@ Incremental optimization of the Manuscript Markdown extension across LSP server,
     - _Requirements: 8.3_
 
 - [x] 10. TextMate grammar improvements
-  - [x] 10.1 Fix injection selector to exclude code scopes in `syntaxes/manuscript-markdown.json`
+  - [x] 10.1 Fix injection selector to exclude code scopes in `syntaxes/scimark.json`
     - Change `injectionSelector` from `L:text.html.markdown` to `L:text.html.markdown -string -meta.embedded -markup.inline.raw -markup.fenced_code`
     - _Requirements: 10.1, 10.2, 10.3_
-  - [x] 10.2 Reorder patterns in `syntaxes/manuscript-markdown.json`
+  - [x] 10.2 Reorder patterns in `syntaxes/scimark.json`
     - Move `citation_list`, `footnote_ref`, `footnote_def` before CriticMarkup patterns
     - Keep `colored_format_highlight` before `format_highlight`
     - Tighten character classes in match patterns where possible

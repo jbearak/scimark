@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide covers building, testing, and contributing to Manuscript Markdown.
+This guide covers building, testing, and contributing to Scientific Markdown.
 
 ## Quick Start
 

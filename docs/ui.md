@@ -22,21 +22,21 @@ Text formatting, lists, and structure commands for Markdown editing.
 
 | Group | Item | Command |
 |-------|------|---------|
-| Text formatting | **Bold** | `manuscript-markdown.formatBold` |
-| | **Italic** | `manuscript-markdown.formatItalic` |
-| | **Bold Italic** | `manuscript-markdown.formatBoldItalic` |
-| | **Strikethrough** | `manuscript-markdown.formatStrikethrough` |
-| | **Underline** | `manuscript-markdown.formatUnderline` |
-| Highlight | **Highlight** | `manuscript-markdown.formatHighlight` |
+| Text formatting | **Bold** | `scimark.formatBold` |
+| | **Italic** | `scimark.formatItalic` |
+| | **Bold Italic** | `scimark.formatBoldItalic` |
+| | **Strikethrough** | `scimark.formatStrikethrough` |
+| | **Underline** | `scimark.formatUnderline` |
+| Highlight | **Highlight** | `scimark.formatHighlight` |
 | | **Highlight Color** ▸ | submenu — see below |
-| Text formatting | **Inline Code** | `manuscript-markdown.formatInlineCode` |
-| | **Code Block** | `manuscript-markdown.formatCodeBlock` |
-| | **Link** | `manuscript-markdown.formatLink` |
-| Lists | **Bulleted List** | `manuscript-markdown.formatBulletedList` |
-| | **Numbered List** | `manuscript-markdown.formatNumberedList` |
-| | **Task List** | `manuscript-markdown.formatTaskList` |
-| | **Quote Block** | `manuscript-markdown.formatQuoteBlock` |
-| Tables | **Reflow Table** | `manuscript-markdown.reflowTable` |
+| Text formatting | **Inline Code** | `scimark.formatInlineCode` |
+| | **Code Block** | `scimark.formatCodeBlock` |
+| | **Link** | `scimark.formatLink` |
+| Lists | **Bulleted List** | `scimark.formatBulletedList` |
+| | **Numbered List** | `scimark.formatNumberedList` |
+| | **Task List** | `scimark.formatTaskList` |
+| | **Quote Block** | `scimark.formatQuoteBlock` |
+| Tables | **Reflow Table** | `scimark.reflowTable` |
 | Heading | **Heading** ▸ | submenu — see below |
 
 > **Reflow Table** re-aligns a Markdown pipe table — the kind you build with `|` and `-` characters — so that the `|` column separators line up neatly. Place your cursor anywhere in the table and run the command.
@@ -47,33 +47,33 @@ The colors are shown in three groups, separated by divider lines. The group labe
 
 | Group | Item | Command |
 |-------|------|---------|
-| Standard | **Yellow** | `manuscript-markdown.formatHighlight_yellow` |
-| | **Green** | `manuscript-markdown.formatHighlight_green` |
-| | **Turquoise** | `manuscript-markdown.formatHighlight_turquoise` |
-| | **Pink** | `manuscript-markdown.formatHighlight_pink` |
-| | **Blue** | `manuscript-markdown.formatHighlight_blue` |
-| | **Red** | `manuscript-markdown.formatHighlight_red` |
-| Dark | **Dark Blue** | `manuscript-markdown.formatHighlight_dark-blue` |
-| | **Teal** | `manuscript-markdown.formatHighlight_teal` |
-| | **Violet** | `manuscript-markdown.formatHighlight_violet` |
-| | **Dark Red** | `manuscript-markdown.formatHighlight_dark-red` |
-| | **Dark Yellow** | `manuscript-markdown.formatHighlight_dark-yellow` |
-| Neutral | **Gray 50%** | `manuscript-markdown.formatHighlight_gray-50` |
-| | **Gray 25%** | `manuscript-markdown.formatHighlight_gray-25` |
-| | **Black** | `manuscript-markdown.formatHighlight_black` |
+| Standard | **Yellow** | `scimark.formatHighlight_yellow` |
+| | **Green** | `scimark.formatHighlight_green` |
+| | **Turquoise** | `scimark.formatHighlight_turquoise` |
+| | **Pink** | `scimark.formatHighlight_pink` |
+| | **Blue** | `scimark.formatHighlight_blue` |
+| | **Red** | `scimark.formatHighlight_red` |
+| Dark | **Dark Blue** | `scimark.formatHighlight_dark-blue` |
+| | **Teal** | `scimark.formatHighlight_teal` |
+| | **Violet** | `scimark.formatHighlight_violet` |
+| | **Dark Red** | `scimark.formatHighlight_dark-red` |
+| | **Dark Yellow** | `scimark.formatHighlight_dark-yellow` |
+| Neutral | **Gray 50%** | `scimark.formatHighlight_gray-50` |
+| | **Gray 25%** | `scimark.formatHighlight_gray-25` |
+| | **Black** | `scimark.formatHighlight_black` |
 
-> The plain **Highlight** command uses the color set in `manuscriptMarkdown.defaultHighlightColor` (default: yellow). The **Highlight Color** submenu lets you pick a specific color. See [Configuration](configuration.md) for details.
+> The plain **Highlight** command uses the color set in `scimark.defaultHighlightColor` (default: yellow). The **Highlight Color** submenu lets you pick a specific color. See [Configuration](configuration.md) for details.
 
 #### Heading submenu
 
 | Item | Command |
 |------|---------|
-| **Heading 1** | `manuscript-markdown.formatHeading1` |
-| **Heading 2** | `manuscript-markdown.formatHeading2` |
-| **Heading 3** | `manuscript-markdown.formatHeading3` |
-| **Heading 4** | `manuscript-markdown.formatHeading4` |
-| **Heading 5** | `manuscript-markdown.formatHeading5` |
-| **Heading 6** | `manuscript-markdown.formatHeading6` |
+| **Heading 1** | `scimark.formatHeading1` |
+| **Heading 2** | `scimark.formatHeading2` |
+| **Heading 3** | `scimark.formatHeading3` |
+| **Heading 4** | `scimark.formatHeading4` |
+| **Heading 5** | `scimark.formatHeading5` |
+| **Heading 6** | `scimark.formatHeading6` |
 
 ---
 
@@ -85,15 +85,15 @@ Annotation and change-tracking commands — the Markdown equivalent of tracked c
 
 | Group | Item | Command |
 |-------|------|---------|
-| Comments | **Comment** | `manuscript-markdown.comment` |
-| | **Comment and Mark as Addition** | `manuscript-markdown.additionAndComment` |
-| | **Comment and Mark as Deletion** | `manuscript-markdown.deletionAndComment` |
-| | **Comment and Substitution** | `manuscript-markdown.substituteAndComment` |
-| Markup | **Mark as Addition** | `manuscript-markdown.markAddition` |
-| | **Mark as Deletion** | `manuscript-markdown.markDeletion` |
-| | **Substitution** | `manuscript-markdown.markSubstitution` |
-| Navigation | **Previous Change** | `manuscript-markdown.prevChange` |
-| | **Next Change** | `manuscript-markdown.nextChange` |
+| Comments | **Comment** | `scimark.comment` |
+| | **Comment and Mark as Addition** | `scimark.additionAndComment` |
+| | **Comment and Mark as Deletion** | `scimark.deletionAndComment` |
+| | **Comment and Substitution** | `scimark.substituteAndComment` |
+| Markup | **Mark as Addition** | `scimark.markAddition` |
+| | **Mark as Deletion** | `scimark.markDeletion` |
+| | **Substitution** | `scimark.markSubstitution` |
+| Navigation | **Previous Change** | `scimark.prevChange` |
+| | **Next Change** | `scimark.nextChange` |
 
 ---
 
@@ -105,9 +105,9 @@ Export and citation-style commands. See [Converter](converter.md) for details on
 
 | Group | Item | Command |
 |-------|------|---------|
-| Export | **Export to Word** | `manuscript-markdown.exportToWord` |
-| | **Export to Word with Template** | `manuscript-markdown.exportToWordWithTemplate` |
-| Style | **Set Citation Style** | `manuscript-markdown.setCitationStyle` |
+| Export | **Export to Word** | `scimark.exportToWord` |
+| | **Export to Word with Template** | `scimark.exportToWordWithTemplate` |
+| Style | **Set Citation Style** | `scimark.setCitationStyle` |
 
 > **Export to Word** converts the Markdown file to `.docx`. If a `.docx` with the same name already exists, its paragraph and formatting styles are automatically reused as a template — so fonts, spacing, and colors you previously set in Word are preserved.
 >
@@ -127,8 +127,8 @@ When a `.docx` file is open in the editor, one dropdown menu appears in the tool
 
 | Item | Condition | Command |
 |------|-----------|---------|
-| **Export to Markdown** | always | `manuscript-markdown.convertDocx` |
-| **Open in Word** | local files only | `manuscript-markdown.openInWord` |
+| **Export to Markdown** | always | `scimark.convertDocx` |
+| **Open in Word** | local files only | `scimark.openInWord` |
 
 > **Open in Word** is hidden for remote workspaces (e.g., SSH, Codespaces) because it relies on launching a local application.
 
@@ -142,10 +142,10 @@ Right-click a file in the Explorer to see these items:
 
 | File type | Item | Command |
 |-----------|------|---------|
-| `.docx` | **Export to Markdown** | `manuscript-markdown.convertDocx` |
-| `.docx` (local only) | **Open in Word** | `manuscript-markdown.openInWord` |
-| `.md` | **Export to Word** | `manuscript-markdown.exportToWord` |
-| `.md` | **Export to Word with Template** | `manuscript-markdown.exportToWordWithTemplate` |
+| `.docx` | **Export to Markdown** | `scimark.convertDocx` |
+| `.docx` (local only) | **Open in Word** | `scimark.openInWord` |
+| `.md` | **Export to Word** | `scimark.exportToWord` |
+| `.md` | **Export to Word with Template** | `scimark.exportToWordWithTemplate` |
 
 ---
 
@@ -168,8 +168,8 @@ Right-clicking inside a Markdown editor shows two submenus at the bottom of the 
 
 | Shortcut | Command | Description |
 |----------|---------|-------------|
-| `Alt+Shift+J` | `manuscript-markdown.nextChange` | Jump to the next annotation |
-| `Alt+Shift+K` | `manuscript-markdown.prevChange` | Jump to the previous annotation |
+| `Alt+Shift+J` | `scimark.nextChange` | Jump to the next annotation |
+| `Alt+Shift+K` | `scimark.prevChange` | Jump to the previous annotation |
 
 These shortcuts are active when a Markdown file has focus.
 

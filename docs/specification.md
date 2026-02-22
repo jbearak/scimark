@@ -1,10 +1,10 @@
-# Manuscript Markdown Specification
+# Scientific Markdown Specification
 
-Manuscript Markdown extends standard Markdown with CriticMarkup annotations, Pandoc citation syntax, and custom extensions for manuscript editing.
+Scientific Markdown extends standard Markdown with CriticMarkup annotations, Pandoc citation syntax, and custom extensions for manuscript editing.
 
 ## YAML Frontmatter
 
-Manuscript Markdown files may begin with a YAML frontmatter block delimited by `---`. The `title` field stores the document title:
+Scientific Markdown files may begin with a YAML frontmatter block delimited by `---`. The `title` field stores the document title:
 
 ```yaml
 ---
@@ -137,7 +137,7 @@ code-background-color: none
 
 ## Standard Markdown
 
-Manuscript Markdown supports CommonMark plus the implemented [GitHub Flavored Markdown](https://github.github.com/gfm/) extension set.
+Scientific Markdown supports CommonMark plus the implemented [GitHub Flavored Markdown](https://github.github.com/gfm/) extension set.
 
 - **Formatting**: bold (`**text**`), italic (`_text_`), strikethrough (`~~text~~`), underline (`<u>text</u>`), superscript (`<sup>text</sup>`), subscript (`<sub>text</sub>`), inline code (`` `code` ``)
 - **Headings**: `# H1` through `###### H6`
@@ -225,7 +225,7 @@ These fields allow the Markdown-to-DOCX exporter to reconstruct Zotero field cod
 
 ## LaTeX Equations
 
-Manuscript Markdown supports LaTeX math notation, which is converted to and from Word's OMML equation format during roundtrip conversion.
+Scientific Markdown supports LaTeX math notation, which is converted to and from Word's OMML equation format during roundtrip conversion.
 
 - **Inline math**: `$...$` — renders within the text flow
 - **Display math**: `$$...$$` — renders as a centered block equation
@@ -250,7 +250,7 @@ Five annotation operations for tracking changes. See [CriticMarkup Syntax](criti
 
 ## Manuscript Extensions
 
-Manuscript Markdown extends CriticMarkup with colored highlights, comment attribution, and overlapping comments.
+Scientific Markdown extends CriticMarkup with colored highlights, comment attribution, and overlapping comments.
 
 ### Color Highlights
 
@@ -324,7 +324,7 @@ The default highlight color can be configured via VS Code settings:
 
 ```json
 {
-  "manuscriptMarkdown.defaultHighlightColor": "yellow"
+  "scimark.defaultHighlightColor": "yellow"
 }
 ```
 
@@ -342,15 +342,15 @@ Comments can include author name and timestamp:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `manuscriptMarkdown.includeAuthorNameInComments` | `true` | Include author name |
-| `manuscriptMarkdown.authorName` | `""` | Override author name (empty = OS username) |
-| `manuscriptMarkdown.includeTimestampInComments` | `true` | Include timestamp |
+| `scimark.includeAuthorNameInComments` | `true` | Include author name |
+| `scimark.authorName` | `""` | Override author name (empty = OS username) |
+| `scimark.includeTimestampInComments` | `true` | Include timestamp |
 
 Timestamp format: `yyyy-mm-dd hh:mm` in local timezone.
 
 ### Overlapping Comments
 
-Standard CriticMarkup comment syntax (`{==text==}{>>comment<<}`) does not support overlapping comment ranges. Manuscript Markdown adds ID-based comment syntax that allows comment ranges to overlap, nest, or share boundaries.
+Standard CriticMarkup comment syntax (`{==text==}{>>comment<<}`) does not support overlapping comment ranges. Scientific Markdown adds ID-based comment syntax that allows comment ranges to overlap, nest, or share boundaries.
 
 #### Syntax
 
@@ -419,6 +419,6 @@ IDs use `[a-zA-Z0-9_-]+` — alphanumeric characters, hyphens, and underscores. 
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `manuscriptMarkdown.alwaysUseCommentIds` | `false` | Always use ID-based comment syntax (`{#id}...{/id}{#id>>...<<}`) even for non-overlapping comments |
+| `scimark.alwaysUseCommentIds` | `false` | Always use ID-based comment syntax (`{#id}...{/id}{#id>>...<<}`) even for non-overlapping comments |
 
 CLI flag: `--always-use-comment-ids`

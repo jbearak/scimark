@@ -2,11 +2,11 @@
 
 ## Introduction
 
-The `manuscriptMarkdown.mixedCitationStyle` setting controlled how mixed Zotero/non-Zotero grouped citations were rendered — either as `"separate"` (each portion in its own parentheses) or `"unified"` (one set of parentheses). After the Zotero citation mismatch fix (PR #113), non-Zotero entries use string IDs and synthetic URIs, so Zotero gracefully falls back to embedded `itemData` on refresh. This means unified style always works correctly and the setting is unnecessary. Additionally, the setting was not functioning as documented — even when set to `"separate"`, the converter produced unified output. This spec covers the complete removal of the setting from the extension, CLI, converter API, tests, and documentation.
+The `scimark.mixedCitationStyle` setting controlled how mixed Zotero/non-Zotero grouped citations were rendered — either as `"separate"` (each portion in its own parentheses) or `"unified"` (one set of parentheses). After the Zotero citation mismatch fix (PR #113), non-Zotero entries use string IDs and synthetic URIs, so Zotero gracefully falls back to embedded `itemData` on refresh. This means unified style always works correctly and the setting is unnecessary. Additionally, the setting was not functioning as documented — even when set to `"separate"`, the converter produced unified output. This spec covers the complete removal of the setting from the extension, CLI, converter API, tests, and documentation.
 
 ## Glossary
 
-- **Extension**: The Manuscript Markdown VS Code extension
+- **Extension**: The Scientific Markdown VS Code extension
 - **CLI**: The standalone command-line interface (`src/cli.ts`) for converting between Markdown and DOCX
 - **Converter**: The core conversion module (`src/md-to-docx.ts`) that transforms Markdown to DOCX
 - **MdToDocxOptions**: The TypeScript options interface consumed by the Converter's `convertMdToDocx` function
@@ -21,7 +21,7 @@ The `manuscriptMarkdown.mixedCitationStyle` setting controlled how mixed Zotero/
 
 #### Acceptance Criteria
 
-1. THE Extension SHALL NOT declare `manuscriptMarkdown.mixedCitationStyle` in VS_Code_Settings
+1. THE Extension SHALL NOT declare `scimark.mixedCitationStyle` in VS_Code_Settings
 2. WHEN a user opens VS Code settings and searches for "mixedCitationStyle", THE Extension SHALL return no matching settings
 
 ### Requirement 2: Remove Setting from Converter API
@@ -39,7 +39,7 @@ The `manuscriptMarkdown.mixedCitationStyle` setting controlled how mixed Zotero/
 
 #### Acceptance Criteria
 
-1. THE Extension SHALL NOT read `manuscriptMarkdown.mixedCitationStyle` from the VS Code configuration API
+1. THE Extension SHALL NOT read `scimark.mixedCitationStyle` from the VS Code configuration API
 2. THE Extension SHALL NOT pass a `mixedCitationStyle` value to the Converter
 
 ### Requirement 4: Remove CLI Flag

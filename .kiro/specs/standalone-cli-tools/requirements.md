@@ -2,13 +2,13 @@
 
 ## Introduction
 
-Standalone command-line tools for converting between Markdown and DOCX formats, reusing the existing Manuscript Markdown conversion logic without requiring the VS Code extension. The tools provide the same conversion fidelity as the extension commands but are invocable from any terminal environment.
+Standalone command-line tools for converting between Markdown and DOCX formats, reusing the existing Scientific Markdown conversion logic without requiring the VS Code extension. The tools provide the same conversion fidelity as the extension commands but are invocable from any terminal environment.
 
 ## Glossary
 
 - **CLI**: Command-line interface; a text-based interface for invoking the tools
-- **DOCX_to_MD_Tool**: The CLI entry point that converts DOCX files to Manuscript Markdown format
-- **MD_to_DOCX_Tool**: The CLI entry point that converts Manuscript Markdown files to DOCX format
+- **DOCX_to_MD_Tool**: The CLI entry point that converts DOCX files to Scientific Markdown format
+- **MD_to_DOCX_Tool**: The CLI entry point that converts Scientific Markdown files to DOCX format
 - **Converter_Library**: The existing `converter.ts` and `md-to-docx.ts` modules that perform the actual conversion
 - **Citation_Key_Format**: One of `authorYearTitle`, `authorYear`, or `numeric`; controls how Zotero citation keys are generated during DOCX-to-MD conversion
 - **Mixed_Citation_Style**: One of `separate` or `unified`; controls how mixed Zotero/non-Zotero grouped citations are rendered during MD-to-DOCX conversion
@@ -16,13 +16,13 @@ Standalone command-line tools for converting between Markdown and DOCX formats, 
 - **Template_DOCX**: An optional DOCX file whose styles, theme, and numbering definitions are applied to the exported DOCX
 - **Output_Conflict**: A situation where the target output file already exists on disk
 - **Setup_Script**: The `setup.sh` shell script that builds and installs project artifacts
-- **CLI_Binary**: The compiled standalone `manuscript-markdown` executable installed to `~/bin`
+- **CLI_Binary**: The compiled standalone `scimark` executable installed to `~/bin`
 
 ## Requirements
 
 ### Requirement 1: DOCX to Markdown Conversion
 
-**User Story:** As a user, I want to convert a DOCX file to Manuscript Markdown from the command line, so that I can use the converter without opening VS Code.
+**User Story:** As a user, I want to convert a DOCX file to Scientific Markdown from the command line, so that I can use the converter without opening VS Code.
 
 #### Acceptance Criteria
 
@@ -34,7 +34,7 @@ Standalone command-line tools for converting between Markdown and DOCX formats, 
 
 ### Requirement 2: Markdown to DOCX Conversion
 
-**User Story:** As a user, I want to convert a Manuscript Markdown file to DOCX from the command line, so that I can produce Word documents without opening VS Code.
+**User Story:** As a user, I want to convert a Scientific Markdown file to DOCX from the command line, so that I can produce Word documents without opening VS Code.
 
 #### Acceptance Criteria
 
@@ -77,7 +77,7 @@ Standalone command-line tools for converting between Markdown and DOCX formats, 
 
 #### Acceptance Criteria
 
-1. THE CLI SHALL be invocable as `manuscript-markdown <input>` where the conversion direction is determined by the input file extension (`.docx` → Markdown, `.md` → DOCX)
+1. THE CLI SHALL be invocable as `scimark <input>` where the conversion direction is determined by the input file extension (`.docx` → Markdown, `.md` → DOCX)
 2. WHEN the input file extension is not `.docx` or `.md`, THE CLI SHALL exit with a non-zero exit code and print a descriptive error message to stderr
 3. WHEN invoked with `--help`, THE CLI tool SHALL print usage information including all available flags and their descriptions
 4. WHEN invoked with `--version`, THE CLI tool SHALL print the version number from package.json
@@ -86,12 +86,12 @@ Standalone command-line tools for converting between Markdown and DOCX formats, 
 
 ### Requirement 6: Build and Install via setup.sh
 
-**User Story:** As a user, I want `setup.sh` to build the CLI tool and install it to `~/bin`, so that I can run `manuscript-markdown` from any terminal after setup.
+**User Story:** As a user, I want `setup.sh` to build the CLI tool and install it to `~/bin`, so that I can run `scimark` from any terminal after setup.
 
 #### Acceptance Criteria
 
 1. WHEN `setup.sh` is run, IT SHALL compile the CLI entry point into a standalone executable (or runnable script) in addition to the existing VSIX build
-2. WHEN `setup.sh` completes the CLI build, IT SHALL copy the built CLI artifact to `~/bin/manuscript-markdown`
+2. WHEN `setup.sh` completes the CLI build, IT SHALL copy the built CLI artifact to `~/bin/scimark`
 3. WHEN `~/bin` does not exist, `setup.sh` SHALL create it
 4. WHEN the CLI is installed to `~/bin`, IT SHALL be executable (i.e., have appropriate permissions set)
 5. WHEN the installation succeeds, `setup.sh` SHALL print the installed path and a reminder to ensure `~/bin` is on the user's `PATH`
@@ -113,7 +113,7 @@ Standalone command-line tools for converting between Markdown and DOCX formats, 
 #### Acceptance Criteria
 
 1. WHEN the Setup_Script is executed, THE Setup_Script SHALL compile the CLI entry point into a standalone executable using `bun build` with the `--compile` flag
-2. WHEN the CLI compilation succeeds, THE Setup_Script SHALL copy the resulting CLI_Binary to `~/bin/manuscript-markdown`
+2. WHEN the CLI compilation succeeds, THE Setup_Script SHALL copy the resulting CLI_Binary to `~/bin/scimark`
 3. WHEN the `~/bin` directory does not exist, THE Setup_Script SHALL create it before copying the CLI_Binary
 4. WHEN the CLI_Binary is placed in `~/bin`, THE Setup_Script SHALL ensure the file has executable permissions
 5. IF the CLI compilation fails, THEN THE Setup_Script SHALL print a descriptive error message to stderr and continue with the remaining setup steps

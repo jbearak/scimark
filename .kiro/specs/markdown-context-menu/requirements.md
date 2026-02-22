@@ -2,11 +2,11 @@
 
 ## Introduction
 
-This feature adds a context menu (right-click menu) to the Manuscript Markdown VS Code extension that provides quick access to Manuscript Markdown syntax operations and common Markdown formatting commands. When users select text in a Markdown document and right-click, they will see a menu with options to apply CriticMarkup annotations (additions, deletions, comments, highlights) as well as standard Markdown formatting (bold, italic, lists, quotes).
+This feature adds a context menu (right-click menu) to the Scientific Markdown VS Code extension that provides quick access to Scientific Markdown syntax operations and common Markdown formatting commands. When users select text in a Markdown document and right-click, they will see a menu with options to apply CriticMarkup annotations (additions, deletions, comments, highlights) as well as standard Markdown formatting (bold, italic, lists, quotes).
 
 ## Glossary
 
-- **Manuscript Markdown**: A syntax for marking up proposed changes in text using special delimiters (e.g., `{++addition++}`, `{--deletion--}`)
+- **Scientific Markdown**: A syntax for marking up proposed changes in text using special delimiters (e.g., `{++addition++}`, `{--deletion--}`)
 - **Context Menu**: The right-click menu that appears when text is selected in the editor
 - **Editor**: The VS Code text editing surface where Markdown documents are displayed
 - **Selection**: Text that has been highlighted by the user in the editor

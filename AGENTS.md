@@ -1,11 +1,11 @@
-# AGENTS.md - LLM Guidance for Manuscript Markdown
+# AGENTS.md - LLM Guidance for Scientific Markdown
 
 Treat this as a living document. When you fix a subtle bug, add a comment in the relevant source file and update pointers/invariants here.
 
 ## What to read
 
 User-facing: `README.md`, `docs/`
-Extension: `src/extension.ts` (entry point), `src/changes.ts` (navigation), `src/formatting.ts` (text transformations), `src/preview/manuscript-markdown-plugin.ts` (preview), `syntaxes/manuscript-markdown.json` (syntax highlighting)
+Extension: `src/extension.ts` (entry point), `src/changes.ts` (navigation), `src/formatting.ts` (text transformations), `src/preview/scimark-plugin.ts` (preview), `syntaxes/scimark.json` (syntax highlighting)
 Conversion: `src/converter.ts` (docx → md), `src/md-to-docx.ts` (md → docx)
 LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 
@@ -13,8 +13,8 @@ LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 
 - **Multi-line patterns** span multiple lines including blanks. Must start at line beginning for preview only; navigation works anywhere. See `src/changes.ts` getAllMatches().
 - **Pattern filtering** — overlapping/nested patterns filtered via strict containment. See `src/changes.ts`.
-- **Author config** — `manuscriptMarkdown.authorName` → OS username fallback. ISO 8601 timestamps. See `src/author.ts`.
-- **Preview rendering** — markdown-it handles inline and block patterns. Multi-line requires line-beginning start for block-level. CSS in `media/manuscript-markdown.css`.
+- **Author config** — `scimark.authorName` → OS username fallback. ISO 8601 timestamps. See `src/author.ts`.
+- **Preview rendering** — markdown-it handles inline and block patterns. Multi-line requires line-beginning start for block-level. CSS in `media/scimark.css`.
 
 ## Quick commands
 

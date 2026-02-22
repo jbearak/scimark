@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design addresses ten findings across the Manuscript Markdown VS Code extension: LSP server reference lookups, editor decoration extraction, citation scanning, bib revalidation, CriticMarkup preprocessing, preview parsing, TextMate grammar injection ordering, and a TextMate grammar bug where CriticMarkup patterns incorrectly apply inside code blocks.
+This design addresses ten findings across the Scientific Markdown VS Code extension: LSP server reference lookups, editor decoration extraction, citation scanning, bib revalidation, CriticMarkup preprocessing, preview parsing, TextMate grammar injection ordering, and a TextMate grammar bug where CriticMarkup patterns incorrectly apply inside code blocks.
 
 The changes are scoped to existing files — no new modules are introduced. The core strategy is: remove unnecessary work (workspace scan), replace broad scans with targeted lookups, consolidate multiple passes into single passes, and fix algorithmic complexity where it matters.
 
@@ -264,13 +264,13 @@ function preprocessCriticMarkup(markdown: string): string {
 }
 ```
 
-### 8. Preview Parser Micro-Optimizations (`src/preview/manuscript-markdown-plugin.ts`)
+### 8. Preview Parser Micro-Optimizations (`src/preview/scimark-plugin.ts`)
 
 - In `manuscriptMarkdownBlock`: replace `src.slice(pos, Math.min(pos + 3, max))` + `patterns.includes(lineStart)` with direct charCode checks on `src.charCodeAt(pos)`, `src.charCodeAt(pos+1)`, `src.charCodeAt(pos+2)`.
 - In `parseManuscriptMarkdown`: already uses charCode checks (good). Ensure `indexOf` calls for closing markers use `state.posMax` as an upper bound where possible (note: `String.indexOf` doesn't accept an end bound, but we can check `endPos <= state.posMax` after finding).
 - These are minor wins; the parser is already reasonably efficient for typical file sizes.
 
-### 9. TextMate Grammar Pattern Ordering (`syntaxes/manuscript-markdown.json`)
+### 9. TextMate Grammar Pattern Ordering (`syntaxes/scimark.json`)
 
 Reorder the `patterns` array to put the most common and cheapest patterns first:
 
@@ -296,7 +296,7 @@ Rationale: `citation_list` and `footnote_ref`/`footnote_def` use simple `match` 
 
 Also tighten the `format_highlight` match to use a more restrictive character class if profiling shows it's a hot spot.
 
-### 10. TextMate Grammar Code Scope Exclusion (`syntaxes/manuscript-markdown.json`)
+### 10. TextMate Grammar Code Scope Exclusion (`syntaxes/scimark.json`)
 
 The current injection selector `L:text.html.markdown` injects into the entire markdown scope, including inline code spans and fenced code blocks. This causes CriticMarkup-like syntax in code (e.g. `{--...--}` in TypeScript snippets) to be incorrectly tokenized as deletions/additions/etc.
 

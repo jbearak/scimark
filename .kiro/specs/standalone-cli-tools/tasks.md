@@ -2,7 +2,7 @@
 
 ## Overview
 
-Build a single `manuscript-markdown` CLI binary that wraps the existing converter library. The CLI is a thin layer: argument parsing, file I/O, conflict detection, and dispatch to `convertDocx`/`convertMdToDocx`. Compiled via `bun build --compile` and installed by `setup.sh`.
+Build a single `scimark` CLI binary that wraps the existing converter library. The CLI is a thin layer: argument parsing, file I/O, conflict detection, and dispatch to `convertDocx`/`convertMdToDocx`. Compiled via `bun build --compile` and installed by `setup.sh`.
 
 ## Tasks
 
@@ -67,9 +67,9 @@ Build a single `manuscript-markdown` CLI binary that wraps the existing converte
 
 - [x] 5. Update setup.sh to build and install CLI
   - [x] 5.1 Add CLI build step to `setup.sh`
-    - After existing VSIX packaging, add `bun build src/cli.ts --compile --outfile dist/manuscript-markdown`
+    - After existing VSIX packaging, add `bun build src/cli.ts --compile --outfile dist/scimark`
     - Create `~/bin` if it doesn't exist
-    - Copy `dist/manuscript-markdown` to `~/bin/manuscript-markdown`
+    - Copy `dist/scimark` to `~/bin/scimark`
     - Ensure executable permissions (`chmod +x`)
     - Print installed path and PATH reminder
     - If CLI compilation fails, print error to stderr and continue with remaining steps

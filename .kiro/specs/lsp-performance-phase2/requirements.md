@@ -2,11 +2,11 @@
 
 ## Introduction
 
-Second round of performance optimizations for the Manuscript Markdown VS Code extension. Phase 1 addressed workspace-scan removal, targeted key search, bib reverse-map, streaming preprocessing, preview parser micro-optimizations, and TextMate grammar improvements. This phase targets the remaining hot-path inefficiencies: missing debounce on LSP validation, synchronous filesystem calls blocking the LSP thread, incomplete single-pass decoration extraction, missing debounce on word count updates, uncached navigation scanning, and redundant frontmatter parsing within the same event handler cycle.
+Second round of performance optimizations for the Scientific Markdown VS Code extension. Phase 1 addressed workspace-scan removal, targeted key search, bib reverse-map, streaming preprocessing, preview parser micro-optimizations, and TextMate grammar improvements. This phase targets the remaining hot-path inefficiencies: missing debounce on LSP validation, synchronous filesystem calls blocking the LSP thread, incomplete single-pass decoration extraction, missing debounce on word count updates, uncached navigation scanning, and redundant frontmatter parsing within the same event handler cycle.
 
 ## Glossary
 
-- **LSP_Server**: The language server process (`src/lsp/server.ts`) handling diagnostics, references, hover, and completion for Manuscript Markdown files.
+- **LSP_Server**: The language server process (`src/lsp/server.ts`) handling diagnostics, references, hover, and completion for Scientific Markdown files.
 - **Validation_Pipeline**: The sequence of `updateBibReverseMap`, `validateCitekeys`, and `validateCslField` calls triggered by `documents.onDidChangeContent` in the LSP_Server.
 - **Decoration_Pipeline**: The extraction functions in `src/highlight-colors.ts` that compute editor decoration ranges, currently delegating highlight extraction to a separate multi-pass function.
 - **Word_Count_Controller**: The `WordCountController` class in `src/wordcount.ts` that updates the status bar word count on editor events.

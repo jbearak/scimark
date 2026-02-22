@@ -28,7 +28,7 @@ import { BibtexEntry } from '../bibtex-parser';
 // --- Implementation notes ---
 // - References from markdown — intentional asymmetry: return only .bib declaration
 //   from .md (VS Code built-in finds @citekey occurrences); return full set from .bib.
-//   Do not "fix" this; users can enable manuscriptMarkdown.citekeyReferencesFromMarkdown
+//   Do not "fix" this; users can enable scimark.citekeyReferencesFromMarkdown
 // - References dedupe: by canonical filesystem path (realpath + normalized case) plus
 //   range, not raw URI
 // - References request coalescing: coalesce near-identical back-to-back requests
@@ -418,7 +418,7 @@ connection.onReferences(async (params: ReferenceParams): Promise<Location[]> => 
 		// location we contribute from this branch.
 		//
 		// Users can override this via the
-		// manuscriptMarkdown.citekeyReferencesFromMarkdown setting if they
+		// scimark.citekeyReferencesFromMarkdown setting if they
 		// prefer our results (e.g. the built-in extension is disabled).
 		const declaration = await getDefinitionLocationForKey(symbol.key, symbol.bibPath);
 		return declaration ? [declaration] : [];
@@ -560,7 +560,7 @@ async function validateCslField(doc: TextDocument): Promise<void> {
 				doc.positionAt(fieldInfo.valueEnd)
 			),
 			message,
-			source: 'manuscript-markdown',
+			source: 'scimark',
 		};
 		cslDiagnostics.set(doc.uri, [diagnostic]);
 		publishDiagnostics(doc.uri);
@@ -654,7 +654,7 @@ async function validateCitekeys(doc: TextDocument, metadata?: Frontmatter): Prom
 				severity: DiagnosticSeverity.Warning,
 				range: Range.create(doc.positionAt(usage.keyStart - 1), doc.positionAt(usage.keyEnd)),
 				message: `Citation key "@${usage.key}" not found in bibliography.`,
-				source: 'manuscript-markdown',
+				source: 'scimark',
 			});
 		}
 	}

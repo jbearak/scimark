@@ -1,6 +1,6 @@
 # Configuration
 
-All settings are under the `manuscriptMarkdown` namespace in VS Code settings.
+All settings are under the `scimark` namespace in VS Code settings.
 
 ## Comment Attribution
 

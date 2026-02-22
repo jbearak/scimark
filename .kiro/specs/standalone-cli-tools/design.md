@@ -2,7 +2,7 @@
 
 ## Overview
 
-A single CLI binary `manuscript-markdown` that provides DOCX↔Markdown conversion from any terminal, reusing the existing `converter.ts` (DOCX→MD) and `md-to-docx.ts` (MD→DOCX) library code. The conversion direction is auto-detected from the input file extension. The binary is compiled via `bun build --compile` and installed to `~/bin` by `setup.sh`.
+A single CLI binary `scimark` that provides DOCX↔Markdown conversion from any terminal, reusing the existing `converter.ts` (DOCX→MD) and `md-to-docx.ts` (MD→DOCX) library code. The conversion direction is auto-detected from the input file extension. The binary is compiled via `bun build --compile` and installed to `~/bin` by `setup.sh`.
 
 The CLI is a thin wrapper: it parses arguments, reads files, calls the existing async conversion functions, writes output, and reports results/errors. No conversion logic is duplicated.
 
@@ -10,7 +10,7 @@ The CLI is a thin wrapper: it parses arguments, reads files, calls the existing 
 
 ```mermaid
 graph TD
-    A[manuscript-markdown CLI] --> B{Input extension?}
+    A[scimark CLI] --> B{Input extension?}
     B -->|.docx| C[DOCX→MD path]
     B -->|.md| D[MD→DOCX path]
     B -->|other| E[Exit with error]
@@ -57,7 +57,7 @@ Hand-rolled parser (no dependency). Parses these flags:
 | `--template <path>` | MD→DOCX | string | none |
 | `--author <name>` | MD→DOCX | string | OS username |
 | `--mixed-citation-style <style>` | MD→DOCX | enum | `separate` |
-| `--csl-cache-dir <path>` | MD→DOCX | string | `~/.manuscript-markdown/csl-cache` |
+| `--csl-cache-dir <path>` | MD→DOCX | string | `~/.scimark/csl-cache` |
 
 The positional argument is the input file path.
 
@@ -138,10 +138,10 @@ No new persistent data models. The CLI is stateless — it reads input, converts
 
 The CLI is compiled with `bun build`:
 ```bash
-bun build src/cli.ts --compile --outfile dist/manuscript-markdown
+bun build src/cli.ts --compile --outfile dist/scimark
 ```
 
-This produces a single self-contained executable with all dependencies bundled. The `setup.sh` script copies it to `~/bin/manuscript-markdown`.
+This produces a single self-contained executable with all dependencies bundled. The `setup.sh` script copies it to `~/bin/scimark`.
 
 A separate `tsconfig.cli.json` is NOT needed — the CLI source uses the same compiler settings. The `bun build --compile` step handles bundling independently of `tsc`.
 
@@ -154,7 +154,7 @@ A separate `tsconfig.cli.json` is NOT needed — the CLI source uses the same co
 **Validates: Requirements 5.1, 5.2**
 
 ### Property 2: Argument parser preserves all flag values
-*For any* valid combination of CLI flags and values, `parseArgs` shall produce a `CliOptions` object where each flag's value matches the input. When optional flags are omitted, the defaults shall be `authorYearTitle` for citation key format, `separate` for mixed citation style, and `~/.manuscript-markdown/csl-cache` for CSL cache directory.
+*For any* valid combination of CLI flags and values, `parseArgs` shall produce a `CliOptions` object where each flag's value matches the input. When optional flags are omitted, the defaults shall be `authorYearTitle` for citation key format, `separate` for mixed citation style, and `~/.scimark/csl-cache` for CSL cache directory.
 **Validates: Requirements 1.2, 1.3, 2.3, 2.4, 2.5, 2.8, 2.9, 4.3, 4.4**
 
 ### Property 3: Output path derivation with --output override

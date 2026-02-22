@@ -2,11 +2,11 @@
 
 ## Introduction
 
-Performance optimization of the Manuscript Markdown VS Code extension, targeting the LSP server (references, hover, diagnostics), editor decoration pipeline, and supporting utilities. The goal is to eliminate redundant work, reduce algorithmic complexity, and introduce caching/indexing where repeated computation currently occurs.
+Performance optimization of the Scientific Markdown VS Code extension, targeting the LSP server (references, hover, diagnostics), editor decoration pipeline, and supporting utilities. The goal is to eliminate redundant work, reduce algorithmic complexity, and introduce caching/indexing where repeated computation currently occurs.
 
 ## Glossary
 
-- **LSP_Server**: The language server process (`src/lsp/server.ts`) handling references, hover, completion, and diagnostics for Manuscript Markdown files.
+- **LSP_Server**: The language server process (`src/lsp/server.ts`) handling references, hover, completion, and diagnostics for Scientific Markdown files.
 - **Workspace_Index**: A cached mapping from bibliography file paths to the set of markdown files that reference them, maintained incrementally via file watchers.
 - **Decoration_Pipeline**: The set of extraction functions in `src/extension.ts` and `src/highlight-colors.ts` that compute editor decoration ranges on each document change.
 - **Single_Pass_Tokenizer**: A unified scanner that extracts all CriticMarkup and highlight range categories in one traversal of the document text.
@@ -14,8 +14,8 @@ Performance optimization of the Manuscript Markdown VS Code extension, targeting
 - **Targeted_Key_Scanner**: A replacement for full citation scanning that searches for a single specific citekey using a focused regex.
 - **Bib_Reverse_Map**: A mapping from resolved bibliography file paths to the set of open markdown document URIs that depend on them.
 - **Streaming_Builder**: A string construction approach that collects segments and joins once, avoiding repeated intermediate string allocations.
-- **Preview_Parser**: The markdown-it plugin (`src/preview/manuscript-markdown-plugin.ts`) that renders CriticMarkup patterns in the preview pane.
-- **TextMate_Grammar**: The injection grammar (`syntaxes/manuscript-markdown.json`) providing syntax highlighting for CriticMarkup patterns.
+- **Preview_Parser**: The markdown-it plugin (`src/preview/scimark-plugin.ts`) that renders CriticMarkup patterns in the preview pane.
+- **TextMate_Grammar**: The injection grammar (`syntaxes/scimark.json`) providing syntax highlighting for CriticMarkup patterns.
 
 ## Requirements
 
@@ -111,10 +111,10 @@ Performance optimization of the Manuscript Markdown VS Code extension, targeting
 
 ### Requirement 10: TextMate Grammar Code Scope Exclusion
 
-**User Story:** As a user editing a markdown document containing inline code or fenced code blocks with CriticMarkup-like syntax (e.g. `{--...--}` in TypeScript), I want the Manuscript Markdown grammar injection to not apply inside code scopes, so that code content is not incorrectly highlighted as CriticMarkup.
+**User Story:** As a user editing a markdown document containing inline code or fenced code blocks with CriticMarkup-like syntax (e.g. `{--...--}` in TypeScript), I want the Scientific Markdown grammar injection to not apply inside code scopes, so that code content is not incorrectly highlighted as CriticMarkup.
 
 #### Acceptance Criteria
 
 1. WHEN the TextMate_Grammar injection selector is evaluated, THE TextMate_Grammar SHALL exclude inline code scopes (`markup.inline.raw`), fenced code block scopes (`markup.fenced_code`), embedded language scopes (`meta.embedded`), and string scopes (`string`) from injection.
-2. WHEN a markdown document contains any Manuscript Markdown syntax (CriticMarkup delimiters like `{--`, `{++`, `{==`, format highlights like `==text==` or `==text=={color}`, citation brackets like `[@key]`, or footnote references like `[^ref]`) inside inline code or fenced code blocks, THE TextMate_Grammar SHALL NOT apply any Manuscript Markdown tokenization to that content.
+2. WHEN a markdown document contains any Scientific Markdown syntax (CriticMarkup delimiters like `{--`, `{++`, `{==`, format highlights like `==text==` or `==text=={color}`, citation brackets like `[@key]`, or footnote references like `[^ref]`) inside inline code or fenced code blocks, THE TextMate_Grammar SHALL NOT apply any Scientific Markdown tokenization to that content.
 3. WHEN CriticMarkup patterns appear in normal markdown prose (outside code scopes), THE TextMate_Grammar SHALL continue to tokenize them as before.

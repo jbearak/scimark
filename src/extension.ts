@@ -8,7 +8,7 @@ import {
 import * as changes from './changes';
 import * as formatting from './formatting';
 import * as author from './author';
-import { manuscriptMarkdownPlugin } from './preview/manuscript-markdown-plugin';
+import { scimarkPlugin } from './preview/scimark-plugin';
 import { WordCountController } from './wordcount';
 import { convertDocx, CitationKeyFormat } from './converter';
 import { convertMdToDocx } from './md-to-docx';
@@ -54,11 +54,11 @@ export function activate(context: vscode.ExtensionContext) {
 	syncLanguageClient(context);
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration('manuscriptMarkdown.enableCitekeyLanguageServer')) {
+			if (e.affectsConfiguration('scimark.enableCitekeyLanguageServer')) {
 				syncLanguageClient(context);
 			}
 			if (
-				e.affectsConfiguration('manuscriptMarkdown.citekeyReferencesFromMarkdown') &&
+				e.affectsConfiguration('scimark.citekeyReferencesFromMarkdown') &&
 				languageClient
 			) {
 				void languageClient.sendNotification('workspace/didChangeConfiguration', {
@@ -74,13 +74,13 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	// Register existing navigation commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.nextChange', () => changes.next()),
-		vscode.commands.registerCommand('manuscript-markdown.prevChange', () => changes.prev())
+		vscode.commands.registerCommand('scimark.nextChange', () => changes.next()),
+		vscode.commands.registerCommand('scimark.prevChange', () => changes.prev())
 	);
 
 	// Register Set Citation Style command
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.setCitationStyle', async () => {
+		vscode.commands.registerCommand('scimark.setCitationStyle', async () => {
 			const items = [...BUNDLED_STYLE_LABELS].map(([id, displayName]) => ({
 				label: displayName,
 				description: id,
@@ -137,33 +137,33 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register CriticMarkup annotation commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.markAddition', () => 
+		vscode.commands.registerCommand('scimark.markAddition', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '{++', '++}'))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.markDeletion', () => 
+		vscode.commands.registerCommand('scimark.markDeletion', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '{--', '--}'))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.markSubstitution', () => 
+		vscode.commands.registerCommand('scimark.markSubstitution', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '{~~', '~>~~}', text.length + 5))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.comment', () => {
+		vscode.commands.registerCommand('scimark.comment', () => {
 			const authorName = author.getFormattedAuthorName();
-			const useIds = vscode.workspace.getConfiguration('manuscriptMarkdown').get<boolean>('alwaysUseCommentIds', false);
+			const useIds = vscode.workspace.getConfiguration('scimark').get<boolean>('alwaysUseCommentIds', false);
 			if (useIds) {
 				applyFormatting((text) => formatting.highlightAndCommentWithId(text, authorName));
 			} else {
 				applyFormatting((text) => formatting.highlightAndComment(text, authorName));
 			}
 		}),
-		vscode.commands.registerCommand('manuscript-markdown.substituteAndComment', () => {
+		vscode.commands.registerCommand('scimark.substituteAndComment', () => {
 			const authorName = author.getFormattedAuthorName();
 			applyFormatting((text) => formatting.substituteAndComment(text, authorName));
 		}),
-		vscode.commands.registerCommand('manuscript-markdown.additionAndComment', () => {
+		vscode.commands.registerCommand('scimark.additionAndComment', () => {
 			const authorName = author.getFormattedAuthorName();
 			applyFormatting((text) => formatting.additionAndComment(text, authorName));
 		}),
-		vscode.commands.registerCommand('manuscript-markdown.deletionAndComment', () => {
+		vscode.commands.registerCommand('scimark.deletionAndComment', () => {
 			const authorName = author.getFormattedAuthorName();
 			applyFormatting((text) => formatting.deletionAndComment(text, authorName));
 		})
@@ -171,79 +171,79 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register Markdown formatting commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.formatBold', () => 
+		vscode.commands.registerCommand('scimark.formatBold', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '**', '**'))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatItalic', () => 
+		vscode.commands.registerCommand('scimark.formatItalic', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '_', '_'))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatBoldItalic', () => 
+		vscode.commands.registerCommand('scimark.formatBoldItalic', () => 
 			applyFormatting((text) => formatting.formatBoldItalic(text))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatStrikethrough', () => 
+		vscode.commands.registerCommand('scimark.formatStrikethrough', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '~~', '~~'))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatUnderline', () => 
+		vscode.commands.registerCommand('scimark.formatUnderline', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '<u>', '</u>'))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatHighlight', () => 
+		vscode.commands.registerCommand('scimark.formatHighlight', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '==', '=='))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatInlineCode', () => 
+		vscode.commands.registerCommand('scimark.formatInlineCode', () => 
 			applyFormatting((text) => formatting.wrapSelection(text, '`', '`'))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatCodeBlock', () => 
+		vscode.commands.registerCommand('scimark.formatCodeBlock', () => 
 			applyFormatting((text) => formatting.wrapCodeBlock(text))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatLink', () => 
+		vscode.commands.registerCommand('scimark.formatLink', () => 
 			applyFormatting((text) => formatting.formatLink(text))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatBulletedList', () => 
+		vscode.commands.registerCommand('scimark.formatBulletedList', () => 
 			applyLineBasedFormatting((text) => formatting.wrapLines(text, '- '))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatNumberedList', () => 
+		vscode.commands.registerCommand('scimark.formatNumberedList', () => 
 			applyLineBasedFormatting((text) => formatting.wrapLinesNumbered(text))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatTaskList', () => 
+		vscode.commands.registerCommand('scimark.formatTaskList', () => 
 			applyLineBasedFormatting((text) => formatting.formatTaskList(text))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatQuoteBlock', () => 
+		vscode.commands.registerCommand('scimark.formatQuoteBlock', () => 
 			applyLineBasedFormatting((text) => formatting.wrapLines(text, '> ', true))
 		)
 	);
 
 	// Register table formatting commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.reflowTable', () => 
+		vscode.commands.registerCommand('scimark.reflowTable', () => 
 			applyTableFormatting((text) => formatting.reflowTable(text))
 		)
 	);
 
 	// Register heading commands (use line-based formatting)
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.formatHeading1', () => 
+		vscode.commands.registerCommand('scimark.formatHeading1', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 1))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatHeading2', () => 
+		vscode.commands.registerCommand('scimark.formatHeading2', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 2))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatHeading3', () => 
+		vscode.commands.registerCommand('scimark.formatHeading3', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 3))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatHeading4', () => 
+		vscode.commands.registerCommand('scimark.formatHeading4', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 4))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatHeading5', () => 
+		vscode.commands.registerCommand('scimark.formatHeading5', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 5))
 		),
-		vscode.commands.registerCommand('manuscript-markdown.formatHeading6', () => 
+		vscode.commands.registerCommand('scimark.formatHeading6', () => 
 			applyLineBasedFormatting((text) => formatting.formatHeading(text, 6))
 		)
 	);
 
 	// Register Open in Word command
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.openInWord', async (uri?: vscode.Uri) => {
+		vscode.commands.registerCommand('scimark.openInWord', async (uri?: vscode.Uri) => {
 			try {
 				if (!uri) {
 					const files = await vscode.window.showOpenDialog({
@@ -266,7 +266,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register DOCX converter command
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.convertDocx', async (uri?: vscode.Uri) => {
+		vscode.commands.registerCommand('scimark.convertDocx', async (uri?: vscode.Uri) => {
 			try {
 				if (!uri) {
 					const files = await vscode.window.showOpenDialog({
@@ -277,7 +277,7 @@ export function activate(context: vscode.ExtensionContext) {
 					uri = files[0];
 				}
 				const data = await vscode.workspace.fs.readFile(uri);
-				const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
+				const config = vscode.workspace.getConfiguration('scimark');
 				const format = config.get<CitationKeyFormat>('citationKeyFormat', 'authorYearTitle');
 				const tableIndentSpaces = config.get<number>('tableIndent', 2);
 				const alwaysUseCommentIds = config.get<boolean>('alwaysUseCommentIds', false);
@@ -343,7 +343,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register Markdown to DOCX export command
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.exportToWord', async (uri?: vscode.Uri) => {
+		vscode.commands.registerCommand('scimark.exportToWord', async (uri?: vscode.Uri) => {
 			try {
 				await exportMdToDocx(context, uri);
 			} catch (err: any) {
@@ -354,7 +354,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register Markdown to DOCX export with template command
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.exportToWordWithTemplate', async (uri?: vscode.Uri) => {
+		vscode.commands.registerCommand('scimark.exportToWordWithTemplate', async (uri?: vscode.Uri) => {
 			try {
 				// Prompt for template file
 				const templateFiles = await vscode.window.showOpenDialog({
@@ -380,13 +380,13 @@ export function activate(context: vscode.ExtensionContext) {
 	// --- Highlight decorations ---
 	// Read and sync default highlight color setting
 	function syncDefaultHighlightColor() {
-		const cfg = vscode.workspace.getConfiguration('manuscriptMarkdown');
+		const cfg = vscode.workspace.getConfiguration('scimark');
 		setDefaultHighlightColor(cfg.get<string>('defaultHighlightColor', 'yellow'));
 	}
 	syncDefaultHighlightColor();
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration('manuscriptMarkdown.defaultHighlightColor')) {
+			if (e.affectsConfiguration('scimark.defaultHighlightColor')) {
 				syncDefaultHighlightColor();
 				if (vscode.window.activeTextEditor) {
 					updateHighlightDecorations(vscode.window.activeTextEditor);
@@ -604,7 +604,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register colored highlight commands
 	for (const colorId of VALID_COLOR_IDS) {
 		context.subscriptions.push(
-			vscode.commands.registerCommand('manuscript-markdown.formatHighlight_' + colorId, () =>
+			vscode.commands.registerCommand('scimark.formatHighlight_' + colorId, () =>
 				applyFormatting((text) => formatting.wrapColoredHighlight(text, colorId))
 			)
 		);
@@ -613,7 +613,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Return markdown-it plugin for preview integration
 	return {
 		extendMarkdownIt(md: any) {
-			return md.use(manuscriptMarkdownPlugin);
+			return md.use(scimarkPlugin);
 		}
 	};
 }
@@ -627,7 +627,7 @@ function syncLanguageClient(context: vscode.ExtensionContext): void {
 
 function isLanguageServerEnabled(): boolean {
 	return vscode.workspace
-		.getConfiguration('manuscriptMarkdown')
+		.getConfiguration('scimark')
 		.get<boolean>('enableCitekeyLanguageServer', true);
 }
 
@@ -673,7 +673,7 @@ function startLanguageClient(context: vscode.ExtensionContext): void {
 }
 
 function getLspSettings(): Record<string, unknown> {
-	const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
+	const config = vscode.workspace.getConfiguration('scimark');
 	return {
 		citekeyReferencesFromMarkdown: config.get<boolean>('citekeyReferencesFromMarkdown', false),
 		cslCacheDirs: [cslCacheDir],
@@ -980,7 +980,7 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 	const authorName = author.getAuthorName();
 	// basePath has .md stripped, but dirname still yields the parent directory
 	const sourceDir = path.dirname(input.basePath);
-	const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
+	const config = vscode.workspace.getConfiguration('scimark');
 	const blockquoteStyle = config.get<'Quote' | 'IntenseQuote' | 'GitHub'>('blockquoteStyle', 'GitHub');
 	const result = await convertMdToDocx(input.markdown, {
 		bibtex: input.bibtex,

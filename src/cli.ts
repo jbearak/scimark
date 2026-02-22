@@ -33,7 +33,7 @@ export function parseArgs(argv: string[]): CliOptions {
     inputPath: '',
     force: false,
     citationKeyFormat: 'authorYearTitle',
-    cslCacheDir: path.join(os.homedir(), '.manuscript-markdown', 'csl-cache'),
+    cslCacheDir: path.join(os.homedir(), '.scimark', 'csl-cache'),
     tableIndent: '  ',
     noTemplate: false,
     alwaysUseCommentIds: false,
@@ -111,9 +111,9 @@ export function detectDirection(inputPath: string): 'docx-to-md' | 'md-to-docx' 
 }
 
 function showHelp() {
-  console.log(`Usage: manuscript-markdown <input> [options]
+  console.log(`Usage: scimark <input> [options]
 
-Convert between Manuscript Markdown and DOCX.
+Convert between Scientific Markdown and DOCX.
 Conversion direction is determined by input file extension.
 
 Options:

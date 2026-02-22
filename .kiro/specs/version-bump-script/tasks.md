@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation plan creates a bash shell script that automates semantic version bumping for the Manuscript Markdown VS Code extension. The script follows the pattern established in the raven repository, using standard Unix tools and npm for reliable package.json updates.
+This implementation plan creates a bash shell script that automates semantic version bumping for the Scientific Markdown VS Code extension. The script follows the pattern established in the raven repository, using standard Unix tools and npm for reliable package.json updates.
 
 ## Tasks
 

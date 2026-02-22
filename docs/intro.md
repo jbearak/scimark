@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide is for academic writers who currently use Microsoft Word and want to try plain-text manuscript editing. It walks you through everything from installing VS Code to confidently using the Manuscript Markdown extension — no prior experience with code editors, Markdown, or git required.
+This guide is for academic writers who currently use Microsoft Word and want to try plain-text manuscript editing. It walks you through everything from installing VS Code to confidently using the Scientific Markdown extension — no prior experience with code editors, Markdown, or git required.
 
 The guide is organized in three parts:
 
@@ -20,7 +20,7 @@ VS Code is a free text editor from Microsoft. Download it from [code.visualstudi
 
 ### Installing the Extension
 
-1. Download the latest `.vsix` file from the [releases page](https://github.com/jbearak/manuscript-markdown/releases)
+1. Download the latest `.vsix` file from the [releases page](https://github.com/jbearak/scimark/releases)
 2. In VS Code, open the Extensions sidebar — click the square icon on the left side, or press `Ctrl+Shift+X` (`Cmd+Shift+X` on Mac)
 3. Click the `...` menu at the top of the Extensions sidebar and select **Install from VSIX...**
 4. Navigate to the `.vsix` file you downloaded and select it
@@ -76,7 +76,7 @@ _italic text_
 ==highlighted text=={red}
 ```
 
-The highlight color is optional — without it, the color from the `manuscriptMarkdown.defaultHighlightColor` setting is used, falling back to yellow if that setting is missing or invalid.
+The highlight color is optional — without it, the color from the `scimark.defaultHighlightColor` setting is used, falling back to yellow if that setting is missing or invalid.
 
 #### Citations
 

@@ -1,6 +1,6 @@
-# Manuscript Markdown
+# Scientific Markdown
 
-A specification, converter, and VS Code extension for roundtrip manuscript editing between [Markdown](https://daringfireball.net/projects/markdown/) and Microsoft Word. Preserves change tracking, comments, tables, [LaTeX](https://www.latex-project.org/) equations, and citations in both directions, including [Zotero](https://www.zotero.org/) bibliographic data.
+A specification, converter, and VS Code extension for roundtrip manuscript and documentation editing between [Markdown](https://daringfireball.net/projects/markdown/) and Microsoft Word. Preserves change tracking, comments, tables, [LaTeX](https://www.latex-project.org/) equations, and citations in both directions, including [Zotero](https://www.zotero.org/) bibliographic data.
 
 ## Background
 
@@ -20,9 +20,9 @@ A specification, converter, and VS Code extension for roundtrip manuscript editi
 
 ### Installation
 
-Install from the [releases page](https://github.com/jbearak/manuscript-markdown/releases), or [build from source](docs/development.md). 
+Install from the [releases page](https://github.com/jbearak/scimark/releases), or [build from source](docs/development.md). 
 
-<!-- Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jbearak.manuscript-markdown), (OpenVSX Registry)[https://open-vsx.org/extension/jbearak/manuscript-markdown], -->
+<!-- Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jbearak.scimark), (OpenVSX Registry)[https://open-vsx.org/extension/jbearak/scimark], -->
 
 ### Usage
 
@@ -36,8 +36,8 @@ Install from the [releases page](https://github.com/jbearak/manuscript-markdown/
 A standalone CLI tool is also available for terminal-based conversion. See [CLI Tool](docs/cli.md) for details.
 
 ```sh
-manuscript-markdown paper.docx    # DOCX → Markdown
-manuscript-markdown paper.md      # Markdown → DOCX
+scimark paper.docx    # DOCX → Markdown
+scimark paper.md      # Markdown → DOCX
 ```
 
 ## Features

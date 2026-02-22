@@ -1,7 +1,7 @@
 # Version Bump Script Requirements
 
 ## Overview
-Create a shell script to automate version bumping for the Manuscript Markdown VS Code extension, similar to the patterns used in other projects (raven/sight repos).
+Create a shell script to automate version bumping for the Scientific Markdown VS Code extension, similar to the patterns used in other projects (raven/sight repos).
 
 ## User Stories
 

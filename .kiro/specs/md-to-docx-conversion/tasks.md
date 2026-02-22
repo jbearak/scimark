@@ -154,9 +154,9 @@ Build the reverse converter (MD → DOCX) as a new module `src/md-to-docx.ts` wi
 
 - [x] 12. VS Code command integration
   - [x] 12.1 Register submenu and commands in `package.json`
-    - Add `manuscript-markdown.exportDocx` submenu under editor title bar (visible when `editorLangId == markdown`)
-    - Add `manuscript-markdown.exportToWord` command ("Export to Word")
-    - Add `manuscript-markdown.exportToWordWithTemplate` command ("Export to Word (with template)")
+    - Add `scimark.exportDocx` submenu under editor title bar (visible when `editorLangId == markdown`)
+    - Add `scimark.exportToWord` command ("Export to Word")
+    - Add `scimark.exportToWordWithTemplate` command ("Export to Word (with template)")
     - _Requirements: 14.1_
 
   - [x] 12.2 Implement command handlers in `extension.ts`
