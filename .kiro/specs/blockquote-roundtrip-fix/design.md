@@ -90,6 +90,12 @@ Property 1: Fault Condition — Inter-Block Gap Preservation
 
 _For any_ markdown input containing two or more blockquote/alert groups, the md→docx→md roundtrip SHALL produce output where the exact number of blank lines between each pair of consecutive blockquote groups is identical to the original source.
 
+Exception strategy (same-type, zero-gap alerts):
+- We preserve `gapCount = 0` exactly (no synthetic blank line insertion).
+- Separation between adjacent same-type alert groups is maintained by explicit group boundaries (`blockquoteGroupIndex`) plus per-group marker-style metadata (`MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE_*`).
+- Lifecycle: compute from source markdown in `computeBlockquoteGaps` and `computeBlockquoteAlertMarkerInlineByGroup` (`src/md-to-docx.ts`), persist in custom props, then consume in `buildMarkdown` (`src/converter.ts`) without overriding zero gaps.
+- This is required for Property 1 and the md→docx→md byte-preserving roundtrip guarantee.
+
 **Validates: Requirements 2.1, 2.5, 2.6, 2.7**
 
 Property 2: Fault Condition — Alert Prefix Cleanliness

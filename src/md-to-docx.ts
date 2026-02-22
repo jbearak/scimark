@@ -690,7 +690,7 @@ function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
 export function computeBlockquoteGaps(markdown: string): Map<number, number> {
   const gaps = new Map<number, number>();
   const lines = markdown.split('\n');
-  const alertMarkerRe = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+  const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
 
   // Identify blockquote group spans (start/end line indices).
   // A new group starts when: (a) a '>' line follows a non-'>' line, or
@@ -699,12 +699,12 @@ export function computeBlockquoteGaps(markdown: string): Map<number, number> {
   const groups: Array<{ start: number; end: number }> = [];
   let i = 0;
   while (i < lines.length) {
-    if (/^>/.test(lines[i])) {
+    if (/^ {0,3}>/.test(lines[i])) {
       const runStart = i;
       // First line of a contiguous '>' run always starts a group
       let groupStart = i;
       i++;
-      while (i < lines.length && /^>/.test(lines[i])) {
+      while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
         if (alertMarkerRe.test(lines[i]) && i > runStart) {
           // This alert marker starts a new group within the same '>' run
           groups.push({ start: groupStart, end: i - 1 });
@@ -743,16 +743,16 @@ export function computeBlockquoteGaps(markdown: string): Map<number, number> {
 export function computeBlockquoteAlertMarkerInlineByGroup(markdown: string): Map<number, boolean> {
   const inlineByGroup = new Map<number, boolean>();
   const lines = markdown.split('\n');
-  const alertMarkerRe = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](.*)$/i;
+  const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](.*)$/i;
 
   let groupIndex = 0;
   let i = 0;
   while (i < lines.length) {
-    if (/^>/.test(lines[i])) {
+    if (/^ {0,3}>/.test(lines[i])) {
       const runStart = i;
       let groupStart = i;
       i++;
-      while (i < lines.length && /^>/.test(lines[i])) {
+      while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
         if (alertMarkerRe.test(lines[i]) && i > runStart) {
           const first = lines[groupStart].match(alertMarkerRe);
           if (first) inlineByGroup.set(groupIndex, first[2].trim().length > 0);
