@@ -291,14 +291,15 @@ export function parseBlockquoteLevel(pPrChildren: any[]): number | undefined {
   const pStyleElement = pPrChildren.find(child => child['w:pStyle'] !== undefined);
   if (!pStyleElement) return undefined;
   const val = getAttr(pStyleElement, 'val').toLowerCase();
-  if (val !== 'quote' && val !== 'intensequote') return undefined;
+  if (val !== 'quote' && val !== 'intensequote' && val !== 'github') return undefined;
 
   // Extract left indent to determine nesting level
   const indElement = pPrChildren.find(child => child['w:ind'] !== undefined);
   if (indElement) {
     const left = parseInt(getAttr(indElement, 'left'), 10);
     if (!isNaN(left) && left > 0) {
-      return Math.max(1, Math.round(left / 720));
+      const unit = val === 'github' ? 240 : 720;
+      return Math.max(1, Math.round(left / unit));
     }
   }
   return 1;
@@ -808,6 +809,10 @@ export async function extractFootnoteIdMapping(data: Uint8Array | JSZip): Promis
 
 export async function extractCodeBlockLanguageMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_CODE_BLOCK_LANGS');
+}
+
+export async function extractCodeBlockStyling(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_CODE_BLOCK_STYLING');
 }
 
 async function extractNotes(
@@ -2895,7 +2900,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -2904,6 +2909,7 @@ export async function convertDocx(
     extractFootnoteIdMapping(zip),
     extractCodeBlockLanguageMapping(zip),
     extractCommentThreads(zip),
+    extractCodeBlockStyling(zip),
   ]);
 
   // Group reply comments under their parents and get IDs to exclude from ranges
@@ -3035,6 +3041,14 @@ export async function convertDocx(
     const stylesStr = await stylesFile.async('string');
     const fontFields = extractFontOverridesFromStyles(stylesStr);
     Object.assign(fm, fontFields);
+  }
+  if (codeBlockStyling) {
+    const bg = codeBlockStyling.get('bg');
+    if (bg) fm.codeBackgroundColor = bg;
+    const fc = codeBlockStyling.get('fc');
+    if (fc) fm.codeFontColor = fc;
+    const insetStr = codeBlockStyling.get('inset');
+    if (insetStr) { const n = parseInt(insetStr, 10); if (n > 0) fm.codeBlockInset = n; }
   }
   const frontmatterStr = serializeFrontmatter(fm);
   if (frontmatterStr) {

@@ -199,7 +199,7 @@ describe('OOXML Generation Properties', () => {
       const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, rIdOffset: 3, warnings: [], hasList: false, hasComments: false, missingKeys: new Set<string>(), codeFont: 'Consolas' };
 
       const paragraph = generateParagraph(token, state);
-      const expectedIndent = level * 720; // 720 twips per level
+      const expectedIndent = level * 240; // 240 twips per level (GitHub default)
       expect(paragraph).toContain('<w:ind w:left="' + expectedIndent + '"/>');
     }), { numRuns: 100 });
   });

@@ -14,6 +14,7 @@ import {
   type MdTableRow,
   type DocxGenState
 } from './md-to-docx';
+import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 
 function makeState(): DocxGenState {
   return {
@@ -279,7 +280,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="Quote"/><w:ind w:left="720"/></w:pPr><w:r><w:t xml:space="preserve">Quote text</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:ind w:left="240"/></w:pPr><w:r><w:t xml:space="preserve">Quote text</w:t></w:r></w:p>');
   });
 
   it('generates nested blockquote', () => {
@@ -290,7 +291,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="Quote"/><w:ind w:left="2160"/></w:pPr><w:r><w:t xml:space="preserve">Nested quote</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:ind w:left="720"/></w:pPr><w:r><w:t xml:space="preserve">Nested quote</w:t></w:r></w:p>');
   });
 
   it('generates code block with multiple lines', () => {
@@ -903,7 +904,7 @@ console.log('code');
     expect(document).toContain('<w:b/>');
     expect(document).toContain('<w:i/>');
     expect(document).toContain('<w:numId w:val="1"/>');
-    expect(document).toContain('<w:pStyle w:val="Quote"/>');
+    expect(document).toContain('<w:pStyle w:val="GitHub"/>');
     expect(document).toContain('<w:pStyle w:val="CodeBlock"/>');
     expect(document).toContain('<w:tbl>');
     expect(document).toContain('<w:pBdr>');
@@ -1509,11 +1510,11 @@ describe('parseMd list levels with blockquotes', () => {
 });
 
 describe('generateParagraph blockquoteStyle option', () => {
-  it('uses Quote style by default', () => {
+  it('uses GitHub style by default', () => {
     const token: MdToken = { type: 'blockquote', level: 1, runs: [{ type: 'text', text: 'hello' }] };
     const state = makeState();
     const xml = generateParagraph(token, state);
-    expect(xml).toContain('w:pStyle w:val="Quote"');
+    expect(xml).toContain('w:pStyle w:val="GitHub"');
   });
 
   it('uses IntenseQuote style when specified', () => {
@@ -1522,6 +1523,80 @@ describe('generateParagraph blockquoteStyle option', () => {
     const xml = generateParagraph(token, state, { blockquoteStyle: 'IntenseQuote' });
     expect(xml).toContain('w:pStyle w:val="IntenseQuote"');
     expect(xml).not.toContain('w:pStyle w:val="Quote"');
+  });
+
+  it('uses GitHub style when specified', () => {
+    const token: MdToken = { type: 'blockquote', level: 1, runs: [{ type: 'text', text: 'hello' }] };
+    const state = makeState();
+    const xml = generateParagraph(token, state, { blockquoteStyle: 'GitHub' });
+    expect(xml).toContain('w:pStyle w:val="GitHub"');
+  });
+
+  it('GitHub nested blockquote uses 240-twip indent unit', () => {
+    const token: MdToken = { type: 'blockquote', level: 2, runs: [{ type: 'text', text: 'nested' }] };
+    const state = makeState();
+    const xml = generateParagraph(token, state, { blockquoteStyle: 'GitHub' });
+    expect(xml).toContain('w:ind w:left="480"');
+    expect(xml).toContain('w:pStyle w:val="GitHub"');
+  });
+
+  it('Quote style uses 720-twip indent unit for nesting', () => {
+    const token: MdToken = { type: 'blockquote', level: 2, runs: [{ type: 'text', text: 'nested' }] };
+    const state = makeState();
+    const xml = generateParagraph(token, state, { blockquoteStyle: 'Quote' });
+    expect(xml).toContain('w:ind w:left="1440"');
+  });
+});
+
+describe('blockquote-style frontmatter', () => {
+  it('parseFrontmatter parses blockquote-style: GitHub', () => {
+    const md = '---\nblockquote-style: GitHub\n---\nHello';
+    const { metadata } = parseFrontmatter(md);
+    expect(metadata.blockquoteStyle).toBe('GitHub');
+  });
+
+  it('parseFrontmatter is case-insensitive', () => {
+    const md = '---\nblockquote-style: github\n---\nHello';
+    const { metadata } = parseFrontmatter(md);
+    expect(metadata.blockquoteStyle).toBe('GitHub');
+  });
+
+  it('parseFrontmatter rejects invalid value', () => {
+    const md = '---\nblockquote-style: invalid\n---\nHello';
+    const { metadata } = parseFrontmatter(md);
+    expect(metadata.blockquoteStyle).toBeUndefined();
+  });
+
+  it('serializeFrontmatter includes blockquote-style', () => {
+    const yaml = serializeFrontmatter({ blockquoteStyle: 'GitHub' });
+    expect(yaml).toContain('blockquote-style: GitHub');
+  });
+
+  it('blockquote-style round-trips through serialize → parse', () => {
+    for (const style of ['Quote', 'IntenseQuote', 'GitHub'] as const) {
+      const yaml = serializeFrontmatter({ blockquoteStyle: style });
+      const { metadata } = parseFrontmatter(yaml + '\nBody text');
+      expect(metadata.blockquoteStyle).toBe(style);
+    }
+  });
+
+  it('frontmatter blockquote-style overrides options in convertMdToDocx', async () => {
+    const md = '---\nblockquote-style: IntenseQuote\n---\n\n> quoted text';
+    const { docx } = await convertMdToDocx(md, { blockquoteStyle: 'Quote' });
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('w:pStyle w:val="IntenseQuote"');
+    expect(docXml).not.toContain('w:pStyle w:val="Quote"');
+  });
+
+  it('defaults to GitHub style when no frontmatter or options', async () => {
+    const md = '> quoted text';
+    const { docx } = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('w:pStyle w:val="GitHub"');
   });
 });
 

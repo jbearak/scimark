@@ -273,13 +273,16 @@ test('--blockquote-style parses valid values', () => {
 
   const intenseOpts = parseArgs(['node', 'cli.js', 'file.md', '--blockquote-style', 'IntenseQuote']);
   expect(intenseOpts.blockquoteStyle).toBe('IntenseQuote');
+
+  const githubOpts = parseArgs(['node', 'cli.js', 'file.md', '--blockquote-style', 'GitHub']);
+  expect(githubOpts.blockquoteStyle).toBe('GitHub');
 });
 
 test('--blockquote-style rejects invalid values', () => {
   expect(() => parseArgs(['node', 'cli.js', 'file.md', '--blockquote-style', 'Fancy'])).toThrow('Invalid blockquote style');
 });
 
-test('blockquoteStyle defaults to Quote', () => {
+test('blockquoteStyle defaults to GitHub', () => {
   const opts = parseArgs(['node', 'cli.js', 'file.md']);
-  expect(opts.blockquoteStyle).toBe('Quote');
+  expect(opts.blockquoteStyle).toBe('GitHub');
 });

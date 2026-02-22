@@ -49,6 +49,10 @@ The frontmatter may also include citation-related fields (`csl`, `locale`, `zote
 | `title-font` | Title paragraph font family. Accepts a single value or a comma-separated list (one per title paragraph). Falls back to `font` if not set. |
 | `title-font-size` | Title paragraph font sizes in points. Accepts a single value or a comma-separated list. |
 | `title-font-style` | Title paragraph font styles. Same values as `header-font-style`. No default style. |
+| `code-background-color` | Code block and inline code background color. A 6-digit hex value (e.g., `E8E8E8`) enables shading mode; `none` or `transparent` falls back to indentation-based inset mode. Default: `E8E8E8` (shading mode). Alias: `code-background`. |
+| `code-font-color` | Code block and inline code text color. A 6-digit hex value (e.g., `2E2E2E`). Default: `2E2E2E`. Alias: `code-color`. |
+| `code-block-inset` | Border width for code blocks in shading mode, in eighths of a point (`w:sz`). A positive integer. Default: `48`. Does not affect inline code. |
+| `blockquote-style` | Word paragraph style for blockquotes: `Quote`, `IntenseQuote`, or `GitHub` (gray left border bar). Case-insensitive. Default: `GitHub`. Overrides the VS Code setting. |
 
 ### Heading and Title Font Configuration
 
@@ -110,6 +114,24 @@ font: Georgia
 code-font: Fira Code
 font-size: 12
 code-font-size: 10
+---
+```
+
+### Code Block Styling Example
+
+```yaml
+---
+code-background-color: E8E8E8
+code-font-color: 2E2E2E
+code-block-inset: 48
+---
+```
+
+To disable the colored background and use indentation-based inset mode:
+
+```yaml
+---
+code-background-color: none
 ---
 ```
 

@@ -687,9 +687,10 @@
           "type": "string",
           "enum": [
             "Quote",
-            "IntenseQuote"
+            "IntenseQuote",
+            "GitHub"
           ],
-          "default": "Quote",
+          "default": "GitHub",
           "description": "Word paragraph style to use for blockquotes when converting Markdown to DOCX"
         },
         "manuscriptMarkdown.alwaysUseCommentIds": {

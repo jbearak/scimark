@@ -1295,7 +1295,7 @@ export interface MdToDocxOptions {
    *  Return true to attempt downloading from the CSL repository. */
   onStyleNotFound?: (styleName: string) => Promise<boolean>;
   /** Word paragraph style to use for blockquotes. */
-  blockquoteStyle?: 'Quote' | 'IntenseQuote';
+  blockquoteStyle?: 'Quote' | 'IntenseQuote' | 'GitHub';
 }
 
 export interface MdToDocxResult {
@@ -1334,6 +1334,7 @@ export interface DocxGenState {
   codeBlockLanguages: Map<number, string>;
   citedKeys: Set<string>;
   codeFont: string;
+  codeShadingMode: boolean;
 }
 
 interface CommentEntry {
@@ -1451,6 +1452,10 @@ const DEFAULT_HEADING_SIZES_HP: Record<string, number> = {
 const DEFAULT_CODE_BLOCK_HP = 20;
 // Uniform padding (horizontal indent + vertical spacing) for code blocks, in twips (~8pt / 0.11in)
 const CODE_BLOCK_INSET_TWIPS = 160;
+const DEFAULT_CODE_BACKGROUND = 'E8E8E8';
+const DEFAULT_CODE_COLOR = '2E2E2E';
+const DEFAULT_CODE_BORDER_SIZE = 48;
+const CODE_BORDER_SPACE = 8;
 
 export interface FontOverrides {
   bodyFont?: string;
@@ -1469,6 +1474,13 @@ export interface FontOverrides {
 export function resolveAtIndex<T>(arr: T[] | undefined, index: number): T | undefined {
   if (!arr || arr.length === 0) return undefined;
   return index < arr.length ? arr[index] : arr[arr.length - 1];
+}
+
+export interface CodeBlockConfig {
+  background?: string;
+  insetMode: boolean;
+  codeFontColor?: string;
+  codeBlockInset?: number;
 }
 
 export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined {
@@ -1557,7 +1569,7 @@ export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined
 // Style IDs that receive body font/size overrides
 const BODY_STYLE_IDS = new Set([
   'Normal', 'Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6',
-  'Title', 'Quote', 'IntenseQuote', 'FootnoteText', 'EndnoteText',
+  'Title', 'Quote', 'IntenseQuote', 'GitHub', 'FootnoteText', 'EndnoteText',
 ]);
 // Style IDs that receive code font/size overrides
 const CODE_STYLE_IDS = new Set(['CodeChar', 'CodeBlock']);
@@ -1717,7 +1729,7 @@ export function applyFontOverridesToTemplate(
 
 
 
-export function stylesXml(overrides?: FontOverrides): string {
+export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlockConfig): string {
   // Helper: build w:rFonts element for a given font name
   function rFonts(font: string): string {
     return '<w:rFonts w:ascii="' + escapeXml(font) + '" w:hAnsi="' + escapeXml(font) + '"/>';
@@ -1764,13 +1776,29 @@ export function stylesXml(overrides?: FontOverrides): string {
   }
 
   // CodeChar: code font only (no size override for character style)
-  const codeCharRpr = '<w:rPr>' + codeFontStr + '</w:rPr>\n';
+  const isInsetMode = codeBlockConfig?.insetMode ?? false;
+  const codeBg = isInsetMode ? undefined : (codeBlockConfig?.background || DEFAULT_CODE_BACKGROUND);
+  const codeFontColor = codeBlockConfig?.codeFontColor || (isInsetMode ? undefined : DEFAULT_CODE_COLOR);
+  const codeBorderSize = isInsetMode ? undefined : (codeBlockConfig?.codeBlockInset || DEFAULT_CODE_BORDER_SIZE);
+  
+  let codeCharRprInner = codeFontStr;
+  if (codeBg) {
+    codeCharRprInner += '<w:shd w:val="clear" w:color="auto" w:fill="' + codeBg + '"/>';
+  }
+  if (codeFontColor) {
+    codeCharRprInner += '<w:color w:val="' + codeFontColor + '"/>';
+  }
+  const codeCharRpr = '<w:rPr>' + codeCharRprInner + '</w:rPr>\n';
 
   // CodeBlock: code font + code size (default 20hp)
   const codeBlockSz = overrides?.codeSizeHp
     ? szPair(overrides.codeSizeHp)
     : szPair(DEFAULT_CODE_BLOCK_HP);
-  const codeBlockRpr = '<w:rPr>' + codeFontStr + codeBlockSz + '</w:rPr>\n';
+  let codeBlockRprInner = codeFontStr + codeBlockSz;
+  if (codeFontColor) {
+    codeBlockRprInner += '<w:color w:val="' + codeFontColor + '"/>';
+  }
+  const codeBlockRpr = '<w:rPr>' + codeBlockRprInner + '</w:rPr>\n';
 
   // Title: title-specific font/size/style overrides, falling back to body font
   const titleFont = overrides?.titleFonts?.[0]
@@ -1811,6 +1839,21 @@ export function stylesXml(overrides?: FontOverrides): string {
 
   // IntenseQuote: body font + existing italic/color
   const intenseQuoteRpr = '<w:rPr><w:i/><w:color w:val="4472C4"/>' + bodyFontStr + '</w:rPr>\n';
+
+  // CodeBlock pPr: conditional inset vs shading mode
+  let codeBlockPPr: string;
+  if (isInsetMode) {
+    codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="' + CODE_BLOCK_INSET_TWIPS + '" w:right="' + CODE_BLOCK_INSET_TWIPS + '"/></w:pPr>\n';
+  } else {
+    codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/>' +
+      '<w:shd w:val="clear" w:color="auto" w:fill="' + codeBg + '"/>' +
+      '<w:pBdr>' +
+      '<w:top w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
+      '<w:bottom w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
+      '<w:left w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
+      '<w:right w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
+      '</w:pBdr></w:pPr>\n';
+  }
 
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">\n' +
@@ -1868,6 +1911,12 @@ export function stylesXml(overrides?: FontOverrides): string {
     '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="4" w:color="4472C4"/></w:pBdr><w:ind w:left="720"/></w:pPr>\n' +
     intenseQuoteRpr +
     '</w:style>\n' +
+    '<w:style w:type="paragraph" w:styleId="GitHub">\n' +
+    '<w:name w:val="GitHub Blockquote"/>\n' +
+    '<w:basedOn w:val="Normal"/>\n' +
+    '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="D0D7DE"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
+    (quoteRpr ? quoteRpr : '') +
+    '</w:style>\n' +
     '<w:style w:type="character" w:styleId="CodeChar">\n' +
     '<w:name w:val="Code Char"/>\n' +
     codeCharRpr +
@@ -1875,10 +1924,7 @@ export function stylesXml(overrides?: FontOverrides): string {
     '<w:style w:type="paragraph" w:styleId="CodeBlock">\n' +
     '<w:name w:val="Code Block"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    // Word paragraph shading (w:shd) does not extend into the indent/inset area (w:ind),
-    // a known OOXML limitation. Background color intentionally omitted to avoid an
-    // abrupt visual gap between the shaded text area and the paragraph border.
-    '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="' + CODE_BLOCK_INSET_TWIPS + '" w:right="' + CODE_BLOCK_INSET_TWIPS + '"/></w:pPr>\n' +
+    codeBlockPPr +
     codeBlockRpr +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Title">\n' +
@@ -2096,6 +2142,15 @@ function codeBlockLanguageProps(codeBlockLanguages: Map<number, string>): Custom
     });
   }
   return props;
+}
+
+function codeBlockStylingProps(fm: Frontmatter): CustomPropEntry[] {
+  const obj: Record<string, string> = {};
+  if (fm.codeBackgroundColor) obj.bg = fm.codeBackgroundColor;
+  if (fm.codeFontColor) obj.fc = fm.codeFontColor;
+  if (fm.codeBlockInset !== undefined) obj.inset = String(fm.codeBlockInset);
+  if (Object.keys(obj).length === 0) return [];
+  return [{ name: 'MANUSCRIPT_CODE_BLOCK_STYLING', value: JSON.stringify(obj) }];
 }
 
 function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean): string {
@@ -2491,8 +2546,9 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       state.hasList = true;
       break;
     case 'blockquote':
-      const bqStyle = options?.blockquoteStyle ?? 'Quote';
-      const leftIndent = 720 * (token.level || 1);
+      const bqStyle = options?.blockquoteStyle ?? 'GitHub';
+      const bqIndentUnit = bqStyle === 'GitHub' ? 240 : 720;
+      const leftIndent = bqIndentUnit * (token.level || 1);
       pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/><w:ind w:left="' + leftIndent + '"/></w:pPr>';
       break;
     case 'code_block':
@@ -2510,6 +2566,9 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   if (token.type === 'code_block') {
     const lines = (token.runs[0]?.text || '').replace(/\n$/, '').split('\n');
     const rpr = '<w:rPr><w:rFonts w:ascii="' + escapeXml(state.codeFont) + '" w:hAnsi="' + escapeXml(state.codeFont) + '"/></w:rPr>';
+    if (state.codeShadingMode) {
+      return lines.map((line) => '<w:p>' + pPr + generateRun(line, rpr) + '</w:p>').join('');
+    }
     const inset = CODE_BLOCK_INSET_TWIPS;
     return lines.map((line, i) => {
       let linePPr = pPr;
@@ -2835,6 +2894,13 @@ export async function convertMdToDocx(
   // Parse frontmatter for CSL style and other metadata
   const { metadata: frontmatter, body } = parseFrontmatter(markdown);
   const fontOverrides = resolveFontOverrides(frontmatter);
+  const isInsetMode = frontmatter.codeBackgroundColor === 'none' || frontmatter.codeBackgroundColor === 'transparent';
+  const codeBlockConfig: CodeBlockConfig = {
+    insetMode: isInsetMode,
+    background: !isInsetMode && frontmatter.codeBackgroundColor && /^[0-9A-Fa-f]{6}$/.test(frontmatter.codeBackgroundColor) ? frontmatter.codeBackgroundColor : undefined,
+    codeFontColor: frontmatter.codeFontColor,
+    codeBlockInset: frontmatter.codeBlockInset,
+  };
   // Extract footnote definitions before markdown parsing
   const { cleaned: bodyWithoutFootnotes, definitions: footnoteDefs } = extractFootnoteDefinitions(body);
   const tokens = parseMd(bodyWithoutFootnotes);
@@ -2945,6 +3011,7 @@ export async function convertMdToDocx(
     codeBlockLanguages: new Map(),
     citedKeys: new Set(),
     codeFont: fontOverrides?.codeFont || 'Consolas',
+    codeShadingMode: !isInsetMode,
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -2977,7 +3044,13 @@ export async function convertMdToDocx(
     }
   }
 
-  const documentXml = generateDocumentXml(tokens, state, options, bibEntries, citeprocEngine, frontmatter);
+  // Resolve effective blockquote style: frontmatter > options > default
+  const effectiveBlockquoteStyle = frontmatter.blockquoteStyle ?? options?.blockquoteStyle ?? 'GitHub';
+  const resolvedOptions = options
+    ? { ...options, blockquoteStyle: effectiveBlockquoteStyle }
+    : { blockquoteStyle: effectiveBlockquoteStyle };
+
+  const documentXml = generateDocumentXml(tokens, state, resolvedOptions, bibEntries, citeprocEngine, frontmatter);
 
   // Build footnote/endnote body OOXML from definitions
   for (const [label, bodyText] of footnoteDefs) {
@@ -3042,7 +3115,7 @@ export async function convertMdToDocx(
   } else if (templateParts?.has('word/styles.xml')) {
     zip.file('word/styles.xml', templateParts.get('word/styles.xml')!);
   } else {
-    zip.file('word/styles.xml', stylesXml(fontOverrides));
+    zip.file('word/styles.xml', stylesXml(fontOverrides, codeBlockConfig));
   }
 
   // Always use generated settings.xml to guarantee compatibilityMode >= 15
@@ -3092,6 +3165,7 @@ export async function convertMdToDocx(
   customProps.push(...commentIdMappingProps(state.commentIdMap));
   customProps.push(...footnoteIdMappingProps(state.footnoteLabelToId));
   customProps.push(...codeBlockLanguageProps(state.codeBlockLanguages));
+  customProps.push(...codeBlockStylingProps(frontmatter));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));
