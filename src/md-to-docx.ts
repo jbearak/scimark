@@ -2062,6 +2062,8 @@ const DEFAULT_CODE_BACKGROUND = 'E8E8E8';
 const DEFAULT_CODE_COLOR = '2E2E2E';
 const DEFAULT_CODE_BORDER_SIZE = 48;
 const CODE_BORDER_SPACE = 8;
+// Left/right indent for shading-mode code blocks to prevent margin overflow (~0.22in)
+export const CODE_BLOCK_MARGIN_INDENT = 317;
 
 export interface FontOverrides {
   bodyFont?: string;
@@ -2466,7 +2468,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
       '<w:bottom w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
       '<w:left w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
       '<w:right w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
-      '</w:pBdr><w:ind w:left="317" w:right="317"/></w:pPr>\n';
+      '</w:pBdr><w:ind w:left="' + CODE_BLOCK_MARGIN_INDENT + '" w:right="' + CODE_BLOCK_MARGIN_INDENT + '"/></w:pPr>\n';
   }
 
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +

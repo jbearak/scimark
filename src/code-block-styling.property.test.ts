@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import { parseFrontmatter, serializeFrontmatter, type Frontmatter } from './frontmatter';
-import { stylesXml, type CodeBlockConfig, generateParagraph, type DocxGenState, type MdToken } from './md-to-docx';
+import { stylesXml, type CodeBlockConfig, generateParagraph, type DocxGenState, type MdToken, CODE_BLOCK_MARGIN_INDENT } from './md-to-docx';
 import { convertMdToDocx } from './md-to-docx';
 import { convertDocx } from './converter';
 
@@ -106,7 +106,7 @@ describe('Code Block Styling Property Tests', () => {
         expect(codeBlock!).toContain('w:pBdr');
         expect(codeBlock!).toContain('w:color="' + color + '"');
         expect(codeBlock!).toContain('w:sz="' + inset + '"');
-        expect(codeBlock!).toContain('w:ind w:left="317" w:right="317"');
+        expect(codeBlock!).toContain('w:ind w:left="' + CODE_BLOCK_MARGIN_INDENT + '" w:right="' + CODE_BLOCK_MARGIN_INDENT + '"');
       }
     ), { numRuns: 100 });
   });
