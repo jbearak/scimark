@@ -3,6 +3,13 @@ import { generateCitation, generateCitationId, generateMathXml, escapeXml, gener
 import { BibtexEntry } from './bibtex-parser';
 import { parseMd, type MdRun } from './md-to-docx';
 
+/** Extract and parse the CSL_CITATION JSON from a Zotero field code XML string. */
+function extractCsl(xml: string) {
+  const m = xml.match(/CSL_CITATION (.+?) <\/w:instrText>/);
+  if (!m) return undefined;
+  return JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
+}
+
 describe('generateCitation', () => {
   it('produces field code with Zotero metadata', () => {
     const entries = new Map<string, BibtexEntry>();
@@ -30,10 +37,8 @@ describe('generateCitation', () => {
     expect(result.warning).toBeUndefined();
 
     // Extract JSON from the field code to verify structure
-    const jsonMatch = result.xml.match(/CSL_CITATION (.+?) <\/w:instrText>/);
-    expect(jsonMatch).toBeTruthy();
-    const decoded = jsonMatch![1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-    const csl = JSON.parse(decoded);
+    const csl = extractCsl(result.xml);
+    expect(csl).toBeTruthy();
 
     // Defect 1: citationID is a random alphanumeric string
     expect(csl.citationID).toMatch(/^[a-z0-9]{8}$/);
@@ -131,9 +136,7 @@ describe('generateCitation', () => {
     expect(result.xml).toContain('(Smith 2020; Doe 2021)');
 
     // Verify both citationItems have distinct numeric IDs
-    const jsonMatch = result.xml.match(/CSL_CITATION (.+?) <\/w:instrText>/);
-    const decoded = jsonMatch![1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-    const csl = JSON.parse(decoded);
+    const csl = extractCsl(result.xml);
     expect(csl.citationItems.length).toBe(2);
     expect(csl.citationItems[0].id).toBe(csl.citationItems[0].itemData.id);
     expect(csl.citationItems[1].id).toBe(csl.citationItems[1].itemData.id);
@@ -376,10 +379,7 @@ describe('generateCitation', () => {
     for (let i = 0; i < 10; i++) {
       const run = { keys: ['smith2020'], text: 'smith2020' };
       const result = generateCitation(run, entries, undefined, usedIds, itemIdMap);
-      const jsonMatch = result.xml.match(/CSL_CITATION (.+?) <\/w:instrText>/);
-      const decoded = jsonMatch![1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-      const csl = JSON.parse(decoded);
-      ids.push(csl.citationID);
+      ids.push(extractCsl(result.xml).citationID);
     }
 
     // All IDs should be unique
@@ -407,13 +407,8 @@ describe('generateCitation', () => {
     const run2 = { keys: ['smith2020'], text: 'smith2020' };
     const result2 = generateCitation(run2, entries, undefined, usedIds, itemIdMap);
 
-    const extract = (xml: string) => {
-      const m = xml.match(/CSL_CITATION (.+?) <\/w:instrText>/);
-      return JSON.parse(m![1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
-    };
-
-    const csl1 = extract(result1.xml);
-    const csl2 = extract(result2.xml);
+    const csl1 = extractCsl(result1.xml);
+    const csl2 = extractCsl(result2.xml);
 
     // Same key should get the same numeric ID
     expect(csl1.citationItems[0].id).toBe(csl2.citationItems[0].id);
@@ -560,12 +555,6 @@ describe('per-item suppress-author', () => {
     entries.set('smith2020', smithEntry);
     entries.set('doe2021', doeEntry);
     return entries;
-  }
-
-  function extractCsl(xml: string) {
-    const m = xml.match(/CSL_CITATION (.+?) <\/w:instrText>/);
-    if (!m) return undefined;
-    return JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
   }
 
   it('mixed suppress first: [-@smith; @jones] suppresses only smith', () => {

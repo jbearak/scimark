@@ -432,11 +432,11 @@ function citationRule(state: any, silent: boolean): boolean {
         // First part: the `[-@` or `[@` prefix was already consumed by the outer match,
         // so `isSuppressed` tells us whether this item is suppressed.
         suppressed = isSuppressed;
-        raw = raw.replace(/^@/, '');
+        raw = raw.replace(/^@/, '').trim();
       } else {
         // Subsequent parts: check for `-@` prefix to determine per-item suppress
         suppressed = raw.startsWith('-@');
-        raw = raw.replace(/^-?@/, '');
+        raw = raw.replace(/^-?@/, '').trim();
       }
       if (!raw) continue;
 

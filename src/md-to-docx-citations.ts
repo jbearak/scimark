@@ -427,7 +427,7 @@ export function generateCitation(
 
   // Pure missing — emit @citekey references as plain text
   if (resolvedKeys.length === 0) {
-    const missingText = '(' + missingKeys.map(k => '@' + k).join('; ') + ')';
+    const missingText = '(' + missingKeys.map(k => (run.suppressAuthorKeys?.has(k) ? '-@' : '@') + k).join('; ') + ')';
     return {
       xml: '<w:r><w:t>' + escapeXml(missingText) + '</w:t></w:r>',
       warning: warnings.length > 0 ? warnings.join('; ') : undefined,
@@ -436,7 +436,7 @@ export function generateCitation(
   }
 
   // Mixed (some resolved, some missing) — resolved get field code, missing get plain text
-  const missingText = '(' + missingKeys.map(k => '@' + k).join('; ') + ')';
+  const missingText = '(' + missingKeys.map(k => (run.suppressAuthorKeys?.has(k) ? '-@' : '@') + k).join('; ') + ')';
   const xml = buildCitationFieldCode(resolvedKeys, entries, run.locators, citeprocEngine, undefined, usedCitationIds, itemIdMap, run.suppressAuthorKeys) +
     '<w:r><w:t xml:space="preserve"> </w:t></w:r>' +
     '<w:r><w:t>' + escapeXml(missingText) + '</w:t></w:r>';
