@@ -76,12 +76,3 @@ You can track changes using Git (commit history shows what changed between draft
 
 See the [CriticMarkup Guide](../criticmarkup.md) for more details.
 
-## AI-Assisted Editing
-
-Because your manuscript lives in plain text, AI coding assistants — such as [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [GitHub Copilot](https://github.com/features/copilot), or similar tools — can read everything in your repository: the manuscript text, the `.bib` file, and the full revision history in git. This gives them the kind of context that is not possible when working in Word.
-
-One example is agonizing over a word or phrase: you can select the text and ask the AI to suggest alternatives, think through connotations, or explain why a particular choice may or may not be working.
-
-Another is writing feedback on a colleague's paper. You might add comments in Word as you read, then export to Markdown and ask the AI to adjust the tone — for instance, to make sure critical points come across as constructive rather than harsh.
-
-You can also use a voice dictation tool — such as [Handy](https://github.com/cjpais/Handy), which does local transcription using Whisper and Parakeet — to think out loud while editing, and feed this into language models. Talking through a passage can help you work out what you want to say.

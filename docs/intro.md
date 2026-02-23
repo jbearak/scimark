@@ -319,6 +319,10 @@ Right-click inside the editor to see **Markdown Formatting** and **Markdown Anno
 
 Right-click files in the Explorer sidebar for import/export commands (**Export to Markdown** for `.docx` files, **Export to Word** for `.md` files).
 
+### AI-Assisted Editing
+
+Because your manuscript lives in plain text, AI coding assistants — such as [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [GitHub Copilot](https://github.com/features/copilot), or similar tools — can read everything in your repository: the manuscript text, the `.bib` file, and the full revision history in git. This gives them the kind of context that is not possible when working in Word.
+
 ---
 
 ## Next Steps

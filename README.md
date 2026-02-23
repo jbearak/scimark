@@ -74,7 +74,7 @@ manuscript-markdown paper.md      # Markdown → DOCX
 
 - [Getting Started](docs/intro.md)
 - **Guides**:
-  - [Research Papers](docs/guides/research-paper.md) — Citations, math, metadata, AI-assisted editing
+  - [Research Papers](docs/guides/research-paper.md) — Citations, math, metadata
   - [Technical Documentation](docs/guides/documentation.md) — Code, tables, review
 - [Specification Overview](docs/specification.md)
 - [CriticMarkup Syntax](docs/criticmarkup.md)
