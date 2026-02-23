@@ -322,6 +322,9 @@ function buildCitationFieldCode(
   suppressAuthor?: boolean
 ): string {
   // Resolve visible text first so we can populate properties (Defect 2)
+  // Note: visibleTextOverride bypasses suppressAuthor processing — callers
+  // should not provide both, as the override text would include the author
+  // while the CSL item has suppress-author set to true.
   const visibleText = visibleTextOverride ?? resolveVisibleText(keys, entries, locators, citeprocEngine, suppressAuthor);
 
   const citationItems: any[] = [];

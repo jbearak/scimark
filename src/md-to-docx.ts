@@ -1204,14 +1204,14 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         
       case 'fence': {
         // Detect trailing blank line by checking if the next token starts
-        // more than one line after this fence ends.
-        const fenceEndLine = token.map?.[1] ?? 0;
-        const nextToken = tokens[i + 1];
-        const nextStartLine = nextToken?.map?.[0] ?? fenceEndLine;
+        // more than one line after this fence ends.  Both map values must
+        // be present; if either is missing we conservatively assume no gap.
+        const fenceEnd = token.map?.[1];
+        const nextStart = tokens[i + 1]?.map?.[0];
         result.push({
           type: 'code_block',
           language: token.info || undefined,
-          trailingBlankLine: nextStartLine > fenceEndLine,
+          trailingBlankLine: fenceEnd != null && nextStart != null && nextStart > fenceEnd,
           runs: [{ type: 'text', text: token.content }]
         });
         i++;
@@ -1219,13 +1219,12 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
       }
 
       case 'code_block': {
-        const cbEndLine = token.map?.[1] ?? 0;
-        const cbNext = tokens[i + 1];
-        const cbNextStart = cbNext?.map?.[0] ?? cbEndLine;
+        const cbEnd = token.map?.[1];
+        const cbNextStart = tokens[i + 1]?.map?.[0];
         result.push({
           type: 'code_block',
           language: undefined,
-          trailingBlankLine: cbNextStart > cbEndLine,
+          trailingBlankLine: cbEnd != null && cbNextStart != null && cbNextStart > cbEnd,
           runs: [{ type: 'text', text: token.content }]
         });
         i++;
