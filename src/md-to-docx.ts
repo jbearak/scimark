@@ -71,7 +71,7 @@ export interface MdRun {
   // Citation specific
   keys?: string[];          // citation keys for [@key1; @key2]
   locators?: Map<string, string>; // key -> locator for [@key, p. 20]
-  suppressAuthor?: boolean; // [-@key] suppress-author form
+  suppressAuthorKeys?: Set<string>; // per-key suppress-author: Set of keys with [-@key] form
   // Math specific
   display?: boolean;        // display math ($$...$$) vs inline ($...$)
   // Image specific
@@ -418,27 +418,44 @@ function citationRule(state: any, silent: boolean): boolean {
     const token = state.push('citation', '', 0);
     // Preserve original content for fallback rendering
     token.content = isSuppressed ? '-@' + rawContent : rawContent;
-    token.suppressAuthor = isSuppressed;
 
     const keys: string[] = [];
     const locators = new Map<string, string>();
+    const suppressAuthorKeys = new Set<string>();
 
-    // Strip optional -@ or @ prefix per item (handles suppress-author within groups)
-    const parts = rawContent.split(';').map((p: string) => p.trim().replace(/^-?@/, '')).filter(Boolean);
-    for (const part of parts) {
-      const commaPos = part.indexOf(',');
+    // Split raw content by `;` and check each part for -@ prefix BEFORE stripping
+    const rawParts = rawContent.split(';').map((p: string) => p.trim()).filter(Boolean);
+    for (let i = 0; i < rawParts.length; i++) {
+      let raw = rawParts[i];
+      let suppressed: boolean;
+      if (i === 0) {
+        // First part: the `[-@` or `[@` prefix was already consumed by the outer match,
+        // so `isSuppressed` tells us whether this item is suppressed.
+        suppressed = isSuppressed;
+        raw = raw.replace(/^@/, '');
+      } else {
+        // Subsequent parts: check for `-@` prefix to determine per-item suppress
+        suppressed = raw.startsWith('-@');
+        raw = raw.replace(/^-?@/, '');
+      }
+      if (!raw) continue;
+
+      const commaPos = raw.indexOf(',');
       if (commaPos !== -1) {
-        const key = part.slice(0, commaPos).trim();
-        const locator = part.slice(commaPos + 1).trim();
+        const key = raw.slice(0, commaPos).trim();
+        const locator = raw.slice(commaPos + 1).trim();
         keys.push(key);
         locators.set(key, locator);
+        if (suppressed) suppressAuthorKeys.add(key);
       } else {
-        keys.push(part);
+        keys.push(raw);
+        if (suppressed) suppressAuthorKeys.add(raw);
       }
     }
 
     token.keys = keys;
     token.locators = locators;
+    token.suppressAuthorKeys = suppressAuthorKeys.size > 0 ? suppressAuthorKeys : undefined;
   }
 
   state.pos = endPos + 1;
@@ -1550,7 +1567,7 @@ function processInlineChildren(tokens: any[]): MdRun[] {
           text: token.content,
           keys: token.keys,
           locators: token.locators,
-          suppressAuthor: token.suppressAuthor || undefined,
+          suppressAuthorKeys: token.suppressAuthorKeys || undefined,
           ...formatStack,
           href: currentHref
         });

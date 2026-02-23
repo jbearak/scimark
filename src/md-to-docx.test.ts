@@ -2010,7 +2010,7 @@ describe('Code region inertness in MD→DOCX', () => {
   it('parses indented code block as code_block token', () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: 1, maxLength: 40 }).filter(s => !s.includes('\n')),
+        fc.string({ minLength: 1, maxLength: 40 }).filter(s => !s.includes('\n') && s.trim().length > 0),
         line => {
           const tokens = parseMd('    ' + line + '\n');
           const codeBlock = tokens.find(t => t.type === 'code_block');

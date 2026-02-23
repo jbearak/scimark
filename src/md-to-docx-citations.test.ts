@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
-import { generateCitation, generateCitationId, generateMathXml, escapeXml, generateMissingKeysXml, htmlToOoxmlRuns } from './md-to-docx-citations';
+import { generateCitation, generateCitationId, generateMathXml, escapeXml, generateMissingKeysXml, htmlToOoxmlRuns, generateFallbackText } from './md-to-docx-citations';
 import { BibtexEntry } from './bibtex-parser';
+import { parseMd, type MdRun } from './md-to-docx';
 
 describe('generateCitation', () => {
   it('produces field code with Zotero metadata', () => {
@@ -539,5 +540,162 @@ describe('htmlToOoxmlRuns', () => {
     expect(result).toContain('<w:i/>');
     expect(result).toContain('<w:vertAlign w:val="superscript"/>');
     expect(result).toContain('<w:t xml:space="preserve">text</w:t>');
+  });
+});
+
+describe('per-item suppress-author', () => {
+  const smithEntry: BibtexEntry = {
+    type: 'article',
+    key: 'smith2020',
+    fields: new Map([['author', 'Smith, John'], ['year', '2020']]),
+  };
+  const doeEntry: BibtexEntry = {
+    type: 'book',
+    key: 'doe2021',
+    fields: new Map([['author', 'Doe, Jane'], ['year', '2021']]),
+  };
+
+  function makeEntries() {
+    const entries = new Map<string, BibtexEntry>();
+    entries.set('smith2020', smithEntry);
+    entries.set('doe2021', doeEntry);
+    return entries;
+  }
+
+  function extractCsl(xml: string) {
+    const m = xml.match(/CSL_CITATION (.+?) <\/w:instrText>/);
+    if (!m) return undefined;
+    return JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
+  }
+
+  it('mixed suppress first: [-@smith; @jones] suppresses only smith', () => {
+    const entries = makeEntries();
+    const usedIds = new Set<string>();
+    const itemIdMap = new Map<string, string | number>();
+    const run = {
+      keys: ['smith2020', 'doe2021'],
+      text: '-@smith2020; doe2021',
+      suppressAuthorKeys: new Set(['smith2020']),
+    };
+    const result = generateCitation(run, entries, undefined, usedIds, itemIdMap);
+    const csl = extractCsl(result.xml);
+    expect(csl).toBeTruthy();
+    expect(csl.citationItems[0]['suppress-author']).toBe(true);
+    expect(csl.citationItems[1]['suppress-author']).toBeUndefined();
+  });
+
+  it('mixed suppress second: [@smith; -@jones] suppresses only jones', () => {
+    const entries = makeEntries();
+    const usedIds = new Set<string>();
+    const itemIdMap = new Map<string, string | number>();
+    const run = {
+      keys: ['smith2020', 'doe2021'],
+      text: 'smith2020; -@doe2021',
+      suppressAuthorKeys: new Set(['doe2021']),
+    };
+    const result = generateCitation(run, entries, undefined, usedIds, itemIdMap);
+    const csl = extractCsl(result.xml);
+    expect(csl).toBeTruthy();
+    expect(csl.citationItems[0]['suppress-author']).toBeUndefined();
+    expect(csl.citationItems[1]['suppress-author']).toBe(true);
+  });
+
+  it('no suppress: [@smith; @jones] has no suppress-author on either', () => {
+    const entries = makeEntries();
+    const usedIds = new Set<string>();
+    const itemIdMap = new Map<string, string | number>();
+    const run = {
+      keys: ['smith2020', 'doe2021'],
+      text: 'smith2020; doe2021',
+    };
+    const result = generateCitation(run, entries, undefined, usedIds, itemIdMap);
+    const csl = extractCsl(result.xml);
+    expect(csl).toBeTruthy();
+    expect(csl.citationItems[0]['suppress-author']).toBeUndefined();
+    expect(csl.citationItems[1]['suppress-author']).toBeUndefined();
+  });
+
+  it('fallback text: per-key suppress produces year-only for suppressed key', () => {
+    const entries = makeEntries();
+    const result = generateFallbackText(
+      ['smith2020', 'doe2021'],
+      entries,
+      undefined,
+      new Set(['smith2020'])
+    );
+    // smith2020 is suppressed → year only; doe2021 is not → "Doe 2021"
+    expect(result).toBe('(2020; Doe 2021)');
+  });
+
+  it('fallback text: suppress second key only', () => {
+    const entries = makeEntries();
+    const result = generateFallbackText(
+      ['smith2020', 'doe2021'],
+      entries,
+      undefined,
+      new Set(['doe2021'])
+    );
+    // smith2020 normal → "Smith 2020"; doe2021 suppressed → year only
+    expect(result).toBe('(Smith 2020; 2021)');
+  });
+});
+
+describe('parseMd per-item suppress-author', () => {
+  function findCitationRun(tokens: ReturnType<typeof parseMd>): MdRun | undefined {
+    for (const tok of tokens) {
+      if (tok.runs) {
+        const run = tok.runs.find(r => r.type === 'citation');
+        if (run) return run;
+      }
+    }
+    return undefined;
+  }
+
+  it('[-@smith; @jones] produces suppressAuthorKeys with smith only', () => {
+    const tokens = parseMd('[-@smith2020; @doe2021]');
+    const run = findCitationRun(tokens);
+    expect(run).toBeTruthy();
+    expect(run!.keys).toEqual(['smith2020', 'doe2021']);
+    expect(run!.suppressAuthorKeys).toEqual(new Set(['smith2020']));
+  });
+
+  it('[@smith; -@jones] produces suppressAuthorKeys with jones only', () => {
+    const tokens = parseMd('[@smith2020; -@doe2021]');
+    const run = findCitationRun(tokens);
+    expect(run).toBeTruthy();
+    expect(run!.keys).toEqual(['smith2020', 'doe2021']);
+    expect(run!.suppressAuthorKeys).toEqual(new Set(['doe2021']));
+  });
+
+  it('[@smith; @jones] produces no suppressAuthorKeys', () => {
+    const tokens = parseMd('[@smith2020; @doe2021]');
+    const run = findCitationRun(tokens);
+    expect(run).toBeTruthy();
+    expect(run!.keys).toEqual(['smith2020', 'doe2021']);
+    expect(run!.suppressAuthorKeys).toBeUndefined();
+  });
+
+  it('[-@smith] single suppress still works', () => {
+    const tokens = parseMd('[-@smith2020]');
+    const run = findCitationRun(tokens);
+    expect(run).toBeTruthy();
+    expect(run!.keys).toEqual(['smith2020']);
+    expect(run!.suppressAuthorKeys).toEqual(new Set(['smith2020']));
+  });
+
+  it('[@smith] single normal has no suppressAuthorKeys', () => {
+    const tokens = parseMd('[@smith2020]');
+    const run = findCitationRun(tokens);
+    expect(run).toBeTruthy();
+    expect(run!.keys).toEqual(['smith2020']);
+    expect(run!.suppressAuthorKeys).toBeUndefined();
+  });
+
+  it('[-@smith; -@jones] all suppressed', () => {
+    const tokens = parseMd('[-@smith2020; -@doe2021]');
+    const run = findCitationRun(tokens);
+    expect(run).toBeTruthy();
+    expect(run!.keys).toEqual(['smith2020', 'doe2021']);
+    expect(run!.suppressAuthorKeys).toEqual(new Set(['smith2020', 'doe2021']));
   });
 });
