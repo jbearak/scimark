@@ -137,21 +137,6 @@ When you export back to DOCX with a `csl` field in frontmatter, the converter pr
 
 After opening the exported DOCX in Word, Zotero's plugin can refresh citations, change the citation style, or add new references as usual.
 
-## Mixed Citations
-
-When a BibTeX file contains both Zotero-linked entries (with `zotero-key` and `zotero-uri` fields) and plain entries (without Zotero metadata), the converter handles them differently:
-
-- **Standalone citations**: A `[@zoteroEntry]` becomes a Zotero field code. A `[@plainEntry]` becomes plain formatted text.
-- **Grouped citations**: If a group like `[@zoteroEntry; @plainEntry]` mixes Zotero and non-Zotero entries, the converter always produces unified output — a single set of parentheses wrapping all entries. Non-Zotero entries use synthetic URIs so Zotero gracefully falls back to embedded item data on refresh.
-
-### Missing citation keys
-
-If a citation key is not found in the BibTeX file (e.g., `[@noSuchKey]`), the converter:
-
-1. Renders `@noSuchKey` inline so you can see what's missing
-2. Appends a note after the bibliography: "Citation data for @noSuchKey was not found in the bibliography file."
-3. Shows a VS Code warning message listing the missing keys
-
 ## Troubleshooting
 
 ### Citations not reconstructing as Zotero fields
