@@ -31,6 +31,8 @@ Install from the [releases page](https://github.com/jbearak/manuscript-markdown/
 - **DOCX Conversion**: Right-click a `.docx` file and select **Export to Markdown**, or use the **Export to Word** submenu to convert Markdown back to DOCX
 - **Navigation**: Use `Alt+Shift+J` / `Alt+Shift+K` to jump between changes
 
+The [sample file](sample.md) demonstrates citations, math, callouts, code blocks, comments, and track changes.
+
 ### CLI
 
 A standalone CLI tool is also available for terminal-based conversion. See [CLI Tool](docs/cli.md) for details.

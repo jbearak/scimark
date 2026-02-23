@@ -155,6 +155,7 @@ blockquote:not(.markdown-alert) > p {
 
 .markdown-alert-note {
   border-left-color: #1f6feb;
+  background: rgba(31, 111, 235, 0.08);
 }
 .markdown-alert-note .markdown-alert-title {
   color: #1f6feb;
@@ -162,6 +163,7 @@ blockquote:not(.markdown-alert) > p {
 
 .markdown-alert-tip {
   border-left-color: #238636;
+  background: rgba(35, 134, 54, 0.08);
 }
 .markdown-alert-tip .markdown-alert-title {
   color: #238636;
@@ -169,6 +171,7 @@ blockquote:not(.markdown-alert) > p {
 
 .markdown-alert-important {
   border-left-color: #8957e5;
+  background: rgba(137, 87, 229, 0.08);
 }
 .markdown-alert-important .markdown-alert-title {
   color: #8957e5;
@@ -176,6 +179,7 @@ blockquote:not(.markdown-alert) > p {
 
 .markdown-alert-warning {
   border-left-color: #9a6700;
+  background: rgba(154, 103, 0, 0.08);
 }
 .markdown-alert-warning .markdown-alert-title {
   color: #9a6700;
@@ -183,20 +187,21 @@ blockquote:not(.markdown-alert) > p {
 
 .markdown-alert-caution {
   border-left-color: #cf222e;
+  background: rgba(207, 34, 46, 0.08);
 }
 .markdown-alert-caution .markdown-alert-title {
   color: #cf222e;
 }
 
 /* Dark Theme Overrides for Alerts */
-body.vscode-dark .markdown-alert-note { border-left-color: #58a6ff; }
+body.vscode-dark .markdown-alert-note { border-left-color: #58a6ff; background: rgba(88, 166, 255, 0.10); }
 body.vscode-dark .markdown-alert-note .markdown-alert-title { color: #58a6ff; }
-body.vscode-dark .markdown-alert-tip { border-left-color: #3fb950; }
+body.vscode-dark .markdown-alert-tip { border-left-color: #3fb950; background: rgba(63, 185, 80, 0.10); }
 body.vscode-dark .markdown-alert-tip .markdown-alert-title { color: #3fb950; }
-body.vscode-dark .markdown-alert-important { border-left-color: #a371f7; }
+body.vscode-dark .markdown-alert-important { border-left-color: #a371f7; background: rgba(163, 113, 247, 0.10); }
 body.vscode-dark .markdown-alert-important .markdown-alert-title { color: #a371f7; }
-body.vscode-dark .markdown-alert-warning { border-left-color: #d29922; }
+body.vscode-dark .markdown-alert-warning { border-left-color: #d29922; background: rgba(210, 153, 34, 0.10); }
 body.vscode-dark .markdown-alert-warning .markdown-alert-title { color: #d29922; }
-body.vscode-dark .markdown-alert-caution { border-left-color: #f85149; }
+body.vscode-dark .markdown-alert-caution { border-left-color: #f85149; background: rgba(248, 81, 73, 0.10); }
 body.vscode-dark .markdown-alert-caution .markdown-alert-title { color: #f85149; }
 
