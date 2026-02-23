@@ -7,6 +7,7 @@ Manuscript Markdown also works well for technical documentation and general pros
 - **Roundtrip to Word**: Easily collaborate with stakeholders who require Word documents.
 - **Review Workflow**: Use CriticMarkup annotations in Markdown, or Word's Track Changes — the two are interchangeable.
 - **Rich Formatting**: Full support for tables, code blocks, GitHub-style callouts (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`), and complex formatting.
+- **Image Support**: Images are extracted from DOCX on import and embedded on export, with dimension and alt text preservation.
 
 ## Workflow
 

@@ -25,6 +25,7 @@ The converter supports DOCX → Markdown → DOCX round-tripping. The following 
 - **Code blocks**: fenced code blocks (`` ``` ``) ↔ Word "Code Block" paragraph style. Language annotations (e.g., `` ```stata ``) preserved via `MANUSCRIPT_CODE_BLOCK_LANGS` custom property. Inline code (`` `text` ``) uses the `CodeChar` character style (Consolas font, same as code blocks).
 - **Footnotes/endnotes**: `[^label]` references and `[^label]: text` definitions ↔ Word footnotes/endnotes. Named labels preserved via `MANUSCRIPT_FOOTNOTE_IDS` custom property. See [Specification](specification.md#footnotes).
 - **HTML comments**: `<!-- ... -->` comments (both inline and block-level) are preserved as invisible runs in the DOCX and restored on re-import. See [HTML Comments](#html-comments) below.
+- **Images**: `![alt](path){width=W height=H}` and `<img>` syntax ↔ Word `<w:drawing>` inline images. Dimensions preserved via EMU↔pixel conversion. Alt text preserved via `<wp:docPr descr="...">`. Syntax format (Markdown vs HTML) preserved via `MANUSCRIPT_IMAGE_FORMATS` custom property. Image binaries extracted to/from `word/media/`.
 
 ## LaTeX Equations
 
@@ -97,6 +98,40 @@ During import, the converter detects vanish-styled runs whose text starts with `
 
 HTML comment delimiters inside code spans, fenced code blocks, LaTeX math, or CriticMarkup regions are treated as literal text by the Markdown parser and are not affected by this mechanism.
 
+## Images
+
+The converter handles image extraction from DOCX and embedding into DOCX, with full roundtrip support for dimensions, alt text, and syntax format.
+
+### DOCX to Markdown
+
+When importing a Word document, the converter:
+
+1. Parses image relationships from `word/_rels/document.xml.rels`
+2. Extracts image binaries from `word/media/` and saves them to an Image Folder (named after the Markdown file's basename)
+3. Resolves filenames from `<wp:docPr name="...">` when available, falling back to the media filename
+4. Converts dimensions from EMUs to pixels (1 pixel = 9,525 EMUs)
+5. Reads alt text from `<wp:docPr descr="...">`
+6. Emits Markdown image references using the syntax recorded in `MANUSCRIPT_IMAGE_FORMATS` metadata (defaulting to attribute syntax for DOCX files authored in Word)
+
+Anchored/floating images (`<wp:anchor>`) are treated as inline — wrapping and positioning metadata is discarded.
+
+### Markdown to DOCX
+
+When exporting to Word, the converter:
+
+1. Reads image files from disk, resolved relative to the Markdown file's directory
+2. Stores image binaries in `word/media/` with deduplication (multiple references to the same file share one media entry)
+3. Generates `<w:drawing><wp:inline>` OOXML with `<wp:extent>` (dimensions in EMUs), `<wp:docPr>` (alt text and filename), and `<a:blip>` (image reference)
+4. Falls back to intrinsic image dimensions when explicit dimensions are not specified
+5. Records each image's original syntax format in the `MANUSCRIPT_IMAGE_FORMATS` custom property for roundtrip fidelity
+
+### Round-Trip Behavior
+
+- **Dimensions**: Pixel values are converted to EMUs on export and back to pixels on import. Sub-pixel precision is lost due to integer rounding.
+- **Alt text**: Preserved exactly through `<wp:docPr descr="...">`.
+- **Syntax format**: The original Markdown syntax (attribute syntax or HTML `<img>`) is restored on re-import via the `MANUSCRIPT_IMAGE_FORMATS` metadata.
+- **Deduplication**: Multiple references to the same image file produce a single `word/media/` entry in the DOCX.
+
 ## Citation Key Formats
 
 Configurable via `manuscriptMarkdown.citationKeyFormat`:
@@ -120,7 +155,6 @@ If output files already exist, you'll be prompted to replace, choose a new name,
 ## Known Limitations
 
 - **Complex nested tables**: nested `<table>` elements inside cells are not supported
-- **Images**: Not extracted from DOCX
 - **Task-list round-trip normalization**: task list items are exported with deterministic checkbox prefixes in DOCX output; exact original marker spelling (`[x]` vs `[X]`) is not preserved
 - **Disallowed raw HTML handling**: disallowed tags from the GitHub Flavored Markdown extension set (`title`, `textarea`, `style`, `xmp`, `iframe`, `noembed`, `noframes`, `script`, `plaintext`) are treated as literal text rather than executable/rendered HTML in parsing/preview paths
 

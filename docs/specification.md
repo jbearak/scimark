@@ -235,6 +235,34 @@ Bare environments are recognized for all supported amsmath display-math environm
 
 Supported LaTeX elements include fractions, roots, Greek letters, operators, matrices, accents, subscripts, superscripts, delimiters, and amsmath environments. See [LaTeX Equations](latex-equations.md) for the full syntax reference and [DOCX Converter](converter.md#latex-equations) for converter details.
 
+## Images
+
+Manuscript Markdown supports two syntaxes for images with optional dimension attributes.
+
+### Attribute Syntax
+
+```
+![alt text](folder/image.png){width=640 height=480}
+```
+
+The curly-brace block after the image reference specifies dimensions in pixels. Both `width` and `height` are optional — when only one is provided, the other is computed from the image's intrinsic aspect ratio.
+
+### HTML Image Syntax
+
+```html
+<img src="folder/image.png" alt="alt text" width="640" height="480">
+```
+
+Standard HTML `<img>` tags are also supported, with `width` and `height` attributes in pixels.
+
+### Supported Formats
+
+PNG, JPG/JPEG, GIF, and SVG.
+
+### Image Folder
+
+When converting from DOCX, extracted images are saved to a folder named after the Markdown file's basename. For example, `paper.docx` produces `paper.md` with images in `paper/`.
+
 ## CriticMarkup
 
 Five annotation operations for tracking changes. See [CriticMarkup Syntax](criticmarkup.md) for details.
