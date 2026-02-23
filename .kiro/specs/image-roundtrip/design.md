@@ -148,9 +148,16 @@ For images without explicit dimensions in Markdown, the exporter needs to read i
 - **PNG**: Read IHDR chunk (bytes 16–23) for width/height as 4-byte big-endian integers.
 - **JPEG**: Scan for SOF0/SOF2 markers (0xFFC0/0xFFC2) and read dimensions.
 - **GIF**: Read bytes 6–9 for width/height as 2-byte little-endian integers.
-- **SVG**: Parse `width`/`height` attributes or `viewBox` from the root `<svg>` element.
+- **SVG**: Parse `width`/`height` attributes or `viewBox` from the root `<svg>` element. If units are present (e.g., "mm", "pt"), they are converted to pixels (96 DPI). If only `viewBox` is present, its coordinate units are treated as pixels.
 
-This function operates on raw bytes, no external image library needed.
+This function operates on raw bytes (or a string for SVG), no external image library needed.
+
+### Image Deduplication (MD→DOCX)
+
+To minimize DOCX file size, the exporter performs deduplication:
+1.  **Path Resolution**: All image paths are resolved to absolute paths before processing.
+2.  **Binary Cache**: A map of `absolutePath → { rId, mediaPath }` ensures that multiple references to the same file on disk result in only one entry in `word/media/` and one Relationship in `document.xml.rels`.
+3.  **Relationship Reuse**: Multiple `<w:drawing>` elements will share the same `r:embed` ID if they point to the same source image.
 
 ### Supported Format Detection
 
@@ -374,6 +381,17 @@ Stored in `docProps/custom.xml` using the chunked-JSON pattern:
 | `<img>` tag with missing `src` attribute | Skip, treat as regular HTML inline text |
 
 All error conditions emit warnings via the existing `state.warnings` array (md-to-docx) or the `ConvertResult` warnings (converter). No errors are fatal — the converter continues processing the rest of the document.
+
+### Standard Warning Messages
+
+| Issue | Message Template |
+|---|---|
+| Image not found | `Image not found: {path}` |
+| Unsupported format | `Unsupported image format ({ext}) for: {path}` |
+| Read error | `Error reading dimensions for {path}: {error}` |
+| Missing metadata | `Invalid image syntax metadata: {rId}` |
+| Missing DOCX entry | `Relationship {rId} points to missing media: {target}` |
+| Dimensions | `Could not read dimensions for {path}; using default (100x100)` |
 
 ## Testing Strategy
 

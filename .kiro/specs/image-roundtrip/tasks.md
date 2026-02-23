@@ -29,6 +29,7 @@ Add full roundtrip image support to the DOCX ↔ Markdown converter. This involv
   - [ ] 1.4 Implement intrinsic dimension reader
     - Add `readImageDimensions(data: Uint8Array, format: string): { width: number; height: number } | null` to `src/image-utils.ts`
     - Parse PNG IHDR chunk (bytes 16–23), JPEG SOF0/SOF2 markers, GIF header (bytes 6–9), SVG width/height/viewBox attributes
+    - For SVG: handle units (mm, pt) by converting to pixels (96 DPI) and treat `viewBox` coordinates as pixels
     - _Requirements: 2.9, 4.2, 4.3, 5.4_
 
   - [ ]* 1.5 Write property test: Aspect ratio preservation (Property 6)
@@ -36,6 +37,9 @@ Add full roundtrip image support to the DOCX ↔ Markdown converter. This involv
     - For any intrinsic dimensions and a single explicit dimension (width-only or height-only), the computed missing dimension preserves the aspect ratio within ±1 pixel
     - Use `fc.integer({ min: 1, max: 10000 })` for dimensions
     - **Validates: Requirements 4.2, 4.3**
+
+  - [ ] 1.6 Standardize warning messages
+    - Define a set of standard templates for image-related warnings (e.g., "Image not found: {path}", "Unsupported image format ({ext}) for: {path}", "Could not read dimensions for {path}; using default (100x100)") to be used across the conversion process
 
 - [ ] 2. Implement DOCX→MD image extraction in converter.ts
   - [ ] 2.1 Extend relationship parsing to capture image relationships
@@ -110,7 +114,7 @@ Add full roundtrip image support to the DOCX ↔ Markdown converter. This involv
 
   - [ ] 4.5 Extend generateRuns to emit `<w:drawing>` OOXML for images
     - When encountering an `image` MdRun, generate the full `<w:drawing><wp:inline>` XML structure with `<wp:extent>`, `<wp:docPr>`, `<a:blip>`, and `<pic:spPr>` elements
-    - Allocate relationship IDs, store image binary in state, handle deduplication for same file paths
+    - Allocate relationship IDs, store image binary in state, handle deduplication using resolved absolute file paths
     - Convert pixel dimensions to EMUs using `pixelsToEmu()`
     - Fall back to intrinsic dimensions when explicit dimensions are not provided
     - Store filename in `<wp:docPr name="...">` for roundtrip recovery
@@ -128,7 +132,7 @@ Add full roundtrip image support to the DOCX ↔ Markdown converter. This involv
     - _Requirements: 3.1, 3.2_
 
   - [ ] 4.8 Wire image embedding into convertMdToDocx pipeline
-    - Extend `convertMdToDocx()` to read image binaries from disk (resolved relative to `options.sourceDir`)
+    - Extend `convertMdToDocx()` to read image binaries from disk, resolving paths to absolute locations relative to `options.sourceDir` for deduplication
     - Store image binaries in the ZIP under `word/media/`
     - Generate image format custom properties
     - Pass image state through the generation pipeline
