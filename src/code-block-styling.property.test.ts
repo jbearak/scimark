@@ -106,7 +106,7 @@ describe('Code Block Styling Property Tests', () => {
         expect(codeBlock!).toContain('w:pBdr');
         expect(codeBlock!).toContain('w:color="' + color + '"');
         expect(codeBlock!).toContain('w:sz="' + inset + '"');
-        expect(codeBlock!).not.toContain('w:ind');
+        expect(codeBlock!).toContain('w:ind w:left="317" w:right="317"');
       }
     ), { numRuns: 100 });
   });

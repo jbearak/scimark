@@ -2449,7 +2449,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     return '<w:style w:type="paragraph" w:styleId="' + styleId + '">\n' +
       '<w:name w:val="' + displayName + '"/>\n' +
       '<w:basedOn w:val="Normal"/>\n' +
-      '<w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="' + borderColor + '"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
+      '<w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="' + borderColor + '"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
       (quoteRpr ? quoteRpr : '') +
       '</w:style>\n';
   }
@@ -2466,7 +2466,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
       '<w:bottom w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
       '<w:left w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
       '<w:right w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
-      '</w:pBdr></w:pPr>\n';
+      '</w:pBdr><w:ind w:left="317" w:right="317"/></w:pPr>\n';
   }
 
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
@@ -2528,7 +2528,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:style w:type="paragraph" w:styleId="GitHub">\n' +
     '<w:name w:val="GitHub Blockquote"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="D0D7DE"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="D0D7DE"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
     (quoteRpr ? quoteRpr : '') +
     '</w:style>\n' +
     githubAlertStyle('GitHubNote', 'GitHub Note', '1F6FEB') +
@@ -3334,7 +3334,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
     const spacerLeftIndent = spacerIndentUnit * (token.level || 1);
     const spacerPPr = '<w:pPr>' +
       '<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' +
-      '<w:pBdr><w:left w:val="single" w:sz="18" w:space="12" w:color="' + borderColor + '"/></w:pBdr>' +
+      '<w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="' + borderColor + '"/></w:pBdr>' +
       '<w:ind w:left="' + spacerLeftIndent + '"/></w:pPr>';
     const spacer = '<w:p>' + spacerPPr + '</w:p>';
     if (token.alertFirst) xml = spacer + xml;
