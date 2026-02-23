@@ -1652,7 +1652,7 @@ export async function extractDocumentContent(
   const imageRelMap = options?.imageRelationships ?? new Map<string, string>();
   const imageFolder = options?.imageFolder ?? '';
   const imageEntries: ImageExtractionEntry[] = [];
-  const extractedImageRIds = new Set<string>();
+  const extractedImageFilenames = new Set<string>();
 
   // Build a lookup: instrText index -> ZoteroCitation (in order of appearance)
   let citationIdx = 0;
@@ -2016,15 +2016,15 @@ export async function extractDocumentContent(
             const ext = mediaFilename.split('.').pop()?.toLowerCase() || '';
             if (!isSupportedImageFormat(ext)) continue;
             const outputFilename = resolveImageFilename(docPrName, mediaFilename);
-            const src = imageFolder ? imageFolder + '/' + outputFilename : outputFilename;
+            const src = imageFolder ? imageFolder.replace(/\/$/, '') + '/' + outputFilename : outputFilename;
             const widthPx = cx > 0 ? emuToPixels(cx) : 0;
             const heightPx = cy > 0 ? emuToPixels(cy) : 0;
             target.push({
               type: 'image', rId: blipRId, src, alt,
               widthPx, heightPx, commentIds: new Set(activeComments),
             });
-            if (!extractedImageRIds.has(blipRId)) {
-              extractedImageRIds.add(blipRId);
+            if (!extractedImageFilenames.has(outputFilename)) {
+              extractedImageFilenames.add(outputFilename);
               imageEntries.push({ rId: blipRId, mediaPath, outputFilename });
             }
           }

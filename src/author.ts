@@ -78,7 +78,7 @@ export function getFormattedAuthorName(): string | null {
 		const hours = String(now.getHours()).padStart(2, '0');
 		const minutes = String(now.getMinutes()).padStart(2, '0');
 		
-		const timestamp = `${year}-${month}-${day}T${hours}:${minutes}`;
+		const timestamp = `${year}-${month}-${day} ${hours}:${minutes}`;
 		return `${authorName} (${timestamp})`;
 	} catch (error) {
 		// If timestamp formatting fails, return just the author name

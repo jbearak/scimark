@@ -39,11 +39,32 @@ export function readImageDimensions(data: Uint8Array, format: string): { width: 
   }
   
   if (fmt === 'jpeg' || fmt === 'jpg') {
-    for (let i = 0; i < data.length - 9; i++) {
-      if (data[i] === 0xFF && (data[i + 1] === 0xC0 || data[i + 1] === 0xC2)) {
-        const height = (data[i + 5] << 8) | data[i + 6];
-        const width = (data[i + 7] << 8) | data[i + 8];
-        return { width, height };
+    // Walk JPEG markers properly, skipping each marker's payload by reading
+    // its 2-byte length, to avoid matching SOF inside EXIF thumbnail data.
+    let i = 0;
+    while (i < data.length - 1) {
+      if (data[i] !== 0xFF) { i++; continue; }
+      const marker = data[i + 1];
+      // SOF0 or SOF2 — read dimensions
+      if (marker === 0xC0 || marker === 0xC2) {
+        if (i + 8 < data.length) {
+          const height = (data[i + 5] << 8) | data[i + 6];
+          const width = (data[i + 7] << 8) | data[i + 8];
+          return { width, height };
+        }
+        return null;
+      }
+      // Markers without a payload: SOI (D8), EOI (D9), RST0-RST7 (D0-D7), TEM (01), stuffed byte (00)
+      if (marker === 0xD8 || marker === 0xD9 || marker === 0x00 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
+        i += 2;
+        continue;
+      }
+      // All other markers: read 2-byte big-endian length and skip payload
+      if (i + 3 < data.length) {
+        const len = (data[i + 2] << 8) | data[i + 3];
+        i += 2 + len;
+      } else {
+        break;
       }
     }
     return null;
@@ -74,7 +95,7 @@ export function readImageDimensions(data: Uint8Array, format: string): { width: 
     const viewBoxMatch = svgTag.match(/viewBox\s*=\s*["']([^"']+)["']/);
     if (viewBoxMatch) {
       const values = viewBoxMatch[1].split(/\s+/).map(Number);
-      if (values.length === 4) {
+      if (values.length === 4 && values[2] > 0 && values[3] > 0 && !isNaN(values[2]) && !isNaN(values[3])) {
         return { width: values[2], height: values[3] };
       }
     }

@@ -1173,8 +1173,8 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         } else if (/^<img\s/i.test(htmlContent.trim())) {
           const srcMatch = htmlContent.match(/src\s*=\s*["']([^"']+)["']/);
           const altMatch = htmlContent.match(/alt\s*=\s*["']([^"']*?)["']/);
-          const wMatch = htmlContent.match(/width\s*=\s*["']?(\d+)["']?/);
-          const hMatch = htmlContent.match(/height\s*=\s*["']?(\d+)["']?/);
+          const wMatch = htmlContent.match(/width\s*=\s*["']?(\d+)(?:px)?["']?(?=[\s\/>])/);
+          const hMatch = htmlContent.match(/height\s*=\s*["']?(\d+)(?:px)?["']?(?=[\s\/>])/);
           if (srcMatch) {
             result.push({
               type: 'paragraph',
@@ -1335,8 +1335,8 @@ function processInlineChildren(tokens: any[]): MdRun[] {
         } else if (/^<img\s/i.test(html)) {
           const srcMatch = html.match(/src\s*=\s*["']([^"']+)["']/);
           const altMatch = html.match(/alt\s*=\s*["']([^"']*?)["']/);
-          const wMatch = html.match(/width\s*=\s*["']?(\d+)["']?/);
-          const hMatch = html.match(/height\s*=\s*["']?(\d+)["']?/);
+          const wMatch = html.match(/width\s*=\s*["']?(\d+)(?:px)?["']?(?=[\s\/>])/);
+          const hMatch = html.match(/height\s*=\s*["']?(\d+)(?:px)?["']?(?=[\s\/>])/);
           if (srcMatch) {
             runs.push({
               type: 'image',
@@ -3223,6 +3223,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       const filename = basename(src);
       xml += '<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">'
         + '<wp:extent cx="' + cx + '" cy="' + cy + '"/>'
+        + '<wp:effectExtent l="0" t="0" r="0" b="0"/>'
         + '<wp:docPr id="' + docPrId + '" name="' + escapeXml(filename) + '" descr="' + escapeXml(alt) + '"/>'
         + '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
         + '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'

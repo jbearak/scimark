@@ -241,7 +241,7 @@ Manuscript Markdown supports two syntaxes for images with optional dimension att
 
 ### Attribute Syntax
 
-```
+```markdown
 ![alt text](folder/image.png){width=640 height=480}
 ```
 
