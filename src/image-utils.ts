@@ -33,8 +33,8 @@ export function readImageDimensions(data: Uint8Array, format: string): { width: 
   
   if (fmt === 'png') {
     if (data.length < 24) return null;
-    const width = (data[16] << 24) | (data[17] << 16) | (data[18] << 8) | data[19];
-    const height = (data[20] << 24) | (data[21] << 16) | (data[22] << 8) | data[23];
+    const width = ((data[16] << 24) | (data[17] << 16) | (data[18] << 8) | data[19]) >>> 0;
+    const height = ((data[20] << 24) | (data[21] << 16) | (data[22] << 8) | data[23]) >>> 0;
     return { width, height };
   }
   
@@ -105,12 +105,12 @@ export function computeMissingDimension(
     return { width: explicit.width, height: explicit.height };
   }
   
-  if (explicit.width) {
+  if (explicit.width && intrinsic.width > 0) {
     const height = Math.round(explicit.width * intrinsic.height / intrinsic.width);
     return { width: explicit.width, height };
   }
-  
-  if (explicit.height) {
+
+  if (explicit.height && intrinsic.height > 0) {
     const width = Math.round(explicit.height * intrinsic.width / intrinsic.height);
     return { width, height: explicit.height };
   }

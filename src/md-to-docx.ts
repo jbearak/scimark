@@ -2,12 +2,12 @@ import MarkdownIt from 'markdown-it';
 import { escapeXml, generateCitation, generateMathXml, createCiteprocEngineLocal, createCiteprocEngineAsync, generateBibliographyXml, generateMissingKeysXml } from './md-to-docx-citations';
 import { downloadStyle } from './csl-loader';
 import { existsSync, readFileSync } from 'fs';
-import { isAbsolute, join, resolve, extname, basename } from 'path';
+import { isAbsolute, join, resolve, basename } from 'path';
 import { parseBibtex, BibtexEntry } from './bibtex-parser';
 import { parseFrontmatter, Frontmatter, noteTypeToNumber } from './frontmatter';
 import { ZoteroBiblData, zoteroStyleFullId } from './converter';
 import { isGfmDisallowedRawHtml, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from './gfm';
-import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDimensions, computeMissingDimension, IMAGE_CONTENT_TYPES, IMAGE_WARNINGS } from './image-utils';
+import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDimensions, computeMissingDimension, IMAGE_WARNINGS } from './image-utils';
 
 // --- Implementation notes ---
 // - decodeHtmlEntities(): decode &amp; after other named entities to avoid over-decoding
@@ -1188,6 +1188,12 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
                 imageSyntax: 'html' as const,
               }]
             });
+          } else {
+            // Preserve malformed <img> tags as literal text
+            result.push({
+              type: 'paragraph',
+              runs: [{ type: 'text', text: htmlContent.replace(/\n$/, '') }]
+            });
           }
         } else {
           const htmlTables = extractHtmlTables(htmlContent);
@@ -1341,6 +1347,9 @@ function processInlineChildren(tokens: any[]): MdRun[] {
               imageHeight: hMatch ? parseInt(hMatch[1], 10) : undefined,
               imageSyntax: 'html',
             });
+          } else {
+            // Preserve malformed <img> tags as literal text
+            runs.push({ type: 'text', text: html, ...formatStack });
           }
         } else if (html === '<u>') formatStack.underline = true;
         else if (html === '</u>') delete formatStack.underline;
@@ -3146,7 +3155,13 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       const src = run.imageSrc || '';
       const alt = run.imageAlt || '';
       const syntax = run.imageSyntax || 'md';
-      const ext = src.split('.').pop()?.toLowerCase() || '';
+      // Detect unsupported URL/data URI sources
+      if (/^(https?:|data:)/i.test(src)) {
+        state.warnings.push('Image "' + src.slice(0, 80) + '" is a URL or data URI; only local file paths are supported');
+        continue;
+      }
+      const srcBase = src.split('?')[0].split('#')[0];
+      const ext = srcBase.split('.').pop()?.toLowerCase() || '';
       if (!isSupportedImageFormat(ext)) {
         state.warnings.push(IMAGE_WARNINGS.unsupportedFormat(ext, src));
         continue;

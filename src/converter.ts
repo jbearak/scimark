@@ -5,7 +5,7 @@ import { resolveMarkdownColor } from './highlight-colors';
 import { wrapColoredHighlight } from './formatting';
 import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
 import { gfmAlertTitle, parseGfmAlertMarker, toGfmAlertMarker, type GfmAlertType } from './gfm';
-import { emuToPixels, isSupportedImageFormat, resolveImageFilename, IMAGE_WARNINGS } from './image-utils';
+import { emuToPixels, isSupportedImageFormat, resolveImageFilename } from './image-utils';
 
 // --- Implementation notes ---
 // Table parsing:
@@ -243,6 +243,10 @@ const parserOptions = {
   trimValues: false,
   parseTagValue: false,
 };
+
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 export async function parseRelationships(
   zip: JSZip,
@@ -2256,7 +2260,7 @@ function renderInlineRange(
     if (item.type === 'image') {
       const syntax = renderOpts?.imageFormatMapping?.get(item.rId) || 'md';
       if (syntax === 'html') {
-        out += '<img src="' + item.src + '" alt="' + item.alt + '"';
+        out += '<img src="' + escapeHtmlAttr(item.src) + '" alt="' + escapeHtmlAttr(item.alt) + '"';
         if (item.widthPx > 0) out += ' width="' + item.widthPx + '"';
         if (item.heightPx > 0) out += ' height="' + item.heightPx + '"';
         out += '>';
@@ -2448,7 +2452,7 @@ function renderInlineRangeWithIds(
       prevCommentIds = new Set(currentIds);
       const syntax = imageFormatMapping?.get(item.rId) || 'md';
       if (syntax === 'html') {
-        out += '<img src="' + item.src + '" alt="' + item.alt + '"';
+        out += '<img src="' + escapeHtmlAttr(item.src) + '" alt="' + escapeHtmlAttr(item.alt) + '"';
         if (item.widthPx > 0) out += ' width="' + item.widthPx + '"';
         if (item.heightPx > 0) out += ' height="' + item.heightPx + '"';
         out += '>';
