@@ -2531,6 +2531,20 @@ describe('Blockquote round-trip', () => {
     const result = await convertDocx(buf);
     expect(result.markdown).toContain('> [!TIP] Helpful advice');
   });
+
+  test('DOCX alert with hard break after prefix keeps marker-only form and paragraph break', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:pPr><w:pStyle w:val="GitHubNote"/><w:ind w:left="240"/></w:pPr>'
+      + '<w:r><w:rPr><w:b/></w:rPr><w:t>※ Note </w:t></w:r>'
+      + '<w:r><w:br/></w:r>'
+      + '<w:r><w:t>This is a note.</w:t></w:r></w:p>'
+      + '<w:p><w:r><w:t>This is a paragraph.</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('> [!NOTE]\n> This is a note.\n\nThis is a paragraph.');
+    expect(result.markdown).not.toContain('> [!NOTE] This is a note.');
+  });
 });
 
 describe('parseCodeBlockStyle', () => {
