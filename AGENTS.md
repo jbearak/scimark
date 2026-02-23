@@ -9,10 +9,6 @@ Extension: `src/extension.ts` (entry point), `src/changes.ts` (navigation), `src
 Conversion: `src/converter.ts` (docx → md), `src/md-to-docx.ts` (md → docx)
 LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 
-## Key invariants
-
-- **Pattern filtering** — overlapping/nested patterns filtered via strict containment. See `src/changes.ts`.
-
 ## Cross-cutting learnings
 
 - Template literal corruption: never use `$$` in code touched by tool text-replacement operations — `$` is special in replacement strings and `$$` gets corrupted. Use string concatenation instead.
