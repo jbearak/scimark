@@ -218,7 +218,8 @@ function buildEngine(
 export function renderCitationText(
   engine: any,
   keys: string[],
-  locators?: Map<string, string>
+  locators?: Map<string, string>,
+  suppressAuthor?: boolean
 ): string | undefined {
   if (!engine || !CSL) return undefined;
 
@@ -230,6 +231,9 @@ export function renderCitationText(
         const parsed = parseLocator(locator);
         item.locator = parsed.locator;
         item.label = parsed.label;
+      }
+      if (suppressAuthor) {
+        item['suppress-author'] = true;
       }
       return item;
     });
@@ -301,7 +305,7 @@ function resolveVisibleText(
   suppressAuthor?: boolean
 ): string {
   if (citeprocEngine) {
-    const rendered = renderCitationText(citeprocEngine, keys, locators);
+    const rendered = renderCitationText(citeprocEngine, keys, locators, suppressAuthor);
     if (rendered) return rendered;
   }
   return generateFallbackText(keys, entries, locators, suppressAuthor);
