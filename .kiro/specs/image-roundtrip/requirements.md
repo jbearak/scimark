@@ -13,6 +13,7 @@ Manuscript Markdown currently has no image support — images are listed as a kn
 - **HTML_Image_Syntax**: An `<img>` HTML tag used as an alternative image syntax in Markdown: `<img src="path" alt="alt" width="N" height="N">`.
 - **Image_Syntax_Metadata**: A custom property stored in `docProps/custom.xml` under the key `MANUSCRIPT_IMAGE_FORMATS`. It stores a JSON-encoded mapping of image relationship IDs (`rId`) to their original Markdown syntax (e.g., `"rId4": "html"`), enabling source-level roundtrip fidelity.
 - **Relationship**: An entry in `word/_rels/document.xml.rels` that maps a relationship ID (`rId`) to a target file path inside the DOCX ZIP archive.
+- **Documentation**: The user-facing documentation files in the `docs/` directory, including the specification (`docs/specification.md`), converter documentation (`docs/converter.md`), and guides (`docs/guides/`).
 - **Drawing_Element**: An OOXML `<w:drawing>` element containing a `<wp:inline>` or `<wp:anchor>` element that embeds an image in a Word document paragraph.
 - **Content_Type**: An entry in `[Content_Types].xml` that declares the MIME type for a file extension within the DOCX ZIP archive.
 - **Supported_Format**: One of PNG, JPG/JPEG, GIF, or SVG image file formats. (PDF is excluded as it is typically handled as an OLE object in DOCX).
@@ -122,6 +123,18 @@ Manuscript Markdown currently has no image support — images are listed as a kn
 1. WHEN the Converter encounters an inline image within a paragraph, THE Converter SHALL emit the Markdown image reference at the corresponding position within the paragraph text.
 2. WHEN the Exporter encounters an image reference within a Markdown paragraph, THE Exporter SHALL place the Drawing_Element inline within the paragraph's OOXML run sequence at the corresponding position.
 3. WHEN an image is the sole content of a paragraph, THE Converter SHALL emit the image reference as a standalone paragraph in the Markdown output.
+
+### Requirement 9: Update User-Facing Documentation
+
+**User Story:** As a user or contributor, I want the project documentation to accurately describe image support, so that I can understand the image syntax, converter behavior, and roundtrip capabilities without reading source code.
+
+#### Acceptance Criteria
+
+1. WHEN the image-roundtrip feature is implemented, THE Documentation SHALL include a new "Images" section in `docs/specification.md` documenting the Attribute_Syntax (`![alt](path){width=N height=N}`), the HTML_Image_Syntax (`<img src="path" alt="alt" width="N" height="N">`), the Supported_Formats (PNG, JPG/JPEG, GIF, SVG), and the Image_Folder convention.
+2. WHEN the image-roundtrip feature is implemented, THE Documentation SHALL remove the "Images: Not extracted from DOCX" entry from the Known Limitations section in `docs/converter.md`.
+3. WHEN the image-roundtrip feature is implemented, THE Documentation SHALL add an "Images" entry to the Round-Trip Features list in `docs/converter.md` describing image extraction from DOCX and embedding into DOCX, including dimension and alt text preservation.
+4. WHEN the image-roundtrip feature is implemented, THE Documentation SHALL add a converter section in `docs/converter.md` documenting the image extraction behavior (Image_Folder creation, filename resolution from `<wp:docPr>`, dimension conversion from EMUs to pixels) and the image embedding behavior (reading local files, generating Drawing_Elements, storing Image_Syntax_Metadata for syntax roundtrip).
+5. WHERE the technical documentation guide (`docs/guides/documentation.md`) lists feature capabilities, THE Documentation SHALL mention image support as part of the Manuscript Markdown feature set.
 
 ## Known Limitations
 

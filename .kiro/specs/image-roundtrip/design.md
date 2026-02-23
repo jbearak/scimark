@@ -2,12 +2,13 @@
 
 ## Overview
 
-This feature adds full roundtrip image support to Manuscript Markdown's DOCX ↔ Markdown converter. The two conversion modules — `src/converter.ts` (DOCX→MD) and `src/md-to-docx.ts` (MD→DOCX) — are extended to handle image extraction, embedding, and metadata preservation.
+This feature adds full roundtrip image support to Manuscript Markdown's DOCX ↔ Markdown converter. The two conversion modules — `src/converter.ts` (DOCX→MD) and `src/md-to-docx.ts` (MD→DOCX) — are extended to handle image extraction, embedding, and metadata preservation. The feature also includes updates to user-facing documentation so that the image syntax, converter behavior, and roundtrip capabilities are accurately described.
 
 The core flow:
 - **DOCX→MD**: Parse `<w:drawing>` elements, resolve image relationships, extract binaries from `word/media/`, save to a sibling folder, and emit Markdown image references with dimensions and alt text.
 - **MD→DOCX**: Parse `![alt](path){width=N height=N}` and `<img>` tags, read image files from disk, embed them into the DOCX ZIP as `word/media/` entries with proper relationships, content types, and `<w:drawing>` OOXML.
 - **Roundtrip fidelity**: Preserve syntax format (md vs html) via `MANUSCRIPT_IMAGE_FORMATS` custom property, preserve dimensions (EMU↔pixel conversion), and preserve alt text via `<wp:docPr descr="...">`.
+- **Documentation**: Update `docs/specification.md`, `docs/converter.md`, and `docs/guides/documentation.md` to document image syntax, converter behavior, and remove the "Images not supported" limitation.
 
 ## Architecture
 
@@ -177,6 +178,40 @@ function pixelsToEmu(px: number): number {
   return px * EMU_PER_PIXEL;
 }
 ```
+
+### Documentation Changes
+
+The following user-facing documentation files are updated as part of this feature:
+
+#### docs/specification.md
+
+Add a new **Images** section (after the existing "Standard Markdown" section or alongside other content-type sections) documenting:
+
+- **Attribute Syntax**: `![alt text](folder/image.png){width=640 height=480}` — the default Markdown-native image syntax with curly-brace dimension attributes.
+- **HTML Image Syntax**: `<img src="folder/image.png" alt="alt text" width="640" height="480">` — the alternative HTML tag syntax.
+- **Supported Formats**: PNG, JPG/JPEG, GIF, SVG.
+- **Image Folder convention**: Images are stored in a sibling folder named after the Markdown file's basename (e.g., `paper.md` → `paper/`).
+- **Dimension attributes**: `width` and `height` in pixels. Single-dimension specification auto-computes the other from the intrinsic aspect ratio.
+
+#### docs/converter.md
+
+Three changes:
+
+1. **Remove Known Limitation**: Delete the `- **Images**: Not extracted from DOCX` entry from the Known Limitations section.
+2. **Add Round-Trip Feature entry**: Add an **Images** bullet to the Round-Trip Features list:
+   - `![alt](path){width=W height=H}` and `<img>` syntax ↔ Word `<w:drawing>` inline images
+   - Dimension preservation (EMU↔pixel conversion)
+   - Alt text preservation via `<wp:docPr descr="...">`
+   - Syntax format preservation via `MANUSCRIPT_IMAGE_FORMATS` custom property
+   - Image binary extraction to/from `word/media/`
+3. **Add Images converter section**: A new section (similar to the existing "LaTeX Equations" or "HTML Comments" sections) documenting:
+   - **DOCX to Markdown**: Image extraction process — relationship parsing, binary extraction from `word/media/`, Image_Folder creation, filename resolution (preferring `<wp:docPr name>` over media filename), EMU→pixel dimension conversion, alt text from `descr` attribute, anchor images treated as inline.
+   - **Markdown to DOCX**: Image embedding process — file reading from disk (relative to MD file), `word/media/` storage, relationship and content type generation, `<w:drawing>` OOXML generation, intrinsic dimension fallback, `MANUSCRIPT_IMAGE_FORMATS` metadata for syntax roundtrip.
+   - **Round-Trip Behavior**: Dimension fidelity (sub-pixel EMU precision lost to integer rounding), syntax format preservation, alt text preservation, deduplication of shared images.
+
+#### docs/guides/documentation.md
+
+Add a mention of image support in the feature capabilities. Update the "Why use Manuscript Markdown for Docs?" section or add a brief note that images are supported in the DOCX roundtrip workflow (extracted on import, embedded on export), so users know they can include images in their technical documentation.
 
 ## Data Models
 
@@ -384,6 +419,16 @@ Unit tests will be in `src/image-roundtrip.test.ts`. They complement property te
 - **Edge cases**: Empty alt text, missing dimensions, anchor images, `<img>` tags with partial attributes, unrecognized curly-brace attributes, multiple images sharing same rId
 - **Error conditions**: Missing files, unsupported formats, corrupt metadata, invalid dimension values
 - **Integration**: Full roundtrip with real PNG/JPEG binary headers (small synthetic images)
+
+### Documentation Verification
+
+Requirement 9 (documentation updates) does not require automated tests — it covers static content changes to `docs/specification.md`, `docs/converter.md`, and `docs/guides/documentation.md`. Verification is manual:
+
+- Confirm the "Images" section exists in `docs/specification.md` with Attribute_Syntax, HTML_Image_Syntax, Supported_Formats, and Image_Folder documentation.
+- Confirm "Images: Not extracted from DOCX" is removed from Known Limitations in `docs/converter.md`.
+- Confirm an "Images" entry exists in the Round-Trip Features list in `docs/converter.md`.
+- Confirm a converter section documenting image extraction/embedding behavior exists in `docs/converter.md`.
+- Confirm image support is mentioned in `docs/guides/documentation.md`.
 
 ### Test Organization
 
