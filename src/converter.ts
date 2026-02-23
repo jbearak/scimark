@@ -261,28 +261,34 @@ export async function parseRelationships(
     const type = getAttr(node, 'Type');
     const target = getAttr(node, 'Target');
     const targetMode = getAttr(node, 'TargetMode');
-    
+
     if (type.endsWith('/hyperlink') && targetMode === 'External') {
       relationships.set(id, target);
     }
   }
-  
+
   return relationships;
 }
 
-export async function parseImageRelationships(zip: JSZip): Promise<Map<string, string>> {
-  const imageRels = new Map<string, string>();
+export async function parseDocumentRelationships(
+  zip: JSZip,
+): Promise<{ hyperlinks: Map<string, string>; images: Map<string, string> }> {
+  const hyperlinks = new Map<string, string>();
+  const images = new Map<string, string>();
   const parsed = await readZipXml(zip, 'word/_rels/document.xml.rels');
-  if (!parsed) return imageRels;
+  if (!parsed) return { hyperlinks, images };
   for (const node of findAllDeep(parsed, 'Relationship')) {
     const id = getAttr(node, 'Id');
     const type = getAttr(node, 'Type');
     const target = getAttr(node, 'Target');
-    if (type.endsWith('/image')) {
-      imageRels.set(id, target);
+    const targetMode = getAttr(node, 'TargetMode');
+    if (type.endsWith('/hyperlink') && targetMode === 'External') {
+      hyperlinks.set(id, target);
+    } else if (type.endsWith('/image')) {
+      images.set(id, target);
     }
   }
-  return imageRels;
+  return { hyperlinks, images };
 }
 
 export async function extractImageFormatMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
@@ -2093,7 +2099,7 @@ function mergeConsecutiveRuns(content: ContentItem[]): ContentItem[] {
 function renderInlineSegment(
   segment: ContentItem[],
   comments: Map<string, Comment>,
-  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string> }
+  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> }
 ): { text: string; deferredComments: string[] } {
   const result = renderInlineRange(segment, 0, comments, undefined, renderOpts);
   return {
@@ -2107,7 +2113,7 @@ function renderInlineSegment(
 function hasOverlappingComments(segment: ContentItem[]): boolean {
   const allIds = new Set<string>();
   for (const item of segment) {
-    if ((item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment') && item.commentIds) {
+    if ((item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment' || item.type === 'image') && item.commentIds) {
       for (const id of item.commentIds) allIds.add(id);
     }
   }
@@ -2116,7 +2122,7 @@ function hasOverlappingComments(segment: ContentItem[]): boolean {
   // Two or more comment IDs exist — check if their ranges actually overlap
   // by seeing if any single run is covered by 2+ comments
   for (const item of segment) {
-    if ((item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment') && item.commentIds) {
+    if ((item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment' || item.type === 'image') && item.commentIds) {
       if (item.commentIds.size > 1) return true;
     }
   }
@@ -2128,7 +2134,7 @@ function hasOverlappingComments(segment: ContentItem[]): boolean {
   let pos = 0;
   let prevIds = new Set<string>();
   for (const item of segment) {
-    if (item.type !== 'text' && item.type !== 'citation' && item.type !== 'footnote_ref' && item.type !== 'math' && item.type !== 'html_comment') { pos++; continue; }
+    if (item.type !== 'text' && item.type !== 'citation' && item.type !== 'footnote_ref' && item.type !== 'math' && item.type !== 'html_comment' && item.type !== 'image') { pos++; continue; }
     if (!item.commentIds) { pos++; continue; }
     const ids = item.commentIds;
     for (const id of ids) {
@@ -2265,7 +2271,8 @@ function renderInlineRange(
         if (item.heightPx > 0) out += ' height="' + item.heightPx + '"';
         out += '>';
       } else {
-        out += '![' + item.alt + '](' + item.src + ')';
+        const safeAlt = item.alt.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+        out += '![' + safeAlt + '](' + item.src + ')';
         if (item.widthPx > 0 || item.heightPx > 0) {
           const parts: string[] = [];
           if (item.widthPx > 0) parts.push('width=' + item.widthPx);
@@ -2457,7 +2464,8 @@ function renderInlineRangeWithIds(
         if (item.heightPx > 0) out += ' height="' + item.heightPx + '"';
         out += '>';
       } else {
-        out += '![' + item.alt + '](' + item.src + ')';
+        const safeAlt = item.alt.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+        out += '![' + safeAlt + '](' + item.src + ')';
         if (item.widthPx > 0 || item.heightPx > 0) {
           const parts: string[] = [];
           if (item.widthPx > 0) parts.push('width=' + item.widthPx);
@@ -2536,7 +2544,7 @@ function renderInlineRangeWithIds(
   return { text: out, nextIndex: i, deferredComments: deferred.map(d => d.body) };
 }
 
-function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  ', renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string> }): string {
+function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  ', renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> }): string {
   const i1 = indent;  // tr level
   const i2 = indent + indent;  // td/th level
   const i3 = indent + indent + indent;  // content level
@@ -3463,13 +3471,14 @@ export async function convertDocx(
   const keyMap = buildCitationKeyMap(zoteroCitations, format);
 
   // Parse note-specific rels and numbering for footnote/endnote body parsing
-  const [numberingDefs, docRels, fnRels, enRels, imageRels] = await Promise.all([
+  const [numberingDefs, docRelsParsed, fnRels, enRels] = await Promise.all([
     parseNumberingDefinitions(zip),
-    parseRelationships(zip),
+    parseDocumentRelationships(zip),
     parseRelationships(zip, 'word/_rels/footnotes.xml.rels'),
     parseRelationships(zip, 'word/_rels/endnotes.xml.rels'),
-    parseImageRelationships(zip),
   ]);
+  const docRels = docRelsParsed.hyperlinks;
+  const imageRels = docRelsParsed.images;
 
   // Build note contexts with merged rels (note rels + document rels as fallback)
   const fnRelsMerged = new Map([...docRels, ...fnRels]);

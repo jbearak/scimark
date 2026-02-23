@@ -1181,8 +1181,8 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
               runs: [{
                 type: 'image' as const,
                 text: '',
-                imageSrc: srcMatch[1],
-                imageAlt: altMatch ? altMatch[1] : '',
+                imageSrc: decodeHtmlEntities(srcMatch[1]),
+                imageAlt: altMatch ? decodeHtmlEntities(altMatch[1]) : '',
                 imageWidth: wMatch ? parseInt(wMatch[1], 10) : undefined,
                 imageHeight: hMatch ? parseInt(hMatch[1], 10) : undefined,
                 imageSyntax: 'html' as const,
@@ -1341,8 +1341,8 @@ function processInlineChildren(tokens: any[]): MdRun[] {
             runs.push({
               type: 'image',
               text: '',
-              imageSrc: srcMatch[1],
-              imageAlt: altMatch ? altMatch[1] : '',
+              imageSrc: decodeHtmlEntities(srcMatch[1]),
+              imageAlt: altMatch ? decodeHtmlEntities(altMatch[1]) : '',
               imageWidth: wMatch ? parseInt(wMatch[1], 10) : undefined,
               imageHeight: hMatch ? parseInt(hMatch[1], 10) : undefined,
               imageSyntax: 'html',
@@ -1929,7 +1929,8 @@ export interface DocxGenState {
   blockquoteGaps: Map<number, number>; // gap (blank-line count) after each blockquote group, keyed by group index
   blockquoteAlertMarkerInlineByGroup: Map<number, boolean>; // alert group index -> inline marker style
   // Image tracking
-  imageRelationships: Map<string, { rId: string; mediaPath: string }>; // absolute file path -> { rId, media path }
+  imageRelationships: Map<string, { rId: string; mediaPath: string }>; // dedup key (absPath + '\0' + syntax) -> { rId, media path }
+  imageMediaPaths: Map<string, string>; // absPath -> mediaPath (for binary dedup across syntaxes)
   imageBinaries: Map<string, Uint8Array>; // media path -> binary data
   imageFormats: Map<string, string>; // rId -> syntax ("md" | "html")
   imageExtensions: Set<string>; // collected extensions for content types
@@ -3168,25 +3169,31 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       }
       // Resolve file path
       const absPath = options?.sourceDir ? resolve(options.sourceDir, src) : resolve(src);
-      // Check deduplication
-      let imgEntry = state.imageRelationships.get(absPath);
+      // Check deduplication: same file + same syntax reuses the same rId
+      const dedupeKey = absPath + '\0' + syntax;
+      let imgEntry = state.imageRelationships.get(dedupeKey);
       if (!imgEntry) {
-        // Read file
-        let fileData: Uint8Array;
-        try {
-          fileData = new Uint8Array(readFileSync(absPath));
-        } catch {
-          state.warnings.push(IMAGE_WARNINGS.notFound(src));
-          continue;
+        // Check if media binary already loaded (different syntax, same file)
+        let mediaPath = state.imageMediaPaths.get(absPath);
+        if (!mediaPath) {
+          // Read file
+          let fileData: Uint8Array;
+          try {
+            fileData = new Uint8Array(readFileSync(absPath));
+          } catch {
+            state.warnings.push(IMAGE_WARNINGS.notFound(src));
+            continue;
+          }
+          const mediaFilename = 'image' + state.imageMediaPaths.size + '.' + ext;
+          mediaPath = 'media/' + mediaFilename;
+          state.imageMediaPaths.set(absPath, mediaPath);
+          state.imageBinaries.set(mediaPath, fileData);
+          state.imageExtensions.add(ext);
         }
         const rId = 'rId' + (state.nextRId + state.rIdOffset);
         state.nextRId++;
-        const mediaFilename = 'image' + state.imageRelationships.size + '.' + ext;
-        const mediaPath = 'media/' + mediaFilename;
         imgEntry = { rId, mediaPath };
-        state.imageRelationships.set(absPath, imgEntry);
-        state.imageBinaries.set(mediaPath, fileData);
-        state.imageExtensions.add(ext);
+        state.imageRelationships.set(dedupeKey, imgEntry);
         state.imageFormats.set(rId, syntax);
       }
       // Determine dimensions
@@ -3761,6 +3768,7 @@ export async function convertMdToDocx(
     blockquoteGaps: blockquoteGaps,
     blockquoteAlertMarkerInlineByGroup,
     imageRelationships: new Map(),
+    imageMediaPaths: new Map(),
     imageBinaries: new Map(),
     imageFormats: new Map(),
     imageExtensions: new Set(),
