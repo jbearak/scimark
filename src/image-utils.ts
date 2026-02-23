@@ -17,7 +17,7 @@ export function emuToPixels(emu: number): number {
 }
 
 export function pixelsToEmu(px: number): number {
-  return px * EMU_PER_PIXEL;
+  return Math.round(px * EMU_PER_PIXEL);
 }
 
 export function isSupportedImageFormat(ext: string): boolean {
@@ -35,6 +35,7 @@ export function readImageDimensions(data: Uint8Array, format: string): { width: 
     if (data.length < 24) return null;
     const width = ((data[16] << 24) | (data[17] << 16) | (data[18] << 8) | data[19]) >>> 0;
     const height = ((data[20] << 24) | (data[21] << 16) | (data[22] << 8) | data[23]) >>> 0;
+    if (width === 0 || height === 0) return null;
     return { width, height };
   }
   
@@ -74,6 +75,7 @@ export function readImageDimensions(data: Uint8Array, format: string): { width: 
     if (data.length < 10) return null;
     const width = data[6] | (data[7] << 8);
     const height = data[8] | (data[9] << 8);
+    if (width === 0 || height === 0) return null;
     return { width, height };
   }
   
@@ -94,7 +96,7 @@ export function readImageDimensions(data: Uint8Array, format: string): { width: 
     
     const viewBoxMatch = svgTag.match(/viewBox\s*=\s*["']([^"']+)["']/);
     if (viewBoxMatch) {
-      const values = viewBoxMatch[1].split(/\s+/).map(Number);
+      const values = viewBoxMatch[1].split(/[\s,]+/).map(Number);
       if (values.length === 4 && values[2] > 0 && values[3] > 0 && !isNaN(values[2]) && !isNaN(values[3])) {
         return { width: values[2], height: values[3] };
       }
@@ -109,12 +111,15 @@ export function readImageDimensions(data: Uint8Array, format: string): { width: 
 function parseUnit(value: string): number | null {
   const num = parseFloat(value);
   if (isNaN(num)) return null;
-  
+
   if (value.endsWith('mm')) return num * 96 / 25.4;
   if (value.endsWith('cm')) return num * 96 / 2.54;
   if (value.endsWith('in')) return num * 96;
   if (value.endsWith('pt')) return num * 96 / 72;
-  
+  if (value.endsWith('pc')) return num * 96 / 6;
+  // Reject relative/viewport-dependent units — caller falls back to viewBox
+  if (value.endsWith('%') || value.endsWith('em') || value.endsWith('ex')) return null;
+
   return num;
 }
 

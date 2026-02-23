@@ -2272,12 +2272,19 @@ function renderInlineRange(
         out += '>';
       } else {
         const safeAlt = item.alt.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
-        out += '![' + safeAlt + '](' + item.src + ')';
+        out += '![' + safeAlt + '](' + formatHrefForMarkdown(item.src) + ')';
         if (item.widthPx > 0 || item.heightPx > 0) {
           const parts: string[] = [];
           if (item.widthPx > 0) parts.push('width=' + item.widthPx);
           if (item.heightPx > 0) parts.push('height=' + item.heightPx);
           out += '{' + parts.join(' ') + '}';
+        }
+      }
+      if (item.commentIds.size > 0) {
+        for (const cid of [...item.commentIds].sort()) {
+          const c = comments.get(cid);
+          if (!c) continue;
+          out += formatCommentBody(cid, c);
         }
       }
       i++;
@@ -2465,7 +2472,7 @@ function renderInlineRangeWithIds(
         out += '>';
       } else {
         const safeAlt = item.alt.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
-        out += '![' + safeAlt + '](' + item.src + ')';
+        out += '![' + safeAlt + '](' + formatHrefForMarkdown(item.src) + ')';
         if (item.widthPx > 0 || item.heightPx > 0) {
           const parts: string[] = [];
           if (item.widthPx > 0) parts.push('width=' + item.widthPx);
@@ -3620,7 +3627,15 @@ export async function convertDocx(
   if (imageEntries && imageEntries.length > 0) {
     images = new Map();
     for (const entry of imageEntries) {
-      const mediaPath = entry.mediaPath.startsWith('word/') ? entry.mediaPath : 'word/' + entry.mediaPath;
+      const rawPath = entry.mediaPath.startsWith('word/') ? entry.mediaPath : 'word/' + entry.mediaPath;
+      // Normalize ../ segments (e.g. "word/../media/image1.png" -> "media/image1.png")
+      const pathParts = rawPath.split('/');
+      const resolved: string[] = [];
+      for (const p of pathParts) {
+        if (p === '..') resolved.pop();
+        else if (p !== '.') resolved.push(p);
+      }
+      const mediaPath = resolved.join('/');
       const file = zip.file(mediaPath);
       if (file) {
         images.set(entry.outputFilename, await file.async('uint8array'));

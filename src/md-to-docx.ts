@@ -3180,8 +3180,12 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           let fileData: Uint8Array;
           try {
             fileData = new Uint8Array(readFileSync(absPath));
-          } catch {
-            state.warnings.push(IMAGE_WARNINGS.notFound(src));
+          } catch (err: any) {
+            if (err?.code === 'ENOENT') {
+              state.warnings.push(IMAGE_WARNINGS.notFound(src));
+            } else {
+              state.warnings.push(IMAGE_WARNINGS.readError(src, err?.message || String(err)));
+            }
             continue;
           }
           const mediaFilename = 'image' + state.imageMediaPaths.size + '.' + ext;
