@@ -28,6 +28,7 @@ export interface MdToken {
   alertFirst?: boolean;     // first paragraph in an alert block (for spacing)
   alertLast?: boolean;      // last paragraph in an alert block (for spacing)
   blockquoteGroupIndex?: number; // sequential index of the blockquote group this token belongs to
+  trailingBlankLine?: boolean;   // for code blocks: blank line follows in source markdown
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
@@ -1201,23 +1202,35 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         i = blockquoteClose + 1;
         break;
         
-      case 'fence':
+      case 'fence': {
+        // Detect trailing blank line by checking if the next token starts
+        // more than one line after this fence ends.
+        const fenceEndLine = token.map?.[1] ?? 0;
+        const nextToken = tokens[i + 1];
+        const nextStartLine = nextToken?.map?.[0] ?? fenceEndLine;
         result.push({
           type: 'code_block',
           language: token.info || undefined,
+          trailingBlankLine: nextStartLine > fenceEndLine,
           runs: [{ type: 'text', text: token.content }]
         });
         i++;
         break;
+      }
 
-      case 'code_block':
+      case 'code_block': {
+        const cbEndLine = token.map?.[1] ?? 0;
+        const cbNext = tokens[i + 1];
+        const cbNextStart = cbNext?.map?.[0] ?? cbEndLine;
         result.push({
           type: 'code_block',
           language: undefined,
+          trailingBlankLine: cbNextStart > cbEndLine,
           runs: [{ type: 'text', text: token.content }]
         });
         i++;
         break;
+      }
 
       case 'table_open':
         const tableClose = findClosingToken(tokens, i, 'table_close');
@@ -3688,20 +3701,23 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     }
   }
 
-  let prevTokenType: string | undefined;
+  let prevToken: MdToken | undefined;
   for (const token of tokens) {
     // Insert an empty paragraph between consecutive code blocks so they
     // don't merge into a single block on DOCX→MD round-trip.
-    if (token.type === 'code_block' && prevTokenType === 'code_block') {
+    if (token.type === 'code_block' && prevToken?.type === 'code_block') {
       body += '<w:p/>';
     }
-    // Insert a borderless separator before a blockquote group when it follows
-    // non-blockquote content (e.g. code block → callout).  The alertFirst
-    // spacer extends the callout's colored left border, so adding w:before
-    // to it would visually bleed the border upward.  A separate borderless
-    // paragraph creates a clean gap instead.
-    if (token.type === 'blockquote' && token.alertFirst && prevTokenType && prevTokenType !== 'blockquote') {
-      body += postBlockquoteSeparatorParagraph;
+    // Code blocks have w:after="0", so insert a borderless separator when
+    // they are followed by non-code content.  Two cases:
+    //   (a) Source had a blank line after the fence → always insert separator.
+    //   (b) Callout alert immediately follows (no blank line) → still need a
+    //       separator so the callout border doesn't sit flush against the code.
+    if (prevToken?.type === 'code_block' && token.type !== 'code_block') {
+      const needsSep = prevToken.trailingBlankLine || (token.type === 'blockquote' && token.alertFirst);
+      if (needsSep) {
+        body += postBlockquoteSeparatorParagraph;
+      }
     }
     if (token.type === 'table') {
       body += generateTable(token, state, options, bibEntries, citeprocEngine);
@@ -3723,7 +3739,7 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
         body += postBlockquoteSeparatorParagraph;
       }
     }
-    prevTokenType = token.type;
+    prevToken = token;
   }
 
   // Register only the actually-cited keys so makeBibliography() outputs
