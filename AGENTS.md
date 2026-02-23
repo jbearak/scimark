@@ -14,3 +14,11 @@ LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 - Template literal corruption: never use `$$` in code touched by tool text-replacement operations — `$` is special in replacement strings and `$$` gets corrupted. Use string concatenation instead.
 
 Per-module learnings live as comments in the corresponding source files.
+
+## Quick commands
+
+- `bun install` — install dependencies
+- `bun run compile` — build the extension
+- `bun test` — run all tests
+- `bun run watch` — watch mode
+- `bun run package` — package the extension
