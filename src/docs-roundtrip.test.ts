@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'bun:test';
+import fc from 'fast-check';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { convertMdToDocx } from './md-to-docx';
@@ -78,7 +79,7 @@ function stripFencedCodeBlocks(md: string): string {
   return result.join('\n');
 }
 
-/** Count fenced code blocks. */
+/** Count fenced and indented code blocks. */
 function countCodeBlocks(md: string): number {
   let count = 0;
   iterateFences(md, () => count++, () => {});
@@ -238,34 +239,47 @@ describe('docs round-trip: md -> docx -> md', () => {
 });
 
 describe('iterateFences / stripFencedCodeBlocks', () => {
+  // Alphanumeric generator avoids markdown-special characters and newlines.
+  const alnum = fc.string({ minLength: 1, maxLength: 20 })
+    .filter(s => /^[a-z0-9]+$/.test(s));
+
   it('does not swallow indented text after a fenced code block', () => {
-    const md = [
-      'Some text',
-      '',
-      '```python',
-      'code',
-      '```',
-      '    indented after fence',
-      'more text',
-    ].join('\n');
-    const stripped = stripFencedCodeBlocks(md);
-    expect(stripped).toContain('indented after fence');
-    expect(stripped).toContain('more text');
-    expect(stripped).not.toContain('code');
+    fc.assert(
+      fc.property(alnum, alnum, (code, afterText) => {
+        const md = [
+          'Some text',
+          '',
+          '```python',
+          'FENCED_' + code,
+          '```',
+          '    AFTER_' + afterText,
+          'more text',
+        ].join('\n');
+        const stripped = stripFencedCodeBlocks(md);
+        expect(stripped).toContain('AFTER_' + afterText);
+        expect(stripped).toContain('more text');
+        expect(stripped).not.toContain('FENCED_' + code);
+      }),
+      { numRuns: 10 },
+    );
   });
 
   it('still detects real indented code blocks', () => {
-    const md = [
-      'Paragraph',
-      '',
-      '    indented code',
-      '    more code',
-      '',
-      'After',
-    ].join('\n');
-    const stripped = stripFencedCodeBlocks(md);
-    expect(stripped).not.toContain('indented code');
-    expect(stripped).toContain('After');
+    fc.assert(
+      fc.property(alnum, alnum, (codeLine, afterText) => {
+        const md = [
+          'Paragraph',
+          '',
+          '    BLOCK_' + codeLine,
+          '',
+          'TEXT_' + afterText,
+        ].join('\n');
+        const stripped = stripFencedCodeBlocks(md);
+        expect(stripped).not.toContain('BLOCK_' + codeLine);
+        expect(stripped).toContain('TEXT_' + afterText);
+      }),
+      { numRuns: 10 },
+    );
   });
 });
 
