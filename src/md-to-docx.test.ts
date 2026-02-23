@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'bun:test';
+import * as fc from 'fast-check';
 import {
   generateRPr,
   generateRun,
@@ -1978,25 +1979,39 @@ describe('Code region inertness in MD→DOCX', () => {
   });
 
   it('parses indented code block as code_block token', () => {
-    const tokens = parseMd('    indented line\n');
-    const codeBlock = tokens.find(t => t.type === 'code_block');
-    expect(codeBlock).toBeDefined();
-    expect(codeBlock!.runs.length).toBe(1);
-    expect(codeBlock!.runs[0].type).toBe('text');
-    expect(codeBlock!.runs[0].text).toContain('indented line');
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 40 }).filter(s => !s.includes('\n')),
+        line => {
+          const tokens = parseMd('    ' + line + '\n');
+          const codeBlock = tokens.find(t => t.type === 'code_block');
+          expect(codeBlock).toBeDefined();
+          expect(codeBlock!.runs[0].text).toContain(line);
+        }
+      ),
+      { numRuns: 10 }
+    );
   });
 });
 
 describe('convertMdToDocx indented code blocks', () => {
   it('preserves indented code block content in docx', async () => {
-    const markdown = '    indented code line\n';
-    const result = await convertMdToDocx(markdown);
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz0123456789'), { minLength: 1, maxLength: 40 }).map(a => a.join('')),
+        async line => {
+          const markdown = '    ' + line + '\n';
+          const result = await convertMdToDocx(markdown);
 
-    const JSZip = (await import('jszip')).default;
-    const zip = await JSZip.loadAsync(result.docx);
+          const JSZip = (await import('jszip')).default;
+          const zip = await JSZip.loadAsync(result.docx);
 
-    const document = await zip.files['word/document.xml'].async('string');
-    expect(document).toContain('indented code line');
-    expect(document).toContain('CodeBlock');
+          const document = await zip.files['word/document.xml'].async('string');
+          expect(document).toContain(line);
+          expect(document).toContain('CodeBlock');
+        }
+      ),
+      { numRuns: 10 }
+    );
   });
 });

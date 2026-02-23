@@ -33,7 +33,10 @@ function iterateFences(
         // Per CommonMark §4.5, backtick fences must not have backticks in info string
         fenceChar = char;
         fenceLen = len;
-        inIndentedBlock = false;
+        if (inIndentedBlock) {
+          inIndentedBlock = false;
+          onClose();
+        }
         continue;
       }
       // Closing fence: same char, at least as long, no info string
