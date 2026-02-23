@@ -318,3 +318,12 @@ You can type these directly instead of using the toolbar menus. See the [CriticM
 Right-click inside the editor to see **Markdown Formatting** and **Markdown Annotations** submenus — these contain the same commands as the toolbar.
 
 Right-click files in the Explorer sidebar for import/export commands (**Export to Markdown** for `.docx` files, **Export to Word** for `.md` files).
+
+---
+
+## Next Steps
+
+Now that you know the basics, explore our specific guides:
+
+- [Writing Research Papers](guides/research-paper.md): Learn about citations, bibliographies, equations, and metadata.
+- [Writing Technical Documentation](guides/documentation.md): Learn about code blocks, tables, and team review workflows.
