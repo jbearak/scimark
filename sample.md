@@ -5,10 +5,10 @@ Recent work on pistachio volatile compounds [@scoopsworth2020pistachio] suggests
 The relationship between pistachio-paste concentration $P$ and flavor intensity $F$ can be modeled as:
 
 $$
-\begin{align}
+\begin{aligned}
 F(P) &= \alpha \cdot P^{\beta} + \epsilon \\
 \beta &\approx 0.7 \pm 0.1
-\end{align}
+\end{aligned}
 $$
 
 ## Production and Storage
