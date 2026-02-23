@@ -765,6 +765,70 @@ export function computeBlockquoteGaps(markdown: string): Map<number, number> {
 
   return gaps;
 }
+
+// Compute authored blank lines that appear *after* a blockquote group when the
+// next non-blank source line is regular (non-blockquote) content. This is used
+// only for MD→DOCX visual fidelity so callout→paragraph transitions preserve
+// explicit empty lines in Word.
+export function computeBlockquotePostContentBlankLines(markdown: string): Map<number, number> {
+  const blanksByGroup = new Map<number, number>();
+  const lines = markdown.split('\n');
+  const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+  const blockquoteLevel = (line: string): number => {
+    const stripped = line.replace(/^ {0,3}/, '');
+    let level = 0;
+    let j = 0;
+    while (j < stripped.length) {
+      if (stripped[j] === '>') {
+        level++;
+        j++;
+        if (stripped[j] === ' ') j++;
+        continue;
+      }
+      break;
+    }
+    return level;
+  };
+
+  const groups: Array<{ start: number; end: number }> = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (/^ {0,3}>/.test(lines[i])) {
+      const runStart = i;
+      let groupStart = i;
+      let groupLevel = blockquoteLevel(lines[i]);
+      i++;
+      while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
+        const level = blockquoteLevel(lines[i]);
+        const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
+        const levelChanged = level !== groupLevel;
+        if (startsAlertGroup || levelChanged) {
+          groups.push({ start: groupStart, end: i - 1 });
+          groupStart = i;
+          groupLevel = level;
+        }
+        i++;
+      }
+      groups.push({ start: groupStart, end: i - 1 });
+    } else {
+      i++;
+    }
+  }
+
+  for (let g = 0; g < groups.length; g++) {
+    let li = groups[g].end + 1;
+    let blankCount = 0;
+    while (li < lines.length && lines[li].trim() === '') {
+      blankCount++;
+      li++;
+    }
+    if (blankCount > 0 && li < lines.length && !/^ {0,3}>/.test(lines[li])) {
+      blanksByGroup.set(g, blankCount);
+    }
+  }
+
+  return blanksByGroup;
+}
 // Compute per-blockquote-group alert marker style from source markdown.
 // true means `> [!TYPE] body`, false means marker-only line.
 export function computeBlockquoteAlertMarkerInlineByGroup(markdown: string): Map<number, boolean> {
@@ -1927,6 +1991,7 @@ export interface DocxGenState {
   codeFont: string;
   codeShadingMode: boolean;
   blockquoteGaps: Map<number, number>; // gap (blank-line count) after each blockquote group, keyed by group index
+  blockquotePostContentBlankLines: Map<number, number>; // blank lines after group when next non-blank line is non-blockquote content
   blockquoteAlertMarkerInlineByGroup: Map<number, boolean>; // alert group index -> inline marker style
   // Image tracking
   imageRelationships: Map<string, { rId: string; mediaPath: string }>; // dedup key (absPath + '\0' + syntax) -> { rId, media path }
@@ -3547,6 +3612,7 @@ function commentsExtendedXml(comments: CommentEntry[]): string {
 
 export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any, frontmatter?: Frontmatter): string {
   let body = '';
+  const postBlockquoteSeparatorParagraph = '<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:p>';
 
   // Pre-scan: assign comment IDs and discover reply relationships so that
   // replyRanges is populated before range start/end markers are emitted.
@@ -3622,6 +3688,12 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     } else {
       body += generateParagraph(token, state, options, bibEntries, citeprocEngine);
     }
+    if (token.type === 'blockquote' && token.alertLast && token.blockquoteGroupIndex !== undefined) {
+      const blankCount = state.blockquotePostContentBlankLines.get(token.blockquoteGroupIndex) ?? 0;
+      for (let bi = 0; bi < blankCount; bi++) {
+        body += postBlockquoteSeparatorParagraph;
+      }
+    }
     prevTokenType = token.type;
   }
 
@@ -3668,6 +3740,7 @@ export async function convertMdToDocx(
   // Compute inter-blockquote-group gap metadata from the original markdown
   // source and annotate tokens with sequential group indices.
   const blockquoteGaps = computeBlockquoteGaps(bodyWithoutFootnotes);
+  const blockquotePostContentBlankLines = computeBlockquotePostContentBlankLines(bodyWithoutFootnotes);
   const blockquoteAlertMarkerInlineByGroup = computeBlockquoteAlertMarkerInlineByGroup(bodyWithoutFootnotes);
   annotateBlockquoteGroupIndices(tokens);
 
@@ -3779,6 +3852,7 @@ export async function convertMdToDocx(
     codeFont: fontOverrides?.codeFont || 'Consolas',
     codeShadingMode: !isInsetMode,
     blockquoteGaps: blockquoteGaps,
+    blockquotePostContentBlankLines,
     blockquoteAlertMarkerInlineByGroup,
     imageRelationships: new Map(),
     imageMediaPaths: new Map(),

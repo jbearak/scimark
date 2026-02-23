@@ -2754,6 +2754,12 @@ export function buildMarkdown(
   let codeBlockGroupIndex = 0;
   let lastAlertParagraphKey: string | undefined;
   let pendingAlertPrefixStrip: GfmAlertType | undefined;
+  // Fallback for imports without alert-style metadata: stripAlertLeadPrefix can
+  // consume a hard line break after the glyph/title lead (e.g. "※ Note" + w:br).
+  // If we've already emitted an inline marker (`> [!TYPE] `), rewrite it to the
+  // marker-only form (`> [!TYPE]\n> ...`) so callout/paragraph boundaries stay
+  // stable on DOCX -> MD conversion.
+  let pendingAlertInlineLevelForHardBreak: number | undefined;
   let lastBlockquoteGroupIndex: number | undefined;
   // Track previous blockquote type to detect group boundaries when gap
   // metadata is absent (plain↔alert or alert↔different-alert transitions).
@@ -2775,6 +2781,7 @@ export function buildMarkdown(
         lastListType = undefined;
         lastAlertParagraphKey = undefined;
         pendingAlertPrefixStrip = undefined;
+        pendingAlertInlineLevelForHardBreak = undefined;
         lastBlockquoteAlertType = undefined;
         lastBlockquoteLevel = undefined;
 
@@ -2946,10 +2953,12 @@ export function buildMarkdown(
       if (item.headingLevel) {
         lastAlertParagraphKey = undefined;
         pendingAlertPrefixStrip = undefined;
+        pendingAlertInlineLevelForHardBreak = undefined;
         output.push('#'.repeat(item.headingLevel) + ' ');
       } else if (item.listMeta) {
         lastAlertParagraphKey = undefined;
         pendingAlertPrefixStrip = undefined;
+        pendingAlertInlineLevelForHardBreak = undefined;
         const indent = item.listMeta.type === 'bullet'
           ? ' '.repeat(2 * item.listMeta.level)
           : ' '.repeat(3 * item.listMeta.level);
@@ -2973,22 +2982,30 @@ export function buildMarkdown(
             output.push(toGfmAlertMarker(item.alertType));
             if (markerInline) {
               output.push(' ');
+              pendingAlertInlineLevelForHardBreak = item.blockquoteLevel;
             } else {
               output.push('\n' + '> '.repeat(item.blockquoteLevel));
+              pendingAlertInlineLevelForHardBreak = undefined;
             }
             const next = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
             pendingAlertPrefixStrip = (next && next.type !== 'para') ? item.alertType : undefined;
+            if (!pendingAlertPrefixStrip) {
+              pendingAlertInlineLevelForHardBreak = undefined;
+            }
           } else {
             pendingAlertPrefixStrip = undefined;
+            pendingAlertInlineLevelForHardBreak = undefined;
           }
           lastAlertParagraphKey = alertKey;
         } else {
           lastAlertParagraphKey = undefined;
           pendingAlertPrefixStrip = undefined;
+          pendingAlertInlineLevelForHardBreak = undefined;
         }
       } else {
         lastAlertParagraphKey = undefined;
         pendingAlertPrefixStrip = undefined;
+        pendingAlertInlineLevelForHardBreak = undefined;
       }
 
       i++;
@@ -3005,6 +3022,7 @@ export function buildMarkdown(
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
       pendingAlertPrefixStrip = undefined;
+      pendingAlertInlineLevelForHardBreak = undefined;
       lastBlockquoteAlertType = undefined;
       lastBlockquoteLevel = undefined;
       i++;
@@ -3019,6 +3037,7 @@ export function buildMarkdown(
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
       pendingAlertPrefixStrip = undefined;
+      pendingAlertInlineLevelForHardBreak = undefined;
       lastBlockquoteAlertType = undefined;
       lastBlockquoteLevel = undefined;
       i++;
@@ -3029,8 +3048,29 @@ export function buildMarkdown(
     if (rendered.nextIndex <= i) {
       throw new Error('Invariant violated: renderInlineRange did not advance index');
     }
-    const textOut = pendingAlertPrefixStrip ? stripAlertLeadPrefix(rendered.text, pendingAlertPrefixStrip) : rendered.text;
+    let strippedAlertLeadHadHardBreak = false;
+    let textOut = rendered.text;
+    if (pendingAlertPrefixStrip) {
+      textOut = stripAlertLeadPrefix(rendered.text, pendingAlertPrefixStrip);
+      const removedLen = rendered.text.length - textOut.length;
+      if (removedLen > 0 && rendered.text.slice(0, removedLen).includes('\n')) {
+        strippedAlertLeadHadHardBreak = true;
+      }
+    }
+    if (pendingAlertInlineLevelForHardBreak !== undefined && (textOut.startsWith('\n') || strippedAlertLeadHadHardBreak)) {
+      const markerIdx = output.length - 1;
+      const continuationPrefix = '\n' + '> '.repeat(pendingAlertInlineLevelForHardBreak);
+      if (markerIdx >= 0 && output[markerIdx].endsWith(' ')) {
+        output[markerIdx] = output[markerIdx].slice(0, -1) + continuationPrefix;
+      } else {
+        output.push(continuationPrefix);
+      }
+      if (textOut.startsWith('\n')) {
+        textOut = textOut.slice(1);
+      }
+    }
     pendingAlertPrefixStrip = undefined;
+    pendingAlertInlineLevelForHardBreak = undefined;
     if (rendered.deferredComments.length > 0) {
       // Strip trailing newlines (from <w:br/> between comment references in round-tripped DOCX)
       output.push(textOut.replace(/\n+$/, ''));

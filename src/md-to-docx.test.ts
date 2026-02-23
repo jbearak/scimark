@@ -1875,6 +1875,35 @@ describe('Code block separator between consecutive blocks', () => {
   });
 });
 
+describe('Blockquote to paragraph separators in DOCX export', () => {
+  const separatorXml = '<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:p>';
+  it('inserts empty paragraph after callout when source has blank line before paragraph', async () => {
+    const md = '> [!NOTE]\n> This is a note.\n\nThis is a paragraph.';
+    const result = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string');
+    expect(docXml).toBeDefined();
+    expect(docXml).toContain('This is a note.');
+    expect(docXml).toContain('This is a paragraph.');
+    const separatorCount = docXml!.split(separatorXml).length - 1;
+    expect(separatorCount).toBe(1);
+  });
+
+  it('does not insert empty paragraph after callout when source has no blank line before paragraph', async () => {
+    const md = '> [!NOTE]\n> This is a note.\nThis is a paragraph.';
+    const result = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string');
+    expect(docXml).toBeDefined();
+    expect(docXml).toContain('This is a note.');
+    expect(docXml).toContain('This is a paragraph.');
+    const separatorCount = docXml!.split(separatorXml).length - 1;
+    expect(separatorCount).toBe(0);
+  });
+});
+
 // Feature: code-region-inert-zones, Task 8.2: Verify MD→DOCX converter handles code regions correctly
 // Confirms that processInlineChildren handles code_inline tokens as { type: 'text', code: true } runs
 // without CriticMarkup interpretation, and convertTokens handles fence tokens at block level with plain text.
