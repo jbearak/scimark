@@ -51,7 +51,7 @@ scimark paper.md      # Markdown → DOCX
 ### Academic Writing
 
 - **Citations**: Full Zotero roundtrip with BibTeX export and field code reconstruction
-- **Bibliographies**: Format citations according to any [CSL style](https://citationstyles.org/) (APA, Chicago, BMJ, IEEE, etc.); bundles the same 16 styles that ship with Zotero
+- **Bibliographies**: Format citations according to any [CSL style](https://citationstyles.org/) (APA, Chicago, BMJ, IEEE, etc.); bundles the same 16 styles that ship with Zotero and downloads others as needed
 - **Equations**: LaTeX equation support (inline and display math), automatically converted to/from Word OMML
 - **AI-friendly**: Plain text in a git repository gives AI coding assistants full context — manuscript, bibliography, and revision history
 
