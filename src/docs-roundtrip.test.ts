@@ -91,16 +91,25 @@ function extractPlainText(md: string): string {
   return stripFencedCodeBlocks(md)
     // Strip YAML frontmatter only at the very start of the file (no /m flag)
     .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+    // Strip display math blocks (content is LaTeX, not prose)
+    .replace(/\$\$[\s\S]*?\$\$/g, ' ')
+    // Strip inline math (content is LaTeX, not prose)
+    .replace(/\$[^$]+\$/g, ' ')
     // Strip table separator lines and pipe delimiters
     .replace(/^\|[-| :]+\|$/gm, '')
     .replace(/\|/g, ' ')
     // Strip entire CriticMarkup comments (content is metadata, not prose)
     .replace(/\{>>[\s\S]*?<<\}/g, ' ')
-    // Strip CriticMarkup markers (but keep highlighted/inserted/deleted text)
+    // Strip CriticMarkup deletions entirely (deleted text doesn't survive round-trip)
+    .replace(/\{--[\s\S]*?--\}/g, ' ')
+    // Strip CriticMarkup substitutions, keeping only the new text
+    .replace(/\{~~[\s\S]*?~>([\s\S]*?)~~\}/g, '$1')
+    // Strip CriticMarkup markers (keep highlighted/inserted text)
     .replace(/\{==/g, ' ').replace(/==\}/g, ' ')
     .replace(/\{\+\+/g, ' ').replace(/\+\+\}/g, ' ')
-    .replace(/\{--/g, ' ').replace(/--\}/g, ' ')
     .replace(/\{~~/g, ' ').replace(/~~\}/g, ' ')
+    // Strip highlight color suffixes like {yellow}, {red}, etc.
+    .replace(/\{[a-z]+\}/g, ' ')
     // Strip ID-based comment/range markers (IDs may contain hyphens)
     .replace(/\{#[\w-]+>>[\s\S]*?<<\}/g, ' ')
     .replace(/\{#[\w-]+\}|\{\/[\w-]+\}/g, ' ')
@@ -117,10 +126,10 @@ function extractPlainText(md: string): string {
     .replace(/`([^`]+)`/g, '$1')
     // Strip images entirely (alt text is visual metadata, not prose)
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '')
-    // Strip links, HTML, citations, footnotes
+    // Strip links, HTML, citations (both [@key] and [-@key] forms), footnotes
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/\[@[^\]]*\]/g, ' ')
+    .replace(/\[-?@[^\]]*\]/g, ' ')
     .replace(/\[\^[^\]]*\]/g, ' ')
     .replace(/\n{2,}/g, '\n')
     .trim();
@@ -236,6 +245,36 @@ describe('docs round-trip: md -> docx -> md', () => {
       }
     }, 30_000);
   }
+});
+
+describe('double round-trip: md -> docx -> md -> docx -> md', () => {
+  it('sample.md reaches a fixpoint after one round-trip', async () => {
+    const originalMd = readFileSync(join(repoRoot, 'sample.md'), 'utf-8');
+
+    // RT1: md -> docx -> md
+    const r1 = await convertMdToDocx(originalMd, { bibtex: sampleBib });
+    expect(r1.warnings).toEqual([]);
+    const m1 = await convertDocx(r1.docx);
+
+    // RT2: md -> docx -> md (using RT1 output)
+    const r2 = await convertMdToDocx(m1.markdown, { bibtex: m1.bibtex });
+    expect(r2.warnings).toEqual([]);
+    const m2 = await convertDocx(r2.docx);
+
+    // Fixpoint: RT1 and RT2 should produce identical markdown
+    expect(m2.markdown.trimEnd()).toBe(m1.markdown.trimEnd());
+
+    // Bib entries preserved through both round-trips
+    const rt1Entries = (m1.bibtex.match(/^@\w+\{/gm) || []).length;
+    const rt2Entries = (m2.bibtex.match(/^@\w+\{/gm) || []).length;
+    expect(rt1Entries).toBe(3);
+    expect(rt2Entries).toBe(3);
+    expect(m2.bibtex).toBe(m1.bibtex);
+
+    // Key structural elements survived both round-trips
+    expect(countHeadings(m2.markdown)).toBe(countHeadings(originalMd));
+    expect(countCodeBlocks(m2.markdown)).toBe(countCodeBlocks(originalMd));
+  }, 60_000);
 });
 
 describe('iterateFences / stripFencedCodeBlocks', () => {

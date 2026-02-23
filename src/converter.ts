@@ -99,6 +99,7 @@ export interface CitationMetadata {
   zoteroUri?: string;
   locator?: string;
   citationKey?: string;   // CSL citation-key preserved for round-trip
+  suppressAuthor?: boolean; // [-@key] Pandoc suppress-author form
 }
 
 /** Each Zotero field in the document produces one of these. */
@@ -1363,6 +1364,11 @@ function extractZoteroCitationsFromInstructions(instructions: string[]): ZoteroC
           }
         }
 
+        // Extract suppress-author flag (Pandoc [-@key] form)
+        if (item['suppress-author']) {
+          result.suppressAuthor = true;
+        }
+
         return result;
       });
 
@@ -1467,7 +1473,8 @@ function sanitizeLocator(locator: string | number): string {
   return String(locator).replace(/[\[\];@]/g, '');
 }
 
-/** Get pandoc keys for a citation's items */
+/** Get pandoc keys for a citation's items.
+ *  Keys prefixed with '-' indicate suppress-author ([-@key] form). */
 export function citationPandocKeys(
   citation: ZoteroCitation,
   keyMap: Map<string, string>
@@ -1476,11 +1483,12 @@ export function citationPandocKeys(
     .map(meta => {
       const k = keyMap.get(itemIdentifier(meta));
       if (!k) return undefined;
+      const prefix = meta.suppressAuthor ? '-' : '';
       if (meta.locator) {
         const safe = sanitizeLocator(meta.locator);
-        return safe ? k + ', p. ' + safe : k;
+        return safe ? prefix + k + ', p. ' + safe : prefix + k;
       }
-      return k;
+      return prefix + k;
     })
     .filter((k): k is string => k !== undefined);
 }
@@ -2241,7 +2249,8 @@ function renderInlineRange(
 
     if (item.type === 'citation') {
       if (item.pandocKeys.length > 0) {
-        out += ' [' + item.pandocKeys.map(k => '@' + k).join('; ') + ']';
+        const citeSep = out.endsWith(' ') ? '' : ' ';
+        out += citeSep + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']';
       } else {
         out += item.text;
       }
@@ -2400,7 +2409,8 @@ function renderInlineRangeWithIds(
       prevCommentIds = new Set(currentIds);
 
       if (item.pandocKeys.length > 0) {
-        out += ' [' + item.pandocKeys.map(k => '@' + k).join('; ') + ']';
+        const citeSep = out.endsWith(' ') ? '' : ' ';
+        out += citeSep + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']';
       } else {
         out += item.text;
       }
@@ -2840,15 +2850,14 @@ export function buildMarkdown(
         const fence = '`'.repeat(Math.max(3, maxRun + 1));
         output.push(fence + lang + '\n' + codeLines.join('\n') + '\n' + fence);
         codeBlockGroupIndex++;
-        // Skip the separator para between consecutive code block groups
-        // so it doesn't produce extra blank lines in the output.
-        // Skip a plain separator para that was inserted between consecutive code
-        // block groups during export.  Only skip when the next item after the
-        // separator is another code-block para (proving it's a separator, not
-        // real content).
+        // Skip a plain separator para that was inserted during export between
+        // consecutive code-block groups or before a blockquote group.  Only
+        // skip when the next item after the separator is either a code-block
+        // para or a blockquote para (proving it's a separator, not real
+        // content).
         const sep = i < mergedContent.length ? mergedContent[i] : undefined;
         const afterSep = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
-        if (sep && sep.type === 'para' && !sep.isCodeBlock && afterSep && afterSep.type === 'para' && afterSep.isCodeBlock) {
+        if (sep && sep.type === 'para' && !sep.isCodeBlock && afterSep && afterSep.type === 'para' && (afterSep.isCodeBlock || afterSep.blockquoteLevel)) {
           i++;
         }
         continue;

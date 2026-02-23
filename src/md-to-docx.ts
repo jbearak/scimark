@@ -28,6 +28,7 @@ export interface MdToken {
   alertFirst?: boolean;     // first paragraph in an alert block (for spacing)
   alertLast?: boolean;      // last paragraph in an alert block (for spacing)
   blockquoteGroupIndex?: number; // sequential index of the blockquote group this token belongs to
+  trailingBlankLine?: boolean;   // for code blocks: blank line follows in source markdown
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
@@ -70,6 +71,7 @@ export interface MdRun {
   // Citation specific
   keys?: string[];          // citation keys for [@key1; @key2]
   locators?: Map<string, string>; // key -> locator for [@key, p. 20]
+  suppressAuthorKeys?: Set<string>; // per-key suppress-author: Set of keys with [-@key] form
   // Math specific
   display?: boolean;        // display math ($$...$$) vs inline ($...$)
   // Image specific
@@ -401,37 +403,61 @@ function footnoteRefRule(state: any, silent: boolean): boolean {
 function citationRule(state: any, silent: boolean): boolean {
   const start = state.pos;
   const max = state.posMax;
-  
-  if (start + 2 >= max || state.src.slice(start, start + 2) !== '[@') return false;
-  
-  const endPos = state.src.indexOf(']', start + 2);
+
+  // Match [@key] or [-@key] (Pandoc suppress-author form)
+  const isNormal = start + 2 < max && state.src.slice(start, start + 2) === '[@';
+  const isSuppressed = !isNormal && start + 3 < max && state.src.slice(start, start + 3) === '[-@';
+  if (!isNormal && !isSuppressed) return false;
+
+  const contentStart = isSuppressed ? start + 3 : start + 2;
+  const endPos = state.src.indexOf(']', contentStart);
   if (endPos === -1) return false;
-  
+
   if (!silent) {
-    const content = state.src.slice(start + 2, endPos);
+    const rawContent = state.src.slice(contentStart, endPos);
     const token = state.push('citation', '', 0);
-    token.content = content;
-    
+    // Preserve original content for fallback rendering
+    token.content = isSuppressed ? '-@' + rawContent : rawContent;
+
     const keys: string[] = [];
     const locators = new Map<string, string>();
-    
-    const parts = content.split(';').map((p: string) => p.trim().replace(/^@/, '')).filter(Boolean);
-    for (const part of parts) {
-      const commaPos = part.indexOf(',');
+    const suppressAuthorKeys = new Set<string>();
+
+    // Split raw content by `;` and check each part for -@ prefix BEFORE stripping
+    const rawParts = rawContent.split(';').map((p: string) => p.trim()).filter(Boolean);
+    for (let i = 0; i < rawParts.length; i++) {
+      let raw = rawParts[i];
+      let suppressed: boolean;
+      if (i === 0) {
+        // First part: the `[-@` or `[@` prefix was already consumed by the outer match,
+        // so `isSuppressed` tells us whether this item is suppressed.
+        suppressed = isSuppressed;
+        raw = raw.replace(/^@/, '').trim();
+      } else {
+        // Subsequent parts: check for `-@` prefix to determine per-item suppress
+        suppressed = raw.startsWith('-@');
+        raw = raw.replace(/^-?@/, '').trim();
+      }
+      if (!raw) continue;
+
+      const commaPos = raw.indexOf(',');
       if (commaPos !== -1) {
-        const key = part.slice(0, commaPos).trim();
-        const locator = part.slice(commaPos + 1).trim();
+        const key = raw.slice(0, commaPos).trim();
+        const locator = raw.slice(commaPos + 1).trim();
         keys.push(key);
         locators.set(key, locator);
+        if (suppressed) suppressAuthorKeys.add(key);
       } else {
-        keys.push(part);
+        keys.push(raw);
+        if (suppressed) suppressAuthorKeys.add(raw);
       }
     }
-    
+
     token.keys = keys;
     token.locators = locators;
+    token.suppressAuthorKeys = suppressAuthorKeys.size > 0 ? suppressAuthorKeys : undefined;
   }
-  
+
   state.pos = endPos + 1;
   return true;
 }
@@ -1193,23 +1219,34 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         i = blockquoteClose + 1;
         break;
         
-      case 'fence':
+      case 'fence': {
+        // Detect trailing blank line by checking if the next token starts
+        // more than one line after this fence ends.  Both map values must
+        // be present; if either is missing we conservatively assume no gap.
+        const fenceEnd = token.map?.[1];
+        const nextStart = tokens[i + 1]?.map?.[0];
         result.push({
           type: 'code_block',
           language: token.info || undefined,
+          trailingBlankLine: fenceEnd != null && nextStart != null && nextStart > fenceEnd,
           runs: [{ type: 'text', text: token.content }]
         });
         i++;
         break;
+      }
 
-      case 'code_block':
+      case 'code_block': {
+        const cbEnd = token.map?.[1];
+        const cbNextStart = tokens[i + 1]?.map?.[0];
         result.push({
           type: 'code_block',
           language: undefined,
+          trailingBlankLine: cbEnd != null && cbNextStart != null && cbNextStart > cbEnd,
           runs: [{ type: 'text', text: token.content }]
         });
         i++;
         break;
+      }
 
       case 'table_open':
         const tableClose = findClosingToken(tokens, i, 'table_close');
@@ -1530,6 +1567,7 @@ function processInlineChildren(tokens: any[]): MdRun[] {
           text: token.content,
           keys: token.keys,
           locators: token.locators,
+          suppressAuthorKeys: token.suppressAuthorKeys || undefined,
           ...formatStack,
           href: currentHref
         });
@@ -3405,13 +3443,16 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
     const spacerBqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
     const spacerIndentUnit = spacerBqStyle.startsWith('GitHub') ? GITHUB_BLOCKQUOTE_INDENT : 720;
     const spacerLeftIndent = spacerIndentUnit * (token.level || 1);
-    const spacerPPr = '<w:pPr>' +
-      '<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' +
-      '<w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr>' +
-      '<w:ind w:left="' + spacerLeftIndent + '"/></w:pPr>';
-    const spacer = '<w:p>' + spacerPPr + '</w:p>';
-    if (token.alertFirst) xml = spacer + xml;
-    if (token.alertLast) xml = xml + spacer;
+    const borderPPr = '<w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr>';
+    const indPPr = '<w:ind w:left="' + spacerLeftIndent + '"/>';
+    if (token.alertFirst) {
+      const firstPPr = '<w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' + borderPPr + indPPr + '</w:pPr>';
+      xml = '<w:p>' + firstPPr + '</w:p>' + xml;
+    }
+    if (token.alertLast) {
+      const lastPPr = '<w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' + borderPPr + indPPr + '</w:pPr>';
+      xml = xml + '<w:p>' + lastPPr + '</w:p>';
+    }
   }
 
   return xml;
@@ -3612,7 +3653,7 @@ function commentsExtendedXml(comments: CommentEntry[]): string {
 
 export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any, frontmatter?: Frontmatter): string {
   let body = '';
-  const postBlockquoteSeparatorParagraph = '<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:p>';
+  const separatorParagraph = '<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:p>';
 
   // Pre-scan: assign comment IDs and discover reply relationships so that
   // replyRanges is populated before range start/end markers are emitted.
@@ -3676,12 +3717,23 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     }
   }
 
-  let prevTokenType: string | undefined;
+  let prevToken: MdToken | undefined;
   for (const token of tokens) {
     // Insert an empty paragraph between consecutive code blocks so they
     // don't merge into a single block on DOCX→MD round-trip.
-    if (token.type === 'code_block' && prevTokenType === 'code_block') {
+    if (token.type === 'code_block' && prevToken?.type === 'code_block') {
       body += '<w:p/>';
+    }
+    // Code blocks have w:after="0", so insert a borderless separator when
+    // they are followed by non-code content.  Two cases:
+    //   (a) Source had a blank line after the fence → always insert separator.
+    //   (b) Callout alert immediately follows (no blank line) → still need a
+    //       separator so the callout border doesn't sit flush against the code.
+    if (prevToken?.type === 'code_block' && token.type !== 'code_block') {
+      const needsSep = prevToken.trailingBlankLine || (token.type === 'blockquote' && token.alertFirst);
+      if (needsSep) {
+        body += separatorParagraph;
+      }
     }
     if (token.type === 'table') {
       body += generateTable(token, state, options, bibEntries, citeprocEngine);
@@ -3689,12 +3741,21 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
       body += generateParagraph(token, state, options, bibEntries, citeprocEngine);
     }
     if (token.type === 'blockquote' && token.alertLast && token.blockquoteGroupIndex !== undefined) {
+      // Inter-blockquote gap: insert separators between consecutive blockquote
+      // groups when the source markdown had blank lines between them.
+      const interGap = state.blockquoteGaps.get(token.blockquoteGroupIndex) ?? 0;
+      if (interGap > 0) {
+        for (let bi = 0; bi < interGap; bi++) {
+          body += separatorParagraph;
+        }
+      }
+      // Post-blockquote blank lines before non-blockquote content
       const blankCount = state.blockquotePostContentBlankLines.get(token.blockquoteGroupIndex) ?? 0;
       for (let bi = 0; bi < blankCount; bi++) {
-        body += postBlockquoteSeparatorParagraph;
+        body += separatorParagraph;
       }
     }
-    prevTokenType = token.type;
+    prevToken = token;
   }
 
   // Register only the actually-cited keys so makeBibliography() outputs

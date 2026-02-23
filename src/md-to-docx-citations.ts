@@ -218,7 +218,8 @@ function buildEngine(
 export function renderCitationText(
   engine: any,
   keys: string[],
-  locators?: Map<string, string>
+  locators?: Map<string, string>,
+  suppressAuthorKeys?: Set<string>
 ): string | undefined {
   if (!engine || !CSL) return undefined;
 
@@ -230,6 +231,9 @@ export function renderCitationText(
         const parsed = parseLocator(locator);
         item.locator = parsed.locator;
         item.label = parsed.label;
+      }
+      if (suppressAuthorKeys?.has(key)) {
+        item['suppress-author'] = true;
       }
       return item;
     });
@@ -297,13 +301,14 @@ function resolveVisibleText(
   keys: string[],
   entries: Map<string, BibtexEntry>,
   locators: Map<string, string> | undefined,
-  citeprocEngine: any | undefined
+  citeprocEngine: any | undefined,
+  suppressAuthorKeys?: Set<string>
 ): string {
   if (citeprocEngine) {
-    const rendered = renderCitationText(citeprocEngine, keys, locators);
+    const rendered = renderCitationText(citeprocEngine, keys, locators, suppressAuthorKeys);
     if (rendered) return rendered;
   }
-  return generateFallbackText(keys, entries, locators);
+  return generateFallbackText(keys, entries, locators, suppressAuthorKeys);
 }
 
 function buildCitationFieldCode(
@@ -313,10 +318,14 @@ function buildCitationFieldCode(
   citeprocEngine: any | undefined,
   visibleTextOverride?: string,
   usedCitationIds?: Set<string>,
-  itemIdMap?: Map<string, string | number>
+  itemIdMap?: Map<string, string | number>,
+  suppressAuthorKeys?: Set<string>
 ): string {
   // Resolve visible text first so we can populate properties (Defect 2)
-  const visibleText = visibleTextOverride ?? resolveVisibleText(keys, entries, locators, citeprocEngine);
+  // Note: visibleTextOverride bypasses suppressAuthorKeys processing — callers
+  // should not provide both, as the override text would include the author
+  // while the CSL item has suppress-author set to true.
+  const visibleText = visibleTextOverride ?? resolveVisibleText(keys, entries, locators, citeprocEngine, suppressAuthorKeys);
 
   const citationItems: any[] = [];
   for (const key of keys) {
@@ -344,6 +353,9 @@ function buildCitationFieldCode(
     }
 
     const citationItem: any = { id: itemData.id, itemData };
+    if (suppressAuthorKeys?.has(key)) {
+      citationItem['suppress-author'] = true;
+    }
     if (entry.zoteroUri) {
       citationItem.uris = [entry.zoteroUri];
     } else {
@@ -382,7 +394,7 @@ function buildCitationFieldCode(
 }
 
 export function generateCitation(
-  run: { keys?: string[]; locators?: Map<string, string>; text: string },
+  run: { keys?: string[]; locators?: Map<string, string>; text: string; suppressAuthorKeys?: Set<string> },
   entries: Map<string, BibtexEntry>,
   citeprocEngine?: any,
   usedCitationIds?: Set<string>,
@@ -409,13 +421,13 @@ export function generateCitation(
 
   // All resolved — emit field code (works for both Zotero and non-Zotero entries)
   if (resolvedKeys.length > 0 && missingKeys.length === 0) {
-    const xml = buildCitationFieldCode(resolvedKeys, entries, run.locators, citeprocEngine, undefined, usedCitationIds, itemIdMap);
+    const xml = buildCitationFieldCode(resolvedKeys, entries, run.locators, citeprocEngine, undefined, usedCitationIds, itemIdMap, run.suppressAuthorKeys);
     return { xml };
   }
 
   // Pure missing — emit @citekey references as plain text
   if (resolvedKeys.length === 0) {
-    const missingText = '(' + missingKeys.map(k => '@' + k).join('; ') + ')';
+    const missingText = '(' + missingKeys.map(k => (run.suppressAuthorKeys?.has(k) ? '-@' : '@') + k).join('; ') + ')';
     return {
       xml: '<w:r><w:t>' + escapeXml(missingText) + '</w:t></w:r>',
       warning: warnings.length > 0 ? warnings.join('; ') : undefined,
@@ -424,8 +436,8 @@ export function generateCitation(
   }
 
   // Mixed (some resolved, some missing) — resolved get field code, missing get plain text
-  const missingText = '(' + missingKeys.map(k => '@' + k).join('; ') + ')';
-  const xml = buildCitationFieldCode(resolvedKeys, entries, run.locators, citeprocEngine, undefined, usedCitationIds, itemIdMap) +
+  const missingText = '(' + missingKeys.map(k => (run.suppressAuthorKeys?.has(k) ? '-@' : '@') + k).join('; ') + ')';
+  const xml = buildCitationFieldCode(resolvedKeys, entries, run.locators, citeprocEngine, undefined, usedCitationIds, itemIdMap, run.suppressAuthorKeys) +
     '<w:r><w:t xml:space="preserve"> </w:t></w:r>' +
     '<w:r><w:t>' + escapeXml(missingText) + '</w:t></w:r>';
 
@@ -578,16 +590,17 @@ function parseLocator(locator: string): { locator: string; label: string } {
   return { locator: trimmed, label: 'page' };
 }
 
-export function generateFallbackText(keys: string[], entries: Map<string, BibtexEntry>, locators?: Map<string, string>): string {
+export function generateFallbackText(keys: string[], entries: Map<string, BibtexEntry>, locators?: Map<string, string>, suppressAuthorKeys?: Set<string>): string {
   const parts = keys.map(key => {
     const entry = entries.get(key);
     if (!entry) return key;
 
     const author = entry.fields.get('author');
     const year = entry.fields.get('year');
+    const keySuppressed = suppressAuthorKeys?.has(key);
 
     let text = '';
-    if (author) {
+    if (!keySuppressed && author) {
       const firstAuthor = splitAuthorString(author)[0] || author.trim();
       if (firstAuthor.startsWith('{') && firstAuthor.endsWith('}')) {
         // Institutional author — use the full name
@@ -596,11 +609,14 @@ export function generateFallbackText(keys: string[], entries: Map<string, Bibtex
         const commaPos = firstAuthor.indexOf(',');
         text = commaPos !== -1 ? firstAuthor.slice(0, commaPos).trim() : firstAuthor.split(' ').pop() || firstAuthor;
       }
+    } else if (keySuppressed) {
+      // suppress-author: year only, no author name
+      text = '';
     } else {
       text = key;
     }
 
-    if (year) text += ' ' + year;
+    if (year) text += (text ? ' ' : '') + year;
 
     const locator = locators?.get(key);
     if (locator) text += ', ' + locator;
