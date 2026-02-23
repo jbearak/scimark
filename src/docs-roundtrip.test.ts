@@ -50,6 +50,7 @@ function iterateFences(
       if (inIndentedBlock) {
         if (!isIndented && !isBlank) {
           inIndentedBlock = false;
+          onClose();
           onOutside(line);
         }
         // else: still in indented code block, skip
@@ -61,6 +62,9 @@ function iterateFences(
       }
       prevBlank = isBlank;
     }
+  }
+  if (inIndentedBlock) {
+    onClose();
   }
 }
 

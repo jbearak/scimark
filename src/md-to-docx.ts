@@ -1112,7 +1112,16 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         });
         i++;
         break;
-        
+
+      case 'code_block':
+        result.push({
+          type: 'code_block',
+          language: undefined,
+          runs: [{ type: 'text', text: token.content }]
+        });
+        i++;
+        break;
+
       case 'table_open':
         const tableClose = findClosingToken(tokens, i, 'table_close');
         const tableData = extractTableData(tokens.slice(i + 1, tableClose));
