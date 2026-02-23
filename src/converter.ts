@@ -2850,12 +2850,11 @@ export function buildMarkdown(
         const fence = '`'.repeat(Math.max(3, maxRun + 1));
         output.push(fence + lang + '\n' + codeLines.join('\n') + '\n' + fence);
         codeBlockGroupIndex++;
-        // Skip the separator para between consecutive code block groups
-        // so it doesn't produce extra blank lines in the output.
-        // Skip a plain separator para that was inserted between consecutive code
-        // block groups during export.  Only skip when the next item after the
-        // separator is another code-block para (proving it's a separator, not
-        // real content).
+        // Skip a plain separator para that was inserted during export between
+        // consecutive code-block groups or before a blockquote group.  Only
+        // skip when the next item after the separator is either a code-block
+        // para or a blockquote para (proving it's a separator, not real
+        // content).
         const sep = i < mergedContent.length ? mergedContent[i] : undefined;
         const afterSep = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
         if (sep && sep.type === 'para' && !sep.isCodeBlock && afterSep && afterSep.type === 'para' && (afterSep.isCodeBlock || afterSep.blockquoteLevel)) {

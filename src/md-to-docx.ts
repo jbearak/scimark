@@ -3636,7 +3636,7 @@ function commentsExtendedXml(comments: CommentEntry[]): string {
 
 export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any, frontmatter?: Frontmatter): string {
   let body = '';
-  const postBlockquoteSeparatorParagraph = '<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:p>';
+  const separatorParagraph = '<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:p>';
 
   // Pre-scan: assign comment IDs and discover reply relationships so that
   // replyRanges is populated before range start/end markers are emitted.
@@ -3715,7 +3715,7 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     if (prevToken?.type === 'code_block' && token.type !== 'code_block') {
       const needsSep = prevToken.trailingBlankLine || (token.type === 'blockquote' && token.alertFirst);
       if (needsSep) {
-        body += postBlockquoteSeparatorParagraph;
+        body += separatorParagraph;
       }
     }
     if (token.type === 'table') {
@@ -3729,13 +3729,13 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
       const interGap = state.blockquoteGaps.get(token.blockquoteGroupIndex) ?? 0;
       if (interGap > 0) {
         for (let bi = 0; bi < interGap; bi++) {
-          body += postBlockquoteSeparatorParagraph;
+          body += separatorParagraph;
         }
       }
       // Post-blockquote blank lines before non-blockquote content
       const blankCount = state.blockquotePostContentBlankLines.get(token.blockquoteGroupIndex) ?? 0;
       for (let bi = 0; bi < blankCount; bi++) {
-        body += postBlockquoteSeparatorParagraph;
+        body += separatorParagraph;
       }
     }
     prevToken = token;
