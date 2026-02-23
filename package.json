@@ -2,7 +2,7 @@
   "name": "scimark",
   "displayName": "Scientific Markdown",
   "description": "Specification, converter, and VS Code extension for roundtrip manuscript and documentation editing between Markdown and Word",
-  "version": "0.99.15",
+  "version": "0.99.16",
   "engines": {
     "vscode": "^1.103.2"
   },
