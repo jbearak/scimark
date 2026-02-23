@@ -3271,7 +3271,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       break;
     case 'blockquote': {
       const bqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
-      const bqIndentUnit = bqStyle.startsWith('GitHub') ? 240 : 720;
+      const bqIndentUnit = bqStyle.startsWith('GitHub') ? GITHUB_BLOCKQUOTE_INDENT : 720;
       const bqLeftIndent = bqIndentUnit * (token.level || 1);
       const bqSpacing = '<w:spacing w:before="0" w:after="0"/>';
       pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/>' + bqSpacing + '<w:ind w:left="' + bqLeftIndent + '"/></w:pPr>';
