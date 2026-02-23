@@ -13,14 +13,6 @@ LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 
 - **Pattern filtering** — overlapping/nested patterns filtered via strict containment. See `src/changes.ts`.
 
-## Quick commands
-
-    bun install          # setup
-    bun run compile      # compile
-    bun run watch        # watch
-    bun test             # test
-    bun run package      # package (rebuild + bundle)
-
 ## Cross-cutting learnings
 
 - Template literal corruption: never use `$$` in code touched by tool text-replacement operations — `$` is special in replacement strings and `$$` gets corrupted. Use string concatenation instead.
