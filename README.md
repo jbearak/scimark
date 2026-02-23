@@ -42,16 +42,28 @@ scimark paper.md      # Markdown → DOCX
 
 ## Features
 
-- CriticMarkup annotations with comment attribution and timestamps
-- Markdown formatting toolbar (bold, italic, lists, headings, code, links, tables)
-- DOCX to Markdown conversion preserving formatting, comments, change tracking, and citations
-- Markdown to DOCX export with template support and Zotero field code reconstruction
-- LaTeX equation support (inline and display math, converted to/from Word OMML)
-- Zotero citation roundtrip with BibTeX export
-- CSL citation style support — citations and bibliographies formatted according to any [CSL style](https://citationstyles.org/) (APA, Chicago, BMJ, IEEE, etc.) with 16 bundled styles and on-demand downloading of others
-- Colored highlights with 14 color options
-- Syntax highlighting and Markdown preview rendering
-- Word count in status bar
+### Collaboration & Review
+
+- **CriticMarkup annotations**: Track changes with comment attribution and timestamps
+- **Colored highlights**: Highlight colors match Word's color palette
+- **Word count**: Live word count in the status bar
+
+### Academic Writing
+
+- **Citations**: Full Zotero roundtrip with BibTeX export and field code reconstruction
+- **Bibliographies**: Format citations according to any [CSL style](https://citationstyles.org/) (APA, Chicago, BMJ, IEEE, etc.); bundles the same 16 styles that ship with Zotero
+- **Equations**: LaTeX equation support (inline and display math), automatically converted to/from Word OMML
+- **AI-friendly**: Plain text in a git repository gives AI coding assistants full context — manuscript, bibliography, and revision history
+
+### Formatting & Authoring
+
+- **Rich Text Support**: Markdown formatting toolbar for bold, italic, lists, headings, code, links, and tables
+- **Preview**: Real-time syntax highlighting and Markdown preview rendering
+
+### Document Conversion
+
+- **Import**: DOCX to Markdown conversion preserving formatting, comments, change tracking, and citations
+- **Export**: Markdown to DOCX export with template support
 
 ## Known Limitations
 
@@ -61,6 +73,9 @@ scimark paper.md      # Markdown → DOCX
 ## Documentation
 
 - [Getting Started](docs/intro.md)
+- **Guides**:
+  - [Research Papers](docs/guides/research-paper.md) — Citations, math, metadata, AI-assisted editing
+  - [Technical Documentation](docs/guides/documentation.md) — Code, tables, review
 - [Specification Overview](docs/specification.md)
 - [CriticMarkup Syntax](docs/criticmarkup.md)
 - [Language Server](docs/language-server.md)
