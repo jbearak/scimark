@@ -1,12 +1,13 @@
 import MarkdownIt from 'markdown-it';
 import { escapeXml, generateCitation, generateMathXml, createCiteprocEngineLocal, createCiteprocEngineAsync, generateBibliographyXml, generateMissingKeysXml } from './md-to-docx-citations';
 import { downloadStyle } from './csl-loader';
-import { existsSync } from 'fs';
-import { isAbsolute, join } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { isAbsolute, join, resolve, extname, basename } from 'path';
 import { parseBibtex, BibtexEntry } from './bibtex-parser';
 import { parseFrontmatter, Frontmatter, noteTypeToNumber } from './frontmatter';
 import { ZoteroBiblData, zoteroStyleFullId } from './converter';
 import { isGfmDisallowedRawHtml, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from './gfm';
+import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDimensions, computeMissingDimension, IMAGE_CONTENT_TYPES, IMAGE_WARNINGS } from './image-utils';
 
 // --- Implementation notes ---
 // - decodeHtmlEntities(): decode &amp; after other named entities to avoid over-decoding
@@ -43,7 +44,7 @@ export interface MdTableRow {
 }
 
 export interface MdRun {
-  type: 'text' | 'critic_add' | 'critic_del' | 'critic_sub' | 'critic_highlight' | 'critic_comment' | 'citation' | 'math' | 'softbreak' | 'comment_range_start' | 'comment_range_end' | 'comment_body_with_id' | 'footnote_ref' | 'html_comment';
+  type: 'text' | 'critic_add' | 'critic_del' | 'critic_sub' | 'critic_highlight' | 'critic_comment' | 'citation' | 'math' | 'softbreak' | 'comment_range_start' | 'comment_range_end' | 'comment_body_with_id' | 'footnote_ref' | 'html_comment' | 'image';
   text: string;
   bold?: boolean;
   italic?: boolean;
@@ -71,6 +72,12 @@ export interface MdRun {
   locators?: Map<string, string>; // key -> locator for [@key, p. 20]
   // Math specific
   display?: boolean;        // display math ($$...$$) vs inline ($...$)
+  // Image specific
+  imageSrc?: string;
+  imageAlt?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageSyntax?: 'md' | 'html';
 }
 
 // Map Manuscript Markdown color names to OOXML ST_HighlightColor values
@@ -874,6 +881,24 @@ export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boole
   return props;
 }
 
+export function imageFormatProps(imageFormats: Map<string, string>): CustomPropEntry[] {
+  if (imageFormats.size === 0) return [];
+  const mapping: Record<string, string> = {};
+  for (const [rId, syntax] of imageFormats) {
+    mapping[rId] = syntax;
+  }
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_IMAGE_FORMATS_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+
 
 export function parseMd(markdown: string): MdToken[] {
   const md = createMarkdownIt();
@@ -1145,6 +1170,25 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
             type: 'paragraph',
             runs: [{ type: 'text', text: htmlContent.replace(/\n$/, '') }]
           });
+        } else if (/^<img\s/i.test(htmlContent.trim())) {
+          const srcMatch = htmlContent.match(/src\s*=\s*["']([^"']+)["']/);
+          const altMatch = htmlContent.match(/alt\s*=\s*["']([^"']*?)["']/);
+          const wMatch = htmlContent.match(/width\s*=\s*["']?(\d+)["']?/);
+          const hMatch = htmlContent.match(/height\s*=\s*["']?(\d+)["']?/);
+          if (srcMatch) {
+            result.push({
+              type: 'paragraph',
+              runs: [{
+                type: 'image' as const,
+                text: '',
+                imageSrc: srcMatch[1],
+                imageAlt: altMatch ? altMatch[1] : '',
+                imageWidth: wMatch ? parseInt(wMatch[1], 10) : undefined,
+                imageHeight: hMatch ? parseInt(hMatch[1], 10) : undefined,
+                imageSyntax: 'html' as const,
+              }]
+            });
+          }
         } else {
           const htmlTables = extractHtmlTables(htmlContent);
           if (htmlTables.length > 0) {
@@ -1209,7 +1253,8 @@ function processInlineChildren(tokens: any[]): MdRun[] {
   const formatStack: any = {};
   let currentHref: string | undefined;
   
-  for (const token of tokens) {
+  for (let ti = 0; ti < tokens.length; ti++) {
+    const token = tokens[ti];
     if (token.type === 'inline' && token.children) {
       // Process the children directly - they should already have custom tokens
       runs.push(...processInlineChildren(token.children));
@@ -1281,6 +1326,22 @@ function processInlineChildren(tokens: any[]): MdRun[] {
             ...formatStack,
             href: currentHref
           });
+        } else if (/^<img\s/i.test(html)) {
+          const srcMatch = html.match(/src\s*=\s*["']([^"']+)["']/);
+          const altMatch = html.match(/alt\s*=\s*["']([^"']*?)["']/);
+          const wMatch = html.match(/width\s*=\s*["']?(\d+)["']?/);
+          const hMatch = html.match(/height\s*=\s*["']?(\d+)["']?/);
+          if (srcMatch) {
+            runs.push({
+              type: 'image',
+              text: '',
+              imageSrc: srcMatch[1],
+              imageAlt: altMatch ? altMatch[1] : '',
+              imageWidth: wMatch ? parseInt(wMatch[1], 10) : undefined,
+              imageHeight: hMatch ? parseInt(hMatch[1], 10) : undefined,
+              imageSyntax: 'html',
+            });
+          }
         } else if (html === '<u>') formatStack.underline = true;
         else if (html === '</u>') delete formatStack.underline;
         else if (html === '<sup>') formatStack.superscript = true;
@@ -1447,6 +1508,42 @@ function processInlineChildren(tokens: any[]): MdRun[] {
           ...formatStack,
         });
         break;
+
+      case 'image': {
+        const src = token.attrGet?.('src') || '';
+        const alt = token.children?.map((c: any) => c.content || '').join('') || '';
+        let width: number | undefined;
+        let height: number | undefined;
+        // Look ahead for {width=N height=N} attribute syntax
+        const nextToken = tokens[ti + 1];
+        if (nextToken?.type === 'text' && nextToken.content) {
+          const attrMatch = nextToken.content.match(/^\{([^}]+)\}/);
+          if (attrMatch) {
+            const attrs = attrMatch[1];
+            const wm = attrs.match(/width=(\d+)/);
+            const hm = attrs.match(/height=(\d+)/);
+            if (wm) width = parseInt(wm[1], 10);
+            if (hm) height = parseInt(hm[1], 10);
+            // Consume the attribute text (or remainder after it)
+            const remainder = nextToken.content.slice(attrMatch[0].length);
+            if (remainder) {
+              nextToken.content = remainder;
+            } else {
+              ti++; // skip the attribute token entirely
+            }
+          }
+        }
+        runs.push({
+          type: 'image',
+          text: '',
+          imageSrc: src,
+          imageAlt: alt,
+          imageWidth: width,
+          imageHeight: height,
+          imageSyntax: 'md',
+        });
+        break;
+      }
     }
   }
 
@@ -1822,6 +1919,12 @@ export interface DocxGenState {
   codeShadingMode: boolean;
   blockquoteGaps: Map<number, number>; // gap (blank-line count) after each blockquote group, keyed by group index
   blockquoteAlertMarkerInlineByGroup: Map<number, boolean>; // alert group index -> inline marker style
+  // Image tracking
+  imageRelationships: Map<string, { rId: string; mediaPath: string }>; // absolute file path -> { rId, media path }
+  imageBinaries: Map<string, Uint8Array>; // media path -> binary data
+  imageFormats: Map<string, string>; // rId -> syntax ("md" | "html")
+  imageExtensions: Set<string>; // collected extensions for content types
+  nextImageDocPrId: number;
 }
 
 interface CommentEntry {
@@ -1871,11 +1974,17 @@ function stripMillis(iso: string): string {
   return iso.replace(/\.\d{3}Z$/, 'Z');
 }
 
-function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean): string {
+function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageExtensions?: Set<string>): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n';
   xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n';
   xml += '<Default Extension="xml" ContentType="application/xml"/>\n';
+  if (imageExtensions) {
+    for (const ext of imageExtensions) {
+      const ct = getImageContentType(ext);
+      if (ct) xml += '<Default Extension="' + ext + '" ContentType="' + ct + '"/>\n';
+    }
+  }
   xml += '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>\n';
   xml += '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>\n';
   xml += '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>\n';
@@ -2653,7 +2762,7 @@ function codeBlockStylingProps(fm: Frontmatter): CustomPropEntry[] {
   return [{ name: 'MANUSCRIPT_CODE_BLOCK_STYLING', value: JSON.stringify(obj) }];
 }
 
-function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean): string {
+function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageRelationships?: Map<string, { rId: string; mediaPath: string }>): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
   xml += '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
@@ -2689,6 +2798,12 @@ function documentRelsXml(relationships: Map<string, string>, hasList: boolean, h
 
   for (const [url, relId] of relationships) {
     xml += '<Relationship Id="' + relId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + escapeXml(url) + '" TargetMode="External"/>\n';
+  }
+
+  if (imageRelationships) {
+    for (const [, entry] of imageRelationships) {
+      xml += '<Relationship Id="' + entry.rId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="' + entry.mediaPath + '"/>\n';
+    }
   }
 
   xml += '</Relationships>';
@@ -3027,6 +3142,75 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       state.hasComments = true;
     } else if (run.type === 'html_comment') {
       xml += '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">' + '\u200B' + escapeXml(run.text) + '</w:t></w:r>';
+    } else if (run.type === 'image') {
+      const src = run.imageSrc || '';
+      const alt = run.imageAlt || '';
+      const syntax = run.imageSyntax || 'md';
+      const ext = src.split('.').pop()?.toLowerCase() || '';
+      if (!isSupportedImageFormat(ext)) {
+        state.warnings.push(IMAGE_WARNINGS.unsupportedFormat(ext, src));
+        continue;
+      }
+      // Resolve file path
+      const absPath = options?.sourceDir ? resolve(options.sourceDir, src) : resolve(src);
+      // Check deduplication
+      let imgEntry = state.imageRelationships.get(absPath);
+      if (!imgEntry) {
+        // Read file
+        let fileData: Uint8Array;
+        try {
+          fileData = new Uint8Array(readFileSync(absPath));
+        } catch {
+          state.warnings.push(IMAGE_WARNINGS.notFound(src));
+          continue;
+        }
+        const rId = 'rId' + (state.nextRId + state.rIdOffset);
+        state.nextRId++;
+        const mediaFilename = 'image' + state.imageRelationships.size + '.' + ext;
+        const mediaPath = 'media/' + mediaFilename;
+        imgEntry = { rId, mediaPath };
+        state.imageRelationships.set(absPath, imgEntry);
+        state.imageBinaries.set(mediaPath, fileData);
+        state.imageExtensions.add(ext);
+        state.imageFormats.set(rId, syntax);
+      }
+      // Determine dimensions
+      let width = run.imageWidth;
+      let height = run.imageHeight;
+      if (!width || !height) {
+        const data = state.imageBinaries.get(imgEntry.mediaPath);
+        if (data) {
+          const intrinsic = readImageDimensions(data, ext);
+          if (intrinsic) {
+            const dims = computeMissingDimension({ width, height }, intrinsic);
+            width = dims.width;
+            height = dims.height;
+          } else {
+            if (!width) width = 100;
+            if (!height) height = 100;
+            state.warnings.push(IMAGE_WARNINGS.defaultDimensions(src));
+          }
+        } else {
+          if (!width) width = 100;
+          if (!height) height = 100;
+        }
+      }
+      const cx = pixelsToEmu(width);
+      const cy = pixelsToEmu(height);
+      const docPrId = state.nextImageDocPrId++;
+      const filename = basename(src);
+      xml += '<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">'
+        + '<wp:extent cx="' + cx + '" cy="' + cy + '"/>'
+        + '<wp:docPr id="' + docPrId + '" name="' + escapeXml(filename) + '" descr="' + escapeXml(alt) + '"/>'
+        + '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        + '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        + '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        + '<pic:nvPicPr><pic:cNvPr id="' + docPrId + '" name="' + escapeXml(filename) + '"/><pic:cNvPicPr/></pic:nvPicPr>'
+        + '<pic:blipFill><a:blip r:embed="' + imgEntry.rId + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
+        + '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm>'
+        + '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>'
+        + '</pic:pic></a:graphicData></a:graphic>'
+        + '</wp:inline></w:drawing></w:r>';
     }
   }
   return xml;
@@ -3561,6 +3745,11 @@ export async function convertMdToDocx(
     codeShadingMode: !isInsetMode,
     blockquoteGaps: blockquoteGaps,
     blockquoteAlertMarkerInlineByGroup,
+    imageRelationships: new Map(),
+    imageBinaries: new Map(),
+    imageFormats: new Map(),
+    imageExtensions: new Set(),
+    nextImageDocPrId: 1,
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -3717,14 +3906,20 @@ export async function convertMdToDocx(
   customProps.push(...codeBlockStylingProps(frontmatter));
   customProps.push(...blockquoteGapProps(state.blockquoteGaps));
   customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
+  customProps.push(...imageFormatProps(state.imageFormats));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));
   }
 
-  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended));
+  // Store image binaries in word/media/
+  for (const [mediaPath, data] of state.imageBinaries) {
+    zip.file('word/' + mediaPath, data);
+  }
+
+  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageExtensions.size > 0 ? state.imageExtensions : undefined));
   zip.file('_rels/.rels', relsXml(hasCustomProps));
-  zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended));
+  zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageRelationships.size > 0 ? state.imageRelationships : undefined));
 
   // Check for comment range markers without corresponding bodies
   for (const [mdId, numericId] of state.commentIdMap) {

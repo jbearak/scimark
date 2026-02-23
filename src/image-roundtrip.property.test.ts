@@ -126,4 +126,43 @@ describe('image-roundtrip properties', () => {
       { numRuns: 50 }
     );
   });
+
+  // Feature: image-roundtrip, Property 5: Image attribute parsing
+  it('P5: parsing extracts correct src, alt, width, height from both syntaxes', () => {
+    const { parseMd } = require('./md-to-docx');
+    const arbDim = fc.integer({ min: 1, max: 5000 });
+    const arbAlt = fc.stringMatching(/^[a-zA-Z0-9 ]{0,20}$/).filter(s => !s.includes(']'));
+    const arbFilename = fc.stringMatching(/^[a-z]{1,8}$/).filter(s => s.length > 0).map(s => s + '.png');
+
+    fc.assert(
+      fc.property(arbFilename, arbAlt, arbDim, arbDim, (filename, alt, w, h) => {
+        // Test attribute syntax: ![alt](path){width=W height=H}
+        const mdSyntax = '![' + alt + '](' + filename + '){width=' + w + ' height=' + h + '}';
+        const tokens = parseMd(mdSyntax);
+        const imgRun = tokens[0]?.runs?.find((r: any) => r.type === 'image');
+        expect(imgRun).toBeDefined();
+        if (imgRun) {
+          expect(imgRun.imageSrc).toBe(filename);
+          expect(imgRun.imageAlt).toBe(alt);
+          expect(imgRun.imageWidth).toBe(w);
+          expect(imgRun.imageHeight).toBe(h);
+          expect(imgRun.imageSyntax).toBe('md');
+        }
+
+        // Test HTML syntax: <img src="path" alt="alt" width="W" height="H">
+        const htmlSyntax = '<img src="' + filename + '" alt="' + alt + '" width="' + w + '" height="' + h + '">';
+        const htmlTokens = parseMd(htmlSyntax);
+        const htmlRun = htmlTokens[0]?.runs?.find((r: any) => r.type === 'image');
+        expect(htmlRun).toBeDefined();
+        if (htmlRun) {
+          expect(htmlRun.imageSrc).toBe(filename);
+          expect(htmlRun.imageAlt).toBe(alt);
+          expect(htmlRun.imageWidth).toBe(w);
+          expect(htmlRun.imageHeight).toBe(h);
+          expect(htmlRun.imageSyntax).toBe('html');
+        }
+      }),
+      { numRuns: 100 }
+    );
+  });
 });
