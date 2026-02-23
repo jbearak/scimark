@@ -34,7 +34,7 @@ function runText(runs: MdRun[]): string {
         const locators = keys.map(k => r.locators?.get(k) || '').join(',');
         return 'cite:' + keys.join(';') + '|' + locators;
       }
-      if (r.type === 'math') return (r.display ? '$$' : '$') + normalizeLatexForSig(r.text);
+      if (r.type === 'math') return (r.display ? '$$' : '$') + normalizeLatexForSig(r.text) + (r.display ? '$$' : '$');
       return r.text || '';
     })
     .join('');
