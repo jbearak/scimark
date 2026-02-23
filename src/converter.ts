@@ -5,6 +5,7 @@ import { resolveMarkdownColor } from './highlight-colors';
 import { wrapColoredHighlight } from './formatting';
 import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
 import { gfmAlertTitle, parseGfmAlertMarker, toGfmAlertMarker, type GfmAlertType } from './gfm';
+import { emuToPixels, isSupportedImageFormat, resolveImageFilename, IMAGE_WARNINGS } from './image-utils';
 
 // --- Implementation notes ---
 // Table parsing:
@@ -185,7 +186,8 @@ export type ContentItem =
     }
   | { type: 'math'; latex: string; display: boolean; commentIds: Set<string> }
   | { type: 'footnote_ref'; noteId: string; noteKind: 'footnote' | 'endnote'; commentIds: Set<string> }
-  | { type: 'html_comment'; text: string; commentIds: Set<string> };
+  | { type: 'html_comment'; text: string; commentIds: Set<string> }
+  | { type: 'image'; rId: string; src: string; alt: string; widthPx: number; heightPx: number; commentIds: Set<string> };
 export interface FootnoteBody {
   id: string;
   content: ContentItem[];
@@ -229,6 +231,7 @@ export interface ConvertResult {
   bibtex: string;
   zoteroPrefs?: ZoteroDocPrefs;
   zoteroBiblData?: ZoteroBiblData;
+  images?: Map<string, Uint8Array>;
 }
 
 // XML helpers
@@ -261,6 +264,25 @@ export async function parseRelationships(
   }
   
   return relationships;
+}
+
+export async function parseImageRelationships(zip: JSZip): Promise<Map<string, string>> {
+  const imageRels = new Map<string, string>();
+  const parsed = await readZipXml(zip, 'word/_rels/document.xml.rels');
+  if (!parsed) return imageRels;
+  for (const node of findAllDeep(parsed, 'Relationship')) {
+    const id = getAttr(node, 'Id');
+    const type = getAttr(node, 'Type');
+    const target = getAttr(node, 'Target');
+    if (type.endsWith('/image')) {
+      imageRels.set(id, target);
+    }
+  }
+  return imageRels;
+}
+
+export async function extractImageFormatMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_IMAGE_FORMATS');
 }
 
 export async function parseNumberingDefinitions(zip: JSZip): Promise<Map<string, Map<string, 'bullet' | 'ordered'>>> {
@@ -1455,9 +1477,16 @@ export function citationPandocKeys(
 
 // Document content extraction
 
+export interface ImageExtractionEntry {
+  rId: string;
+  mediaPath: string;
+  outputFilename: string;
+}
+
 export interface DocumentContentResult {
   content: ContentItem[];
   zoteroBiblData?: ZoteroBiblData;
+  imageEntries?: ImageExtractionEntry[];
 }
 function splitCellParagraphs(cellContent: ContentItem[]): ContentItem[][] {
   const paragraphs: ContentItem[][] = [];
@@ -1598,6 +1627,8 @@ export async function extractDocumentContent(
     numberingDefs?: Map<string, Map<string, 'bullet' | 'ordered'>>;
     relationshipMap?: Map<string, string>;
     replyIds?: Set<string>;
+    imageRelationships?: Map<string, string>;
+    imageFolder?: string;
   }
 ): Promise<DocumentContentResult> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
@@ -1608,6 +1639,10 @@ export async function extractDocumentContent(
   const relationshipMap = options?.relationshipMap ?? await parseRelationships(zip);
   const numberingDefs = options?.numberingDefs ?? await parseNumberingDefinitions(zip);
   const replyIds = options?.replyIds;
+  const imageRelMap = options?.imageRelationships ?? new Map<string, string>();
+  const imageFolder = options?.imageFolder ?? '';
+  const imageEntries: ImageExtractionEntry[] = [];
+  const extractedImageRIds = new Set<string>();
 
   // Build a lookup: instrText index -> ZoteroCitation (in order of appearance)
   let citationIdx = 0;
@@ -1935,6 +1970,54 @@ export async function extractDocumentContent(
           } catch {
             target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false, commentIds: new Set(activeComments) });
           }
+        } else if (key === 'w:drawing') {
+          // Image extraction from <w:drawing> containing <wp:inline> or <wp:anchor>
+          const drawingChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
+          for (const child of drawingChildren) {
+            const inlineOrAnchor = child['wp:inline'] || child['wp:anchor'];
+            if (!inlineOrAnchor) continue;
+            const elements = Array.isArray(inlineOrAnchor) ? inlineOrAnchor : [inlineOrAnchor];
+            // Extract extent, docPr, and blip from the inline/anchor element
+            let cx = 0, cy = 0, alt = '', docPrName = '', blipRId = '';
+            for (const el of elements) {
+              if (el['wp:extent'] !== undefined) {
+                cx = parseInt(getAttr(el, 'cx') || '0', 10);
+                cy = parseInt(getAttr(el, 'cy') || '0', 10);
+              } else if (el['wp:docPr'] !== undefined) {
+                alt = getAttr(el, 'descr') || '';
+                docPrName = getAttr(el, 'name') || '';
+              } else if (el['a:graphic'] !== undefined) {
+                // Dig into a:graphic > a:graphicData > pic:pic > pic:blipFill > a:blip
+                const graphicData = findAllDeep([el], 'a:graphicData');
+                for (const gd of graphicData) {
+                  const blips = findAllDeep([gd], 'a:blip');
+                  for (const blip of blips) {
+                    const embed = blip?.[':@']?.['@_r:embed'] ?? getAttr(blip, 'embed');
+                    if (embed) blipRId = embed;
+                  }
+                }
+              }
+            }
+            if (!blipRId) continue;
+            const mediaPath = imageRelMap.get(blipRId);
+            if (!mediaPath) continue;
+            // Check supported format
+            const mediaFilename = mediaPath.split('/').pop() || '';
+            const ext = mediaFilename.split('.').pop()?.toLowerCase() || '';
+            if (!isSupportedImageFormat(ext)) continue;
+            const outputFilename = resolveImageFilename(docPrName, mediaFilename);
+            const src = imageFolder ? imageFolder + '/' + outputFilename : outputFilename;
+            const widthPx = cx > 0 ? emuToPixels(cx) : 0;
+            const heightPx = cy > 0 ? emuToPixels(cy) : 0;
+            target.push({
+              type: 'image', rId: blipRId, src, alt,
+              widthPx, heightPx, commentIds: new Set(activeComments),
+            });
+            if (!extractedImageRIds.has(blipRId)) {
+              extractedImageRIds.add(blipRId);
+              imageEntries.push({ rId: blipRId, mediaPath, outputFilename });
+            }
+          }
         } else if (Array.isArray(node[key])) {
           walk(node[key], currentFormatting, target, inTableCell);
         }
@@ -1943,7 +2026,7 @@ export async function extractDocumentContent(
   }
 
   walk(Array.isArray(parsed) ? parsed : [parsed]);
-  return { content, zoteroBiblData };
+  return { content, zoteroBiblData, imageEntries: imageEntries.length > 0 ? imageEntries : undefined };
 }
 
 // Markdown generation
@@ -2124,7 +2207,7 @@ function renderInlineRange(
   startIndex: number,
   comments: Map<string, Comment>,
   opts?: { stopBeforeDisplayMath?: boolean },
-  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string> }
+  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> }
 ): { text: string; nextIndex: number; deferredComments: string[] } {
   let out = '';
   let i = startIndex;
@@ -2133,13 +2216,13 @@ function renderInlineRange(
   const segmentEnd = computeSegmentEnd(segment, startIndex, opts);
   const forceIdCommentIds = renderOpts?.forceIdCommentIds;
   const hasForcedIdCommentInSegment = !!forceIdCommentIds && [...segment.slice(startIndex, segmentEnd)].some(item => (
-    (item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment') &&
+    (item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment' || item.type === 'image') &&
     item.commentIds && [...item.commentIds].some(id => forceIdCommentIds.has(id))
   ));
   const useIds = renderOpts?.alwaysUseCommentIds || hasForcedIdCommentInSegment || hasOverlappingComments(segment.slice(startIndex, segmentEnd));
 
   if (useIds) {
-    return renderInlineRangeWithIds(segment, startIndex, comments, opts, renderOpts?.commentIdRemap, renderOpts?.emittedIdCommentBodies, renderOpts?.noteLabels);
+    return renderInlineRangeWithIds(segment, startIndex, comments, opts, renderOpts?.commentIdRemap, renderOpts?.emittedIdCommentBodies, renderOpts?.noteLabels, renderOpts?.imageFormatMapping);
   }
 
   while (i < segment.length) {
@@ -2166,6 +2249,26 @@ function renderInlineRange(
       const noteKey = item.noteKind + ':' + item.noteId;
       const label = renderOpts?.noteLabels?.get(noteKey) ?? item.noteId;
       out += `[^${label}]`;
+      i++;
+      continue;
+    }
+
+    if (item.type === 'image') {
+      const syntax = renderOpts?.imageFormatMapping?.get(item.rId) || 'md';
+      if (syntax === 'html') {
+        out += '<img src="' + item.src + '" alt="' + item.alt + '"';
+        if (item.widthPx > 0) out += ' width="' + item.widthPx + '"';
+        if (item.heightPx > 0) out += ' height="' + item.heightPx + '"';
+        out += '>';
+      } else {
+        out += '![' + item.alt + '](' + item.src + ')';
+        if (item.widthPx > 0 || item.heightPx > 0) {
+          const parts: string[] = [];
+          if (item.widthPx > 0) parts.push('width=' + item.widthPx);
+          if (item.heightPx > 0) parts.push('height=' + item.heightPx);
+          out += '{' + parts.join(' ') + '}';
+        }
+      }
       i++;
       continue;
     }
@@ -2237,7 +2340,8 @@ function renderInlineRangeWithIds(
   opts?: { stopBeforeDisplayMath?: boolean },
   commentIdRemap?: Map<string, string>,
   emittedIdCommentBodies?: Set<string>,
-  noteLabels?: Map<string, string>
+  noteLabels?: Map<string, string>,
+  imageFormatMapping?: Map<string, string>
 ): { text: string; nextIndex: number; deferredComments: string[] } {
   let out = '';
   let i = startIndex;
@@ -2323,6 +2427,40 @@ function renderInlineRangeWithIds(
       const noteKey = item.noteKind + ':' + item.noteId;
       const label = noteLabels?.get(noteKey) ?? item.noteId;
       out += `[^${label}]`;
+      i++;
+      continue;
+    }
+
+    // image: emit with comment ID tracking
+    if (item.type === 'image') {
+      const currentIds = item.commentIds;
+      for (const cid of [...prevCommentIds].sort()) {
+        if (!currentIds.has(cid)) {
+          out += `{/${remap(cid)}}`;
+          collectBody(cid);
+        }
+      }
+      for (const cid of [...currentIds].sort()) {
+        if (!prevCommentIds.has(cid)) {
+          out += `{#${remap(cid)}}`;
+        }
+      }
+      prevCommentIds = new Set(currentIds);
+      const syntax = imageFormatMapping?.get(item.rId) || 'md';
+      if (syntax === 'html') {
+        out += '<img src="' + item.src + '" alt="' + item.alt + '"';
+        if (item.widthPx > 0) out += ' width="' + item.widthPx + '"';
+        if (item.heightPx > 0) out += ' height="' + item.heightPx + '"';
+        out += '>';
+      } else {
+        out += '![' + item.alt + '](' + item.src + ')';
+        if (item.widthPx > 0 || item.heightPx > 0) {
+          const parts: string[] = [];
+          if (item.widthPx > 0) parts.push('width=' + item.widthPx);
+          if (item.heightPx > 0) parts.push('height=' + item.heightPx);
+          out += '{' + parts.join(' ') + '}';
+        }
+      }
       i++;
       continue;
     }
@@ -2474,7 +2612,7 @@ function stripAlertLeadPrefix(text: string, alertType: GfmAlertType): string {
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -2506,7 +2644,7 @@ export function buildMarkdown(
   }
   function collectCommentMetadata(items: ContentItem[]): void {
     for (const item of items) {
-      if (item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment') {
+      if (item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment' || item.type === 'image') {
         if (item.commentIds) {
           const ids = [...item.commentIds];
           for (const id of ids) {
@@ -2542,7 +2680,7 @@ export function buildMarkdown(
 
     function scan(itemList: ContentItem[]): void {
       for (const item of itemList) {
-        if ((item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment') && item.commentIds) {
+        if ((item.type === 'text' || item.type === 'citation' || item.type === 'footnote_ref' || item.type === 'math' || item.type === 'html_comment' || item.type === 'image') && item.commentIds) {
           const ids = item.commentIds;
           for (const id of ids) {
             if (!prevIds.has(id)) starts.set(id, Math.min(starts.get(id) ?? pos, pos));
@@ -2588,6 +2726,7 @@ export function buildMarkdown(
     forceIdCommentIds,
     emittedIdCommentBodies,
     noteLabels,
+    imageFormatMapping: options?.imageFormatMapping ?? undefined,
   };
 
   const output: string[] = [];
@@ -3296,10 +3435,10 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
 export async function convertDocx(
   data: Uint8Array,
   format: CitationKeyFormat = 'authorYearTitle',
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -3311,6 +3450,7 @@ export async function convertDocx(
     extractCodeBlockStyling(zip),
     extractBlockquoteGapMapping(zip),
     extractBlockquoteAlertStyleMapping(zip),
+    extractImageFormatMapping(zip),
   ]);
 
   // Group reply comments under their parents and get IDs to exclude from ranges
@@ -3319,11 +3459,12 @@ export async function convertDocx(
   const keyMap = buildCitationKeyMap(zoteroCitations, format);
 
   // Parse note-specific rels and numbering for footnote/endnote body parsing
-  const [numberingDefs, docRels, fnRels, enRels] = await Promise.all([
+  const [numberingDefs, docRels, fnRels, enRels, imageRels] = await Promise.all([
     parseNumberingDefinitions(zip),
     parseRelationships(zip),
     parseRelationships(zip, 'word/_rels/footnotes.xml.rels'),
     parseRelationships(zip, 'word/_rels/endnotes.xml.rels'),
+    parseImageRelationships(zip),
   ]);
 
   // Build note contexts with merged rels (note rels + document rels as fallback)
@@ -3332,8 +3473,8 @@ export async function convertDocx(
   const fnContext: NoteBodyContext = { relationshipMap: fnRelsMerged, zoteroCitations, keyMap, numberingDefs, format };
   const enContext: NoteBodyContext = { relationshipMap: enRelsMerged, zoteroCitations, keyMap, numberingDefs, format };
 
-  const [{ content: docContent, zoteroBiblData }, footnotes, endnotes] = await Promise.all([
-    extractDocumentContent(zip, zoteroCitations, keyMap, { numberingDefs, relationshipMap: docRels, replyIds }),
+  const [{ content: docContent, zoteroBiblData, imageEntries }, footnotes, endnotes] = await Promise.all([
+    extractDocumentContent(zip, zoteroCitations, keyMap, { numberingDefs, relationshipMap: docRels, replyIds, imageRelationships: imageRels, imageFolder: options?.imageFolder }),
     extractFootnotes(zip, fnContext),
     extractEndnotes(zip, enContext),
   ]);
@@ -3406,6 +3547,7 @@ export async function convertDocx(
     codeBlockLangs: codeBlockLangMapping,
     blockquoteGaps: blockquoteGapMapping,
     blockquoteAlertInlineByGroup: blockquoteAlertStyleMapping,
+    imageFormatMapping,
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
@@ -3459,5 +3601,20 @@ export async function convertDocx(
   }
 
   const bibtex = generateBibTeX(zoteroCitations, keyMap);
-  return { markdown, bibtex, zoteroPrefs, zoteroBiblData };
+
+  // Extract image binaries from the ZIP
+  let images: Map<string, Uint8Array> | undefined;
+  if (imageEntries && imageEntries.length > 0) {
+    images = new Map();
+    for (const entry of imageEntries) {
+      const mediaPath = entry.mediaPath.startsWith('word/') ? entry.mediaPath : 'word/' + entry.mediaPath;
+      const file = zip.file(mediaPath);
+      if (file) {
+        images.set(entry.outputFilename, await file.async('uint8array'));
+      }
+    }
+    if (images.size === 0) images = undefined;
+  }
+
+  return { markdown, bibtex, zoteroPrefs, zoteroBiblData, images };
 }
