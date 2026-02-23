@@ -347,9 +347,9 @@ function buildCitationFieldCode(
     if (entry.zoteroUri) {
       citationItem.uris = [entry.zoteroUri];
     } else {
-      // Synthetic URI so Zotero's loadItemData() takes the URI resolution
-      // path, fails to find the item, and falls back to embedded itemData.
-      // Without uris, Zotero crashes iterating citationItem.uris.length.
+      // Invariant: non-Zotero entries still need a synthetic uris array
+      // so Zotero's loadItemData() path doesn't crash on uris.length. Use the
+      // embedded/local URI shape to force graceful fallback to embedded itemData.
       citationItem.uris = ['http://zotero.org/users/local/embedded/items/' + key];
     }
     const locator = locators?.get(key);

@@ -40,6 +40,8 @@ import { computeCodeRegions, overlapsCodeRegion } from './code-regions';
 // - Citekey auto-suggest retriggering: same gate; retrigger when cursor stays in [@… context
 // - Citekey delimiter UX: dismiss suggest widget on ; (+ space) in grouped citation context
 // - setCitationStyle EOL safety: use TextDocument.eol; don't replace trailing \r on CRLF docs
+// - TextMate grammar: multi-line patterns are limited; favor correctness in code over
+//   attempting perfect highlighting
 // - TextMate comment grammar: {>>…<<} uses begin/end (not single-line match) for multi-line
 // - TextMate comment-with-ID grammar: {#id>>…<<} uses begin/end with explicit endCaptures
 // - CriticMarkup auto-closing pairs: custom autoClosingPairs in language-configuration.json

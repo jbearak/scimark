@@ -11,6 +11,10 @@ import * as os from 'os';
  * 2. Check manuscriptMarkdown.authorName - if set, return this value
  * 3. Fallback to OS username from os.userInfo()
  * 4. Return null if all methods fail
+ *
+ * Preview/LSP invariants: authorName falls back to the OS
+ * username, and timestamps must be ISO-8601 (local time) so docx round-trips
+ * stay stable across locales.
  */
 export function getAuthorName(): string | null {
 	try {
@@ -66,7 +70,7 @@ export function getFormattedAuthorName(): string | null {
 			return authorName;
 		}
 		
-		// Format timestamp as yyyy-mm-dd hh:mm in local timezone
+		// Format timestamp as local ISO 8601 without seconds to keep comment IDs stable
 		const now = new Date();
 		const year = now.getFullYear();
 		const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -74,7 +78,7 @@ export function getFormattedAuthorName(): string | null {
 		const hours = String(now.getHours()).padStart(2, '0');
 		const minutes = String(now.getMinutes()).padStart(2, '0');
 		
-		const timestamp = `${year}-${month}-${day} ${hours}:${minutes}`;
+		const timestamp = `${year}-${month}-${day}T${hours}:${minutes}`;
 		return `${authorName} (${timestamp})`;
 	} catch (error) {
 		// If timestamp formatting fails, return just the author name

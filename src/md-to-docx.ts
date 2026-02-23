@@ -880,7 +880,7 @@ export function parseMd(markdown: string): MdToken[] {
   // Preserve explicit source semantics for blockquotes by disabling markdown-it
   // lazy continuation behavior (where a non-`>` line can be absorbed into a
   // preceding blockquote paragraph). For roundtrip fidelity we treat a missing
-  // `>` as a hard blockquote boundary.
+  // `>` as a hard blockquote boundary
   const deLazified = deLazifyBlockquotes(markdown);
   const wrapped = wrapBareLatexEnvironments(deLazified);
   const processed = preprocessCriticMarkup(wrapped);

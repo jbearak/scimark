@@ -367,6 +367,9 @@ function addInlineContent(state: StateInline, content: string): void {
 /**
  * Block-level rule that identifies Manuscript Markdown patterns before paragraph parsing
  * This prevents markdown-it from splitting patterns at empty lines
+ *
+ * AGENTS.md invariant: multi-line patterns must start at the beginning of a line
+ * to be handled here. Navigation tolerates mid-line starts, preview does not.
  * 
  * LIMITATION: Only detects patterns that start at the beginning of a line.
  * Patterns that start mid-line with multi-line content will not be handled by this rule
