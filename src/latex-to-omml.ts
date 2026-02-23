@@ -638,6 +638,10 @@ class Parser {
           const base = atoms.pop()!;
           atoms.push(this.parseScriptsForBase(base));
         }
+      } else if (token.type === 'lbrace') {
+        // Parse {…} as a single atom so scripts (^ / _) bind to the group
+        // content, not to an empty atom from the closing brace.
+        atoms.push(this.parseGroup());
       } else {
         const consumed = this.consume()!;
         if (consumed.type === 'text' && consumed.value.length > 1) {
@@ -839,8 +843,12 @@ class Parser {
     return '';
   }
 
-  parseExpression(): string {
-    return this.parseAtoms((t) => t.type === 'rbrace').join('');
+  /** Parse tokens until the stop condition triggers.
+   *  When called from parseGroup(), stop at rbrace (matching the opening lbrace).
+   *  When called at the top level from latexToOmml(), parse until EOF. */
+  parseExpression(stopAtRbrace = true): string {
+    const shouldStop = stopAtRbrace ? (t: Token) => t.type === 'rbrace' : () => false;
+    return this.parseAtoms(shouldStop).join('');
   }
 }
 
@@ -856,5 +864,5 @@ export function latexToOmml(latex: string): string {
 
   const tokens = tokenize(latex);
   const parser = new Parser(tokens);
-  return parser.parseExpression();
+  return parser.parseExpression(false);
 }

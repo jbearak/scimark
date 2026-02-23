@@ -297,13 +297,14 @@ function resolveVisibleText(
   keys: string[],
   entries: Map<string, BibtexEntry>,
   locators: Map<string, string> | undefined,
-  citeprocEngine: any | undefined
+  citeprocEngine: any | undefined,
+  suppressAuthor?: boolean
 ): string {
   if (citeprocEngine) {
     const rendered = renderCitationText(citeprocEngine, keys, locators);
     if (rendered) return rendered;
   }
-  return generateFallbackText(keys, entries, locators);
+  return generateFallbackText(keys, entries, locators, suppressAuthor);
 }
 
 function buildCitationFieldCode(
@@ -313,10 +314,11 @@ function buildCitationFieldCode(
   citeprocEngine: any | undefined,
   visibleTextOverride?: string,
   usedCitationIds?: Set<string>,
-  itemIdMap?: Map<string, string | number>
+  itemIdMap?: Map<string, string | number>,
+  suppressAuthor?: boolean
 ): string {
   // Resolve visible text first so we can populate properties (Defect 2)
-  const visibleText = visibleTextOverride ?? resolveVisibleText(keys, entries, locators, citeprocEngine);
+  const visibleText = visibleTextOverride ?? resolveVisibleText(keys, entries, locators, citeprocEngine, suppressAuthor);
 
   const citationItems: any[] = [];
   for (const key of keys) {
@@ -344,6 +346,9 @@ function buildCitationFieldCode(
     }
 
     const citationItem: any = { id: itemData.id, itemData };
+    if (suppressAuthor) {
+      citationItem['suppress-author'] = true;
+    }
     if (entry.zoteroUri) {
       citationItem.uris = [entry.zoteroUri];
     } else {
@@ -382,7 +387,7 @@ function buildCitationFieldCode(
 }
 
 export function generateCitation(
-  run: { keys?: string[]; locators?: Map<string, string>; text: string },
+  run: { keys?: string[]; locators?: Map<string, string>; text: string; suppressAuthor?: boolean },
   entries: Map<string, BibtexEntry>,
   citeprocEngine?: any,
   usedCitationIds?: Set<string>,
@@ -409,7 +414,7 @@ export function generateCitation(
 
   // All resolved — emit field code (works for both Zotero and non-Zotero entries)
   if (resolvedKeys.length > 0 && missingKeys.length === 0) {
-    const xml = buildCitationFieldCode(resolvedKeys, entries, run.locators, citeprocEngine, undefined, usedCitationIds, itemIdMap);
+    const xml = buildCitationFieldCode(resolvedKeys, entries, run.locators, citeprocEngine, undefined, usedCitationIds, itemIdMap, run.suppressAuthor);
     return { xml };
   }
 
@@ -425,7 +430,7 @@ export function generateCitation(
 
   // Mixed (some resolved, some missing) — resolved get field code, missing get plain text
   const missingText = '(' + missingKeys.map(k => '@' + k).join('; ') + ')';
-  const xml = buildCitationFieldCode(resolvedKeys, entries, run.locators, citeprocEngine, undefined, usedCitationIds, itemIdMap) +
+  const xml = buildCitationFieldCode(resolvedKeys, entries, run.locators, citeprocEngine, undefined, usedCitationIds, itemIdMap, run.suppressAuthor) +
     '<w:r><w:t xml:space="preserve"> </w:t></w:r>' +
     '<w:r><w:t>' + escapeXml(missingText) + '</w:t></w:r>';
 
@@ -578,7 +583,7 @@ function parseLocator(locator: string): { locator: string; label: string } {
   return { locator: trimmed, label: 'page' };
 }
 
-export function generateFallbackText(keys: string[], entries: Map<string, BibtexEntry>, locators?: Map<string, string>): string {
+export function generateFallbackText(keys: string[], entries: Map<string, BibtexEntry>, locators?: Map<string, string>, suppressAuthor?: boolean): string {
   const parts = keys.map(key => {
     const entry = entries.get(key);
     if (!entry) return key;
@@ -587,7 +592,7 @@ export function generateFallbackText(keys: string[], entries: Map<string, Bibtex
     const year = entry.fields.get('year');
 
     let text = '';
-    if (author) {
+    if (!suppressAuthor && author) {
       const firstAuthor = splitAuthorString(author)[0] || author.trim();
       if (firstAuthor.startsWith('{') && firstAuthor.endsWith('}')) {
         // Institutional author — use the full name
@@ -596,11 +601,14 @@ export function generateFallbackText(keys: string[], entries: Map<string, Bibtex
         const commaPos = firstAuthor.indexOf(',');
         text = commaPos !== -1 ? firstAuthor.slice(0, commaPos).trim() : firstAuthor.split(' ').pop() || firstAuthor;
       }
+    } else if (suppressAuthor) {
+      // suppress-author: year only, no author name
+      text = '';
     } else {
       text = key;
     }
 
-    if (year) text += ' ' + year;
+    if (year) text += (text ? ' ' : '') + year;
 
     const locator = locators?.get(key);
     if (locator) text += ', ' + locator;

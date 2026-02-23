@@ -99,6 +99,7 @@ export interface CitationMetadata {
   zoteroUri?: string;
   locator?: string;
   citationKey?: string;   // CSL citation-key preserved for round-trip
+  suppressAuthor?: boolean; // [-@key] Pandoc suppress-author form
 }
 
 /** Each Zotero field in the document produces one of these. */
@@ -1363,6 +1364,11 @@ function extractZoteroCitationsFromInstructions(instructions: string[]): ZoteroC
           }
         }
 
+        // Extract suppress-author flag (Pandoc [-@key] form)
+        if (item['suppress-author']) {
+          result.suppressAuthor = true;
+        }
+
         return result;
       });
 
@@ -1467,7 +1473,8 @@ function sanitizeLocator(locator: string | number): string {
   return String(locator).replace(/[\[\];@]/g, '');
 }
 
-/** Get pandoc keys for a citation's items */
+/** Get pandoc keys for a citation's items.
+ *  Keys prefixed with '-' indicate suppress-author ([-@key] form). */
 export function citationPandocKeys(
   citation: ZoteroCitation,
   keyMap: Map<string, string>
@@ -1476,11 +1483,12 @@ export function citationPandocKeys(
     .map(meta => {
       const k = keyMap.get(itemIdentifier(meta));
       if (!k) return undefined;
+      const prefix = meta.suppressAuthor ? '-' : '';
       if (meta.locator) {
         const safe = sanitizeLocator(meta.locator);
-        return safe ? k + ', p. ' + safe : k;
+        return safe ? prefix + k + ', p. ' + safe : prefix + k;
       }
-      return k;
+      return prefix + k;
     })
     .filter((k): k is string => k !== undefined);
 }
@@ -2241,7 +2249,8 @@ function renderInlineRange(
 
     if (item.type === 'citation') {
       if (item.pandocKeys.length > 0) {
-        out += ' [' + item.pandocKeys.map(k => '@' + k).join('; ') + ']';
+        const citeSep = out.endsWith(' ') ? '' : ' ';
+        out += citeSep + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']';
       } else {
         out += item.text;
       }
@@ -2400,7 +2409,8 @@ function renderInlineRangeWithIds(
       prevCommentIds = new Set(currentIds);
 
       if (item.pandocKeys.length > 0) {
-        out += ' [' + item.pandocKeys.map(k => '@' + k).join('; ') + ']';
+        const citeSep = out.endsWith(' ') ? '' : ' ';
+        out += citeSep + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']';
       } else {
         out += item.text;
       }

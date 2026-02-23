@@ -70,6 +70,7 @@ export interface MdRun {
   // Citation specific
   keys?: string[];          // citation keys for [@key1; @key2]
   locators?: Map<string, string>; // key -> locator for [@key, p. 20]
+  suppressAuthor?: boolean; // [-@key] suppress-author form
   // Math specific
   display?: boolean;        // display math ($$...$$) vs inline ($...$)
   // Image specific
@@ -401,21 +402,28 @@ function footnoteRefRule(state: any, silent: boolean): boolean {
 function citationRule(state: any, silent: boolean): boolean {
   const start = state.pos;
   const max = state.posMax;
-  
-  if (start + 2 >= max || state.src.slice(start, start + 2) !== '[@') return false;
-  
-  const endPos = state.src.indexOf(']', start + 2);
+
+  // Match [@key] or [-@key] (Pandoc suppress-author form)
+  const isNormal = start + 2 < max && state.src.slice(start, start + 2) === '[@';
+  const isSuppressed = !isNormal && start + 3 < max && state.src.slice(start, start + 3) === '[-@';
+  if (!isNormal && !isSuppressed) return false;
+
+  const contentStart = isSuppressed ? start + 3 : start + 2;
+  const endPos = state.src.indexOf(']', contentStart);
   if (endPos === -1) return false;
-  
+
   if (!silent) {
-    const content = state.src.slice(start + 2, endPos);
+    const rawContent = state.src.slice(contentStart, endPos);
     const token = state.push('citation', '', 0);
-    token.content = content;
-    
+    // Preserve original content for fallback rendering
+    token.content = isSuppressed ? '-@' + rawContent : rawContent;
+    token.suppressAuthor = isSuppressed;
+
     const keys: string[] = [];
     const locators = new Map<string, string>();
-    
-    const parts = content.split(';').map((p: string) => p.trim().replace(/^@/, '')).filter(Boolean);
+
+    // Strip optional -@ or @ prefix per item (handles suppress-author within groups)
+    const parts = rawContent.split(';').map((p: string) => p.trim().replace(/^-?@/, '')).filter(Boolean);
     for (const part of parts) {
       const commaPos = part.indexOf(',');
       if (commaPos !== -1) {
@@ -427,11 +435,11 @@ function citationRule(state: any, silent: boolean): boolean {
         keys.push(part);
       }
     }
-    
+
     token.keys = keys;
     token.locators = locators;
   }
-  
+
   state.pos = endPos + 1;
   return true;
 }
@@ -1530,6 +1538,7 @@ function processInlineChildren(tokens: any[]): MdRun[] {
           text: token.content,
           keys: token.keys,
           locators: token.locators,
+          suppressAuthor: token.suppressAuthor || undefined,
           ...formatStack,
           href: currentHref
         });
