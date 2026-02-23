@@ -289,17 +289,37 @@ describe('alerts integration: md -> docx -> md', () => {
     expect(warnings).toEqual([]);
 
     const rt = await convertDocx(docx);
-    expect(rt.markdown).toContain('> [!NOTE] Useful information.');
-    expect(rt.markdown).toContain('> [!TIP] Helpful advice.');
-    expect(rt.markdown).toContain('> [!IMPORTANT] Key info.');
-    expect(rt.markdown).toContain('> [!WARNING] Urgent attention needed.');
-    expect(rt.markdown).toContain('> [!CAUTION] Risks ahead.');
+    expect(rt.markdown).toContain('> [!NOTE]\n> Useful information.');
+    expect(rt.markdown).toContain('> [!TIP]\n> Helpful advice.');
+    expect(rt.markdown).toContain('> [!IMPORTANT]\n> Key info.');
+    expect(rt.markdown).toContain('> [!WARNING]\n> Urgent attention needed.');
+    expect(rt.markdown).toContain('> [!CAUTION]\n> Risks ahead.');
     expect(rt.markdown).toContain('After alerts.');
     expect(rt.markdown).not.toContain('※ Note');
     expect(rt.markdown).not.toContain('◈ Tip');
     expect(rt.markdown).not.toContain('‼ Important');
     expect(rt.markdown).not.toContain('▲ Warning');
     expect(rt.markdown).not.toContain('⛒ Caution');
+  });
+  it('preserves two-line authored alert marker style', async () => {
+    const md = [
+      '> [!WARNING]',
+      '> two-line warning body',
+    ].join('\n');
+
+    const { docx } = await convertMdToDocx(md);
+    const rt = await convertDocx(docx);
+    expect(rt.markdown).toBe(md);
+  });
+
+  it('preserves inline authored alert marker style', async () => {
+    const md = [
+      '> [!NOTE] inline note body',
+    ].join('\n');
+
+    const { docx } = await convertMdToDocx(md);
+    const rt = await convertDocx(docx);
+    expect(rt.markdown).toBe(md);
   });
 
   it('round-trips multi-paragraph alert blocks and preserves only one marker per alert block', async () => {
@@ -322,6 +342,23 @@ describe('alerts integration: md -> docx -> md', () => {
     expect(noteMarkerCount).toBe(1);
     expect(rt.markdown).toContain('First paragraph.');
     expect(rt.markdown).toContain('Second paragraph.');
+  });
+  it('does not merge alert body with immediately following non-blockquote paragraph', async () => {
+    const md = [
+      '> [!NOTE]',
+      '> alpha alpha',
+      'alpha alpha',
+    ].join('\n');
+
+    const { docx } = await convertMdToDocx(md);
+    const rt = await convertDocx(docx);
+
+    expect(rt.markdown).toBe([
+      '> [!NOTE]',
+      '> alpha alpha',
+      '',
+      'alpha alpha',
+    ].join('\n'));
   });
 
   it('round-trips blockquotes.md fixture', async () => {

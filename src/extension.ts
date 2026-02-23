@@ -854,7 +854,7 @@ interface MdExportInput {
 async function getMdExportInput(uri?: vscode.Uri): Promise<MdExportInput | undefined> {
 	let markdown: string;
 	let basePath: string;
-	if (uri) {
+	if (uri && uri.scheme !== 'webview-panel') {
 		const openDoc = vscode.workspace.textDocuments.find(
 			doc => doc.uri.toString() === uri.toString()
 		);
@@ -866,13 +866,25 @@ async function getMdExportInput(uri?: vscode.Uri): Promise<MdExportInput | undef
 		}
 		basePath = uri.fsPath.replace(/\.md$/i, '');
 	} else {
-		const editor = vscode.window.activeTextEditor;
-		if (!editor || editor.document.languageId !== 'markdown') {
-			vscode.window.showErrorMessage('No active Markdown file');
-			return undefined;
+		// Try active text editor, then visible editors, then the active preview tab
+		const editor = vscode.window.activeTextEditor?.document.languageId === 'markdown'
+			? vscode.window.activeTextEditor
+			: vscode.window.visibleTextEditors.find(e => e.document.languageId === 'markdown');
+		if (editor) {
+			markdown = editor.document.getText();
+			basePath = editor.document.uri.fsPath.replace(/\.md$/i, '');
+		} else {
+			// Full-screen preview: no visible editor, find the markdown document
+			const mdDoc = vscode.workspace.textDocuments.find(
+				d => d.languageId === 'markdown' && d.uri.scheme === 'file'
+			);
+			if (!mdDoc) {
+				vscode.window.showErrorMessage('No active Markdown file');
+				return undefined;
+			}
+			markdown = mdDoc.getText();
+			basePath = mdDoc.uri.fsPath.replace(/\.md$/i, '');
 		}
-		markdown = editor.document.getText();
-		basePath = editor.document.uri.fsPath.replace(/\.md$/i, '');
 	}
 
 	const mdDir = path.dirname(basePath);

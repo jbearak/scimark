@@ -26,6 +26,7 @@ export interface MdToken {
   alertLead?: boolean;      // first blockquote paragraph carrying alert header
   alertFirst?: boolean;     // first paragraph in an alert block (for spacing)
   alertLast?: boolean;      // last paragraph in an alert block (for spacing)
+  blockquoteGroupIndex?: number; // sequential index of the blockquote group this token belongs to
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
@@ -648,7 +649,10 @@ export function extractFootnoteDefinitions(markdown: string): { cleaned: string;
   return { cleaned: cleanedLines.join('\n'), definitions };
 }
 
-/** Mark first/last tokens in contiguous runs of blockquotes for spacing. */
+/** Mark first/last tokens in contiguous runs of blockquotes for spacing.
+ *  Learning: when two same-type alerts are adjacent (zero-gap or merged by
+ *  markdown-it), each alertLead token starts a new group — the inner loop
+ *  must break on alertLead boundaries, not just alertType/level changes. */
 function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
   let i = 0;
   while (i < tokens.length) {
@@ -659,7 +663,10 @@ function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
     const alertType = tokens[i].alertType;
     const level = tokens[i].level;
     const start = i;
-    while (i < tokens.length && tokens[i].type === 'blockquote' && tokens[i].alertType === alertType && tokens[i].level === level) {
+    i++;
+    // Continue the group while the next token has the same alertType/level
+    // AND is not an alertLead (which signals a new [!TYPE] marker group).
+    while (i < tokens.length && tokens[i].type === 'blockquote' && tokens[i].alertType === alertType && tokens[i].level === level && !tokens[i].alertLead) {
       i++;
     }
     tokens[start].alertFirst = true;
@@ -667,15 +674,281 @@ function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
   }
 }
 
+// Blockquote gap metadata: compute blank-line counts between consecutive
+// blockquote groups in the original markdown source.  A "blockquote group"
+// is a maximal run of lines starting with '>'.  The gap between two groups
+// is the number of blank lines separating them (0 means directly adjacent
+// with no blank line).
+//
+// Learning: this function operates on the raw markdown *before* markdown-it
+// parsing, because markdown-it merges adjacent blockquotes with zero blank
+// lines into a single blockquote_open/close pair, losing the gap info.
+// Learning: within a contiguous run of '>' lines, a line matching
+// '> [!TYPE]' (where TYPE is a GFM alert keyword) starts a new group —
+// this handles zero-gap same-type alerts that have no blank line between them.
+export function computeBlockquoteGaps(markdown: string): Map<number, number> {
+  const gaps = new Map<number, number>();
+  const lines = markdown.split('\n');
+  const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+  const blockquoteLevel = (line: string): number => {
+    const stripped = line.replace(/^ {0,3}/, '');
+    let level = 0;
+    let j = 0;
+    while (j < stripped.length) {
+      if (stripped[j] === '>') {
+        level++;
+        j++;
+        if (stripped[j] === ' ') j++;
+        continue;
+      }
+      break;
+    }
+    return level;
+  };
+
+  // Identify blockquote group spans (start/end line indices).
+  // A new group starts when: (a) a '>' line follows a non-'>' line, or
+  // (b) a '>' line contains an alert [!TYPE] marker (except the very first
+  // line of a contiguous '>' run, which already starts a group).
+  const groups: Array<{ start: number; end: number }> = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (/^ {0,3}>/.test(lines[i])) {
+      const runStart = i;
+      // First line of a contiguous '>' run always starts a group
+      let groupStart = i;
+      let groupLevel = blockquoteLevel(lines[i]);
+      i++;
+      while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
+        const level = blockquoteLevel(lines[i]);
+        const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
+        const levelChanged = level !== groupLevel;
+        if (startsAlertGroup || levelChanged) {
+          // New group within the same '>' run when an alert marker starts or
+          // the effective nesting level changes.
+          groups.push({ start: groupStart, end: i - 1 });
+          groupStart = i;
+          groupLevel = level;
+        }
+        i++;
+      }
+      groups.push({ start: groupStart, end: i - 1 });
+    } else {
+      i++;
+    }
+  }
+
+  // Compute blank-line count between each pair of consecutive groups
+  for (let g = 0; g < groups.length - 1; g++) {
+    const afterEnd = groups[g].end + 1;
+    const nextStart = groups[g + 1].start;
+    let blankCount = 0;
+    for (let li = afterEnd; li < nextStart; li++) {
+      if (lines[li].trim() === '') {
+        blankCount++;
+      } else {
+        // Non-blank, non-blockquote content between groups — not a direct
+        // blockquote-to-blockquote gap; store -1 as sentinel.
+        blankCount = -1;
+        break;
+      }
+    }
+    gaps.set(g, blankCount);
+  }
+
+  return gaps;
+}
+// Compute per-blockquote-group alert marker style from source markdown.
+// true means `> [!TYPE] body`, false means marker-only line.
+export function computeBlockquoteAlertMarkerInlineByGroup(markdown: string): Map<number, boolean> {
+  const inlineByGroup = new Map<number, boolean>();
+  const lines = markdown.split('\n');
+  const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](.*)$/i;
+  const blockquoteLevel = (line: string): number => {
+    const stripped = line.replace(/^ {0,3}/, '');
+    let level = 0;
+    let j = 0;
+    while (j < stripped.length) {
+      if (stripped[j] === '>') {
+        level++;
+        j++;
+        if (stripped[j] === ' ') j++;
+        continue;
+      }
+      break;
+    }
+    return level;
+  };
+
+  let groupIndex = 0;
+  let i = 0;
+  while (i < lines.length) {
+    if (/^ {0,3}>/.test(lines[i])) {
+      const runStart = i;
+      let groupStart = i;
+      let groupLevel = blockquoteLevel(lines[i]);
+      i++;
+      while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
+        const level = blockquoteLevel(lines[i]);
+        const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
+        const levelChanged = level !== groupLevel;
+        if (startsAlertGroup || levelChanged) {
+          const first = lines[groupStart].match(alertMarkerRe);
+          if (first) inlineByGroup.set(groupIndex, first[2].trim().length > 0);
+          groupIndex++;
+          groupStart = i;
+          groupLevel = level;
+        }
+        i++;
+      }
+      const first = lines[groupStart].match(alertMarkerRe);
+      if (first) inlineByGroup.set(groupIndex, first[2].trim().length > 0);
+      groupIndex++;
+    } else {
+      i++;
+    }
+  }
+
+  return inlineByGroup;
+}
+
+// Assign a sequential blockquoteGroupIndex to each blockquote token so the
+// gap map can be correlated during docx→md conversion.  Groups are delimited
+// by alertFirst/alertLast boundaries set by annotateBlockquoteBoundaries.
+export function annotateBlockquoteGroupIndices(tokens: MdToken[]): void {
+  let groupIndex = 0;
+  let inGroup = false;
+  for (const token of tokens) {
+    if (token.type !== 'blockquote') {
+      if (inGroup) {
+        groupIndex++;
+        inGroup = false;
+      }
+      continue;
+    }
+    if (!inGroup) {
+      inGroup = true;
+    }
+    token.blockquoteGroupIndex = groupIndex;
+    if (token.alertLast) {
+      groupIndex++;
+      inGroup = false;
+    }
+  }
+}
+
+// Serialize blockquote gap metadata as custom XML properties, following the
+// same chunked-JSON pattern used by codeBlockLanguageProps.
+export function blockquoteGapProps(gaps: Map<number, number>): CustomPropEntry[] {
+  if (gaps.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, count] of gaps) {
+    mapping[String(index)] = count;
+  }
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_BLOCKQUOTE_GAPS_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boolean>): CustomPropEntry[] {
+  if (inlineByGroup.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, isInline] of inlineByGroup) {
+    mapping[String(index)] = isInline ? 1 : 0;
+  }
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+
+
 export function parseMd(markdown: string): MdToken[] {
   const md = createMarkdownIt();
-  const wrapped = wrapBareLatexEnvironments(markdown);
+  // Preserve explicit source semantics for blockquotes by disabling markdown-it
+  // lazy continuation behavior (where a non-`>` line can be absorbed into a
+  // preceding blockquote paragraph). For roundtrip fidelity we treat a missing
+  // `>` as a hard blockquote boundary.
+  const deLazified = deLazifyBlockquotes(markdown);
+  const wrapped = wrapBareLatexEnvironments(deLazified);
   const processed = preprocessCriticMarkup(wrapped);
   const tokens = md.parse(processed, {});
 
   const result = convertTokens(tokens);
   annotateBlockquoteBoundaries(result);
   return result;
+}
+
+function deLazifyBlockquotes(markdown: string): string {
+  const lines = markdown.split('\n');
+  const out: string[] = [];
+  let inBlockquoteRun = false;
+  let fenceChar: '`' | '~' | null = null;
+  let fenceLen = 0;
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^ {0,3}([`~]{3,})/);
+    if (fenceMatch) {
+      const run = fenceMatch[1];
+      const runChar = run[0] as '`' | '~';
+      // Invariant: de-lazification must not inject blank lines inside fenced
+      // code blocks, or code content roundtrip fidelity is corrupted.
+      if (!fenceChar) {
+        if (inBlockquoteRun) {
+          out.push('');
+          inBlockquoteRun = false;
+        }
+        fenceChar = runChar;
+        fenceLen = run.length;
+      } else if (runChar === fenceChar && run.length >= fenceLen) {
+        fenceChar = null;
+        fenceLen = 0;
+      }
+      out.push(line);
+      continue;
+    }
+    if (fenceChar) {
+      out.push(line);
+      continue;
+    }
+    const isBlank = line.trim() === '';
+    const isBlockquoteLine = /^ {0,3}>/.test(line);
+
+    if (isBlockquoteLine) {
+      inBlockquoteRun = true;
+      out.push(line);
+      continue;
+    }
+
+    if (isBlank) {
+      inBlockquoteRun = false;
+      out.push(line);
+      continue;
+    }
+
+    if (inBlockquoteRun) {
+      // Insert a blank line to end the previous blockquote before this
+      // non-blank, non-`>` line.
+      out.push('');
+      inBlockquoteRun = false;
+    }
+
+    out.push(line);
+  }
+
+  return out.join('\n');
 }
 
 function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; runs: MdRun[] } {
@@ -1538,6 +1811,8 @@ export interface DocxGenState {
   citedKeys: Set<string>;
   codeFont: string;
   codeShadingMode: boolean;
+  blockquoteGaps: Map<number, number>; // gap (blank-line count) after each blockquote group, keyed by group index
+  blockquoteAlertMarkerInlineByGroup: Map<number, boolean>; // alert group index -> inline marker style
 }
 
 interface CommentEntry {
@@ -2820,6 +3095,15 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
 
   let xml = '<w:p>' + pPr + alertPrefix + taskPrefix + runs + '</w:p>';
 
+  // Encode blockquoteGroupIndex as a hidden (vanish) run so the docx→md
+  // converter can reconstruct group boundaries and correlate with the gap map.
+  if (token.type === 'blockquote' && token.blockquoteGroupIndex !== undefined) {
+    const groupTag = '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">' +
+      '\u200B_bqg' + token.blockquoteGroupIndex + '</w:t></w:r>';
+    // Insert the hidden run right after pPr inside the <w:p>
+    xml = '<w:p>' + pPr + groupTag + alertPrefix + taskPrefix + runs + '</w:p>';
+  }
+
   // Blockquote spacer paragraphs: exact-height empty paragraphs with an
   // inline left border (no pStyle, so the converter ignores them).  The left
   // rule extends symmetrically above/below content regardless of font size.
@@ -3153,6 +3437,12 @@ export async function convertMdToDocx(
   const { cleaned: bodyWithoutFootnotes, definitions: footnoteDefs } = extractFootnoteDefinitions(body);
   const tokens = parseMd(bodyWithoutFootnotes);
 
+  // Compute inter-blockquote-group gap metadata from the original markdown
+  // source and annotate tokens with sequential group indices.
+  const blockquoteGaps = computeBlockquoteGaps(bodyWithoutFootnotes);
+  const blockquoteAlertMarkerInlineByGroup = computeBlockquoteAlertMarkerInlineByGroup(bodyWithoutFootnotes);
+  annotateBlockquoteGroupIndices(tokens);
+
   // Parse BibTeX if provided
   let bibEntries: Map<string, BibtexEntry> | undefined;
   if (options?.bibtex) {
@@ -3260,6 +3550,8 @@ export async function convertMdToDocx(
     citedKeys: new Set(),
     codeFont: fontOverrides?.codeFont || 'Consolas',
     codeShadingMode: !isInsetMode,
+    blockquoteGaps: blockquoteGaps,
+    blockquoteAlertMarkerInlineByGroup,
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -3414,6 +3706,8 @@ export async function convertMdToDocx(
   customProps.push(...footnoteIdMappingProps(state.footnoteLabelToId));
   customProps.push(...codeBlockLanguageProps(state.codeBlockLanguages));
   customProps.push(...codeBlockStylingProps(frontmatter));
+  customProps.push(...blockquoteGapProps(state.blockquoteGaps));
+  customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));
