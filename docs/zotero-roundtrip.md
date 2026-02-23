@@ -139,10 +139,6 @@ After opening the exported DOCX in Word, Zotero's plugin can refresh citations, 
 
 ## Troubleshooting
 
-### Citations not reconstructing as Zotero fields
-
-Check that the BibTeX entry has both `zotero-key` and `zotero-uri` fields. These are added automatically during DOCX import but will be missing if you created the BibTeX entry manually or imported it from another tool.
-
 ### Zotero Word extension prompts you to choose a citation style
 
 Make sure the Markdown frontmatter includes a `csl` field. Without it, the converter doesn't write Zotero document preferences to the DOCX.
