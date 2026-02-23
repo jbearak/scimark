@@ -2848,7 +2848,7 @@ export function buildMarkdown(
         // real content).
         const sep = i < mergedContent.length ? mergedContent[i] : undefined;
         const afterSep = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
-        if (sep && sep.type === 'para' && !sep.isCodeBlock && afterSep && afterSep.type === 'para' && afterSep.isCodeBlock) {
+        if (sep && sep.type === 'para' && !sep.isCodeBlock && afterSep && afterSep.type === 'para' && (afterSep.isCodeBlock || afterSep.blockquoteLevel)) {
           i++;
         }
         continue;

@@ -33,6 +33,8 @@ Install from the [releases page](https://github.com/jbearak/manuscript-markdown/
 
 The [sample file](sample.md) demonstrates citations, math, callouts, code blocks, comments, and track changes.
 
+![left: a VS Code window with an editor and preview tab showing side-by-side; right: same document in Word](sample.png)
+
 ### CLI
 
 A standalone CLI tool is also available for terminal-based conversion. See [CLI Tool](docs/cli.md) for details.

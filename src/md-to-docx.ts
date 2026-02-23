@@ -3405,13 +3405,16 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
     const spacerBqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
     const spacerIndentUnit = spacerBqStyle.startsWith('GitHub') ? GITHUB_BLOCKQUOTE_INDENT : 720;
     const spacerLeftIndent = spacerIndentUnit * (token.level || 1);
-    const spacerPPr = '<w:pPr>' +
-      '<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' +
-      '<w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr>' +
-      '<w:ind w:left="' + spacerLeftIndent + '"/></w:pPr>';
-    const spacer = '<w:p>' + spacerPPr + '</w:p>';
-    if (token.alertFirst) xml = spacer + xml;
-    if (token.alertLast) xml = xml + spacer;
+    const borderPPr = '<w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr>';
+    const indPPr = '<w:ind w:left="' + spacerLeftIndent + '"/>';
+    if (token.alertFirst) {
+      const firstPPr = '<w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' + borderPPr + indPPr + '</w:pPr>';
+      xml = '<w:p>' + firstPPr + '</w:p>' + xml;
+    }
+    if (token.alertLast) {
+      const lastPPr = '<w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' + borderPPr + indPPr + '</w:pPr>';
+      xml = xml + '<w:p>' + lastPPr + '</w:p>';
+    }
   }
 
   return xml;
@@ -3683,12 +3686,29 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     if (token.type === 'code_block' && prevTokenType === 'code_block') {
       body += '<w:p/>';
     }
+    // Insert a borderless separator before a blockquote group when it follows
+    // non-blockquote content (e.g. code block → callout).  The alertFirst
+    // spacer extends the callout's colored left border, so adding w:before
+    // to it would visually bleed the border upward.  A separate borderless
+    // paragraph creates a clean gap instead.
+    if (token.type === 'blockquote' && token.alertFirst && prevTokenType && prevTokenType !== 'blockquote') {
+      body += postBlockquoteSeparatorParagraph;
+    }
     if (token.type === 'table') {
       body += generateTable(token, state, options, bibEntries, citeprocEngine);
     } else {
       body += generateParagraph(token, state, options, bibEntries, citeprocEngine);
     }
     if (token.type === 'blockquote' && token.alertLast && token.blockquoteGroupIndex !== undefined) {
+      // Inter-blockquote gap: insert separators between consecutive blockquote
+      // groups when the source markdown had blank lines between them.
+      const interGap = state.blockquoteGaps.get(token.blockquoteGroupIndex) ?? 0;
+      if (interGap > 0) {
+        for (let bi = 0; bi < interGap; bi++) {
+          body += postBlockquoteSeparatorParagraph;
+        }
+      }
+      // Post-blockquote blank lines before non-blockquote content
       const blankCount = state.blockquotePostContentBlankLines.get(token.blockquoteGroupIndex) ?? 0;
       for (let bi = 0; bi < blankCount; bi++) {
         body += postBlockquoteSeparatorParagraph;
