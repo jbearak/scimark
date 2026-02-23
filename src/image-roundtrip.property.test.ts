@@ -165,4 +165,178 @@ describe('image-roundtrip properties', () => {
       { numRuns: 100 }
     );
   });
+
+  // --- Roundtrip property tests (P2, P3, P4, P7, P8) ---
+  // These require a real image file on disk for MD→DOCX conversion.
+
+  // Minimal valid 1x1 PNG binary
+  const PNG_1x1 = new Uint8Array([
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+    0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1
+    0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE, // 8-bit RGB
+    0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, // IDAT chunk
+    0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC, 0x33,
+    0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82, // IEND
+  ]);
+
+  function setupTempImage(): { dir: string; imgPath: string; cleanup: () => void } {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'img-test-'));
+    const imgPath = path.join(dir, 'test.png');
+    fs.writeFileSync(imgPath, PNG_1x1);
+    return { dir, imgPath, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+  }
+
+  // Feature: image-roundtrip, Property 2: Dimension roundtrip
+  it('P2: explicit dimensions survive MD→DOCX→MD roundtrip', async () => {
+    const { convertMdToDocx } = await import('./md-to-docx');
+    const { convertDocx } = await import('./converter');
+
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 5000 }),
+        fc.integer({ min: 1, max: 5000 }),
+        async (w, h) => {
+          const { dir, cleanup } = setupTempImage();
+          try {
+            const md = '![alt](test.png){width=' + w + ' height=' + h + '}';
+            const { docx } = await convertMdToDocx(md, { sourceDir: dir });
+            const result = await convertDocx(docx);
+            const imgMatch = result.markdown.match(/\{width=(\d+)\s+height=(\d+)\}/);
+            expect(imgMatch).not.toBeNull();
+            if (imgMatch) {
+              expect(parseInt(imgMatch[1], 10)).toBe(w);
+              expect(parseInt(imgMatch[2], 10)).toBe(h);
+            }
+          } finally {
+            cleanup();
+          }
+        }
+      ),
+      { numRuns: 20 }
+    );
+  });
+
+  // Feature: image-roundtrip, Property 3: Alt text roundtrip
+  it('P3: alt text survives MD→DOCX→MD roundtrip', async () => {
+    const { convertMdToDocx } = await import('./md-to-docx');
+    const { convertDocx } = await import('./converter');
+    const arbAlt = fc.stringMatching(/^[a-zA-Z0-9 ]{1,30}$/).filter(s => !s.includes(']') && s.length > 0);
+
+    await fc.assert(
+      fc.asyncProperty(arbAlt, async (alt) => {
+        const { dir, cleanup } = setupTempImage();
+        try {
+          const md = '![' + alt + '](test.png){width=100 height=100}';
+          const { docx } = await convertMdToDocx(md, { sourceDir: dir });
+          const result = await convertDocx(docx);
+          const imgMatch = result.markdown.match(/!\[([^\]]*)\]/);
+          expect(imgMatch).not.toBeNull();
+          if (imgMatch) {
+            expect(imgMatch[1]).toBe(alt);
+          }
+        } finally {
+          cleanup();
+        }
+      }),
+      { numRuns: 20 }
+    );
+  });
+
+  // Feature: image-roundtrip, Property 4: Syntax format roundtrip
+  it('P4: image syntax format (md vs html) survives MD→DOCX→MD roundtrip', async () => {
+    const { convertMdToDocx } = await import('./md-to-docx');
+    const { convertDocx } = await import('./converter');
+
+    await fc.assert(
+      fc.asyncProperty(
+        fc.constantFrom('md', 'html'),
+        async (syntax) => {
+          const { dir, cleanup } = setupTempImage();
+          try {
+            const md = syntax === 'html'
+              ? '<img src="test.png" alt="pic" width="100" height="100">'
+              : '![pic](test.png){width=100 height=100}';
+            const { docx } = await convertMdToDocx(md, { sourceDir: dir });
+            const result = await convertDocx(docx);
+            if (syntax === 'html') {
+              expect(result.markdown).toContain('<img ');
+            } else {
+              expect(result.markdown).toContain('![');
+            }
+          } finally {
+            cleanup();
+          }
+        }
+      ),
+      { numRuns: 20 }
+    );
+  });
+
+  // Feature: image-roundtrip, Property 7: DOCX image structure validity
+  it('P7: exported DOCX contains image binary, relationship, content type, and w:drawing', async () => {
+    const { convertMdToDocx } = await import('./md-to-docx');
+    const JSZip = (await import('jszip')).default;
+
+    const { dir, cleanup } = setupTempImage();
+    try {
+      const md = '![alt](test.png){width=200 height=150}';
+      const { docx } = await convertMdToDocx(md, { sourceDir: dir });
+      const zip = await JSZip.loadAsync(docx);
+
+      // Check image binary exists in word/media/
+      const mediaFiles = Object.keys(zip.files).filter(f => f.startsWith('word/media/'));
+      expect(mediaFiles.length).toBeGreaterThan(0);
+
+      // Check relationship entry
+      const relsContent = await zip.file('word/_rels/document.xml.rels')!.async('string');
+      expect(relsContent).toContain('/image');
+      expect(relsContent).toContain('media/');
+
+      // Check content type entry
+      const ctContent = await zip.file('[Content_Types].xml')!.async('string');
+      expect(ctContent).toContain('Extension="png"');
+      expect(ctContent).toContain('image/png');
+
+      // Check w:drawing in document.xml
+      const docContent = await zip.file('word/document.xml')!.async('string');
+      expect(docContent).toContain('w:drawing');
+      expect(docContent).toContain('wp:inline');
+      expect(docContent).toContain('a:blip');
+    } finally {
+      cleanup();
+    }
+  });
+
+  // Feature: image-roundtrip, Property 8: Image deduplication
+  it('P8: multiple references to same image produce one media entry and one relationship', async () => {
+    const { convertMdToDocx } = await import('./md-to-docx');
+    const JSZip = (await import('jszip')).default;
+
+    const { dir, cleanup } = setupTempImage();
+    try {
+      const md = '![first](test.png){width=100 height=100}\n\n![second](test.png){width=200 height=200}';
+      const { docx } = await convertMdToDocx(md, { sourceDir: dir });
+      const zip = await JSZip.loadAsync(docx);
+
+      // Only one media file
+      const mediaFiles = Object.keys(zip.files).filter(f => f.startsWith('word/media/') && !f.endsWith('/'));
+      expect(mediaFiles.length).toBe(1);
+
+      // Only one image relationship
+      const relsContent = await zip.file('word/_rels/document.xml.rels')!.async('string');
+      const imageRelMatches = relsContent.match(/relationships\/image/g);
+      expect(imageRelMatches?.length).toBe(1);
+
+      // But two w:drawing elements
+      const docContent = await zip.file('word/document.xml')!.async('string');
+      const drawingMatches = docContent.match(/w:drawing/g);
+      expect(drawingMatches!.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      cleanup();
+    }
+  });
 });
