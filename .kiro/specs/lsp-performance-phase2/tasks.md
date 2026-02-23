@@ -2,7 +2,7 @@
 
 ## Overview
 
-Six internal performance optimizations for the Scientific Markdown VS Code extension: debounced LSP validation, async filesystem calls with LRU cache, single-pass decoration extraction, debounced word count, cached navigation matches, and shared frontmatter parsing. All changes are internal refactors with no user-facing API changes. Implementation language: TypeScript.
+Six internal performance optimizations for the Manuscript Markdown VS Code extension: debounced LSP validation, async filesystem calls with LRU cache, single-pass decoration extraction, debounced word count, cached navigation matches, and shared frontmatter parsing. All changes are internal refactors with no user-facing API changes. Implementation language: TypeScript.
 
 ## Tasks
 

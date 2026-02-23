@@ -2,7 +2,7 @@
 
 ## Overview
 
-This feature extends the Scientific Markdown VS Code extension by adding two new toolbar buttons to the editor title bar: one for Markdown Annotations and one for Markdown Formatting. These buttons will provide quick access to the existing submenu commands that are currently only available via right-click context menu.
+This feature extends the Manuscript Markdown VS Code extension by adding two new toolbar buttons to the editor title bar: one for Markdown Annotations and one for Markdown Formatting. These buttons will provide quick access to the existing submenu commands that are currently only available via right-click context menu.
 
 The extension already has two toolbar buttons (Previous Change and Next Change) in the editor title bar. This feature adds two more submenu buttons alongside them, bringing the total to four related toolbar buttons.
 
@@ -11,7 +11,7 @@ The implementation leverages VS Code's existing menu contribution system and req
 ## Current State
 
 The extension currently has:
-- Two toolbar buttons already implemented: `scimark.prevChange` and `scimark.nextChange`
+- Two toolbar buttons already implemented: `manuscript-markdown.prevChange` and `manuscript-markdown.nextChange`
 - Two submenus defined: `markdown.annotations` and `markdown.formatting`
 - Both submenus are available in the editor context menu (right-click) but not in the toolbar
 
@@ -48,12 +48,12 @@ The `contributes.menus` section will be extended with two new entries:
     "group": "navigation@2"
   },
   {
-    "command": "scimark.prevChange",
+    "command": "manuscript-markdown.prevChange",
     "when": "editorLangId == markdown && !isInDiffEditor",
     "group": "navigation@3"
   },
   {
-    "command": "scimark.nextChange",
+    "command": "manuscript-markdown.nextChange",
     "when": "editorLangId == markdown && !isInDiffEditor",
     "group": "navigation@4"
   }
@@ -94,7 +94,7 @@ Since this feature is purely declarative (configuration-based), the correctness 
 
 ### Property 2: Button grouping and ordering
 
-*For all* four Scientific Markdown toolbar buttons (formatting submenu, annotations submenu, prevChange, nextChange), they should be in the `navigation` group and ordered as: formatting (@1), annotations (@2), prevChange (@3), nextChange (@4)
+*For all* four Manuscript Markdown toolbar buttons (formatting submenu, annotations submenu, prevChange, nextChange), they should be in the `navigation` group and ordered as: formatting (@1), annotations (@2), prevChange (@3), nextChange (@4)
 
 **Validates: Requirements 3.1, 3.2**
 
@@ -142,9 +142,9 @@ Property-based tests will validate the configuration structure:
 
 **Properties to Test**:
 
-1. **Property 1 Test**: Parse package.json and verify that all entries in `contributes.menus["editor/title"]` that reference Scientific Markdown commands (`scimark.prevChange`, `scimark.nextChange`) or markdown submenus (`markdown.annotations`, `markdown.formatting`) have the `when` clause set to `editorLangId == markdown && !isInDiffEditor`.
+1. **Property 1 Test**: Parse package.json and verify that all entries in `contributes.menus["editor/title"]` that reference Manuscript Markdown commands (`manuscript-markdown.prevChange`, `manuscript-markdown.nextChange`) or markdown submenus (`markdown.annotations`, `markdown.formatting`) have the `when` clause set to `editorLangId == markdown && !isInDiffEditor`.
 
-2. **Property 2 Test**: Parse package.json and verify that all four Scientific Markdown toolbar entries are in the `navigation` group with explicit ordering suffixes (@1 through @4) and appear in the correct order in the array: formatting (@1), annotations (@2), prevChange (@3), nextChange (@4).
+2. **Property 2 Test**: Parse package.json and verify that all four Manuscript Markdown toolbar entries are in the `navigation` group with explicit ordering suffixes (@1 through @4) and appear in the correct order in the array: formatting (@1), annotations (@2), prevChange (@3), nextChange (@4).
 
 These tests ensure the configuration remains correct as the extension evolves and prevent regressions during future updates.
 

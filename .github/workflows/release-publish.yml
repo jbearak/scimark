@@ -113,7 +113,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -d bin ]; then
-            (cd bin && for file in scimark-*; do
+            (cd bin && for file in manuscript-markdown-*; do
               if [[ "$file" != *.sha256 ]]; then
                 sha256sum -c "$file.sha256"
               fi
@@ -139,7 +139,7 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            bin/scimark-*
+            bin/manuscript-markdown-*
             *.vsix
             *.vsix.sha256
         env:

@@ -1,8 +1,8 @@
 # Writing Technical Documentation
 
-Scientific Markdown also works well for technical documentation and general prose.
+Manuscript Markdown also works well for technical documentation and general prose.
 
-## Why use Scientific Markdown for Docs?
+## Why use Manuscript Markdown for Docs?
 
 - **Roundtrip to Word**: Easily collaborate with stakeholders who require Word documents.
 - **Review Workflow**: Use CriticMarkup annotations in Markdown, or Word's Track Changes — the two are interchangeable.

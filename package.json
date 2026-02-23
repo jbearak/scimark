@@ -1,6 +1,6 @@
 {
-  "name": "scimark",
-  "displayName": "Scientific Markdown",
+  "name": "manuscript-markdown",
+  "displayName": "Manuscript Markdown",
   "description": "Specification, converter, and VS Code extension for roundtrip manuscript and documentation editing between Markdown and Word",
   "version": "0.99.16",
   "engines": {
@@ -13,7 +13,7 @@
   ],
   "keywords": [
     "markdown",
-    "scimark",
+    "manuscript-markdown",
     "critic markup",
     "annotations",
     "formatting",
@@ -22,11 +22,11 @@
   "publisher": "jbearak",
   "license": "GPL-3.0",
   "bugs": {
-    "url": "https://github.com/jbearak/scimark/issues"
+    "url": "https://github.com/jbearak/manuscript-markdown/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jbearak/scimark.git"
+    "url": "https://github.com/jbearak/manuscript-markdown.git"
   },
   "activationEvents": [
     "onLanguage:markdown",
@@ -36,196 +36,196 @@
   "contributes": {
     "commands": [
       {
-        "command": "scimark.nextChange",
+        "command": "manuscript-markdown.nextChange",
         "title": "Next Change"
       },
       {
-        "command": "scimark.prevChange",
+        "command": "manuscript-markdown.prevChange",
         "title": "Previous Change"
       },
       {
-        "command": "scimark.markAddition",
+        "command": "manuscript-markdown.markAddition",
         "title": "Mark as Addition"
       },
       {
-        "command": "scimark.markDeletion",
+        "command": "manuscript-markdown.markDeletion",
         "title": "Mark as Deletion"
       },
       {
-        "command": "scimark.markSubstitution",
+        "command": "manuscript-markdown.markSubstitution",
         "title": "Substitution"
       },
       {
-        "command": "scimark.comment",
+        "command": "manuscript-markdown.comment",
         "title": "Comment"
       },
       {
-        "command": "scimark.substituteAndComment",
+        "command": "manuscript-markdown.substituteAndComment",
         "title": "Comment and Substitution"
       },
       {
-        "command": "scimark.additionAndComment",
+        "command": "manuscript-markdown.additionAndComment",
         "title": "Comment and Mark as Addition"
       },
       {
-        "command": "scimark.deletionAndComment",
+        "command": "manuscript-markdown.deletionAndComment",
         "title": "Comment and Mark as Deletion"
       },
       {
-        "command": "scimark.formatBold",
+        "command": "manuscript-markdown.formatBold",
         "title": "Bold"
       },
       {
-        "command": "scimark.formatItalic",
+        "command": "manuscript-markdown.formatItalic",
         "title": "Italic"
       },
       {
-        "command": "scimark.formatBoldItalic",
+        "command": "manuscript-markdown.formatBoldItalic",
         "title": "Bold Italic"
       },
       {
-        "command": "scimark.formatStrikethrough",
+        "command": "manuscript-markdown.formatStrikethrough",
         "title": "Strikethrough"
       },
       {
-        "command": "scimark.formatUnderline",
+        "command": "manuscript-markdown.formatUnderline",
         "title": "Underline"
       },
       {
-        "command": "scimark.formatHighlight",
+        "command": "manuscript-markdown.formatHighlight",
         "title": "Highlight"
       },
       {
-        "command": "scimark.formatInlineCode",
+        "command": "manuscript-markdown.formatInlineCode",
         "title": "Inline Code"
       },
       {
-        "command": "scimark.formatCodeBlock",
+        "command": "manuscript-markdown.formatCodeBlock",
         "title": "Code Block"
       },
       {
-        "command": "scimark.formatLink",
+        "command": "manuscript-markdown.formatLink",
         "title": "Link"
       },
       {
-        "command": "scimark.formatBulletedList",
+        "command": "manuscript-markdown.formatBulletedList",
         "title": "Bulleted List"
       },
       {
-        "command": "scimark.formatNumberedList",
+        "command": "manuscript-markdown.formatNumberedList",
         "title": "Numbered List"
       },
       {
-        "command": "scimark.formatTaskList",
+        "command": "manuscript-markdown.formatTaskList",
         "title": "Task List"
       },
       {
-        "command": "scimark.formatQuoteBlock",
+        "command": "manuscript-markdown.formatQuoteBlock",
         "title": "Quote Block"
       },
       {
-        "command": "scimark.formatHeading1",
+        "command": "manuscript-markdown.formatHeading1",
         "title": "Heading 1"
       },
       {
-        "command": "scimark.formatHeading2",
+        "command": "manuscript-markdown.formatHeading2",
         "title": "Heading 2"
       },
       {
-        "command": "scimark.formatHeading3",
+        "command": "manuscript-markdown.formatHeading3",
         "title": "Heading 3"
       },
       {
-        "command": "scimark.formatHeading4",
+        "command": "manuscript-markdown.formatHeading4",
         "title": "Heading 4"
       },
       {
-        "command": "scimark.formatHeading5",
+        "command": "manuscript-markdown.formatHeading5",
         "title": "Heading 5"
       },
       {
-        "command": "scimark.formatHeading6",
+        "command": "manuscript-markdown.formatHeading6",
         "title": "Heading 6"
       },
       {
-        "command": "scimark.reflowTable",
+        "command": "manuscript-markdown.reflowTable",
         "title": "Reflow Table"
       },
       {
-        "command": "scimark.convertDocx",
+        "command": "manuscript-markdown.convertDocx",
         "title": "Export to Markdown"
       },
       {
-        "command": "scimark.openInWord",
+        "command": "manuscript-markdown.openInWord",
         "title": "Open in Word"
       },
       {
-        "command": "scimark.exportToWord",
+        "command": "manuscript-markdown.exportToWord",
         "title": "Export to Word",
         "icon": "$(file-binary)"
       },
       {
-        "command": "scimark.exportToWordWithTemplate",
+        "command": "manuscript-markdown.exportToWordWithTemplate",
         "title": "Export to Word with Template"
       },
       {
-        "command": "scimark.setCitationStyle",
+        "command": "manuscript-markdown.setCitationStyle",
         "title": "Set Citation Style"
       },
       {
-        "command": "scimark.formatHighlight_yellow",
+        "command": "manuscript-markdown.formatHighlight_yellow",
         "title": "Yellow"
       },
       {
-        "command": "scimark.formatHighlight_green",
+        "command": "manuscript-markdown.formatHighlight_green",
         "title": "Green"
       },
       {
-        "command": "scimark.formatHighlight_turquoise",
+        "command": "manuscript-markdown.formatHighlight_turquoise",
         "title": "Turquoise"
       },
       {
-        "command": "scimark.formatHighlight_pink",
+        "command": "manuscript-markdown.formatHighlight_pink",
         "title": "Pink"
       },
       {
-        "command": "scimark.formatHighlight_blue",
+        "command": "manuscript-markdown.formatHighlight_blue",
         "title": "Blue"
       },
       {
-        "command": "scimark.formatHighlight_red",
+        "command": "manuscript-markdown.formatHighlight_red",
         "title": "Red"
       },
       {
-        "command": "scimark.formatHighlight_dark-blue",
+        "command": "manuscript-markdown.formatHighlight_dark-blue",
         "title": "Dark Blue"
       },
       {
-        "command": "scimark.formatHighlight_teal",
+        "command": "manuscript-markdown.formatHighlight_teal",
         "title": "Teal"
       },
       {
-        "command": "scimark.formatHighlight_violet",
+        "command": "manuscript-markdown.formatHighlight_violet",
         "title": "Violet"
       },
       {
-        "command": "scimark.formatHighlight_dark-red",
+        "command": "manuscript-markdown.formatHighlight_dark-red",
         "title": "Dark Red"
       },
       {
-        "command": "scimark.formatHighlight_dark-yellow",
+        "command": "manuscript-markdown.formatHighlight_dark-yellow",
         "title": "Dark Yellow"
       },
       {
-        "command": "scimark.formatHighlight_gray-50",
+        "command": "manuscript-markdown.formatHighlight_gray-50",
         "title": "Gray 50%"
       },
       {
-        "command": "scimark.formatHighlight_gray-25",
+        "command": "manuscript-markdown.formatHighlight_gray-25",
         "title": "Gray 25%"
       },
       {
-        "command": "scimark.formatHighlight_black",
+        "command": "manuscript-markdown.formatHighlight_black",
         "title": "Black"
       }
     ],
@@ -277,7 +277,7 @@
           "group": "navigation@3"
         },
         {
-          "command": "scimark.exportToWord",
+          "command": "manuscript-markdown.exportToWord",
           "when": "activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor'",
           "group": "navigation@3"
         },
@@ -301,79 +301,79 @@
       ],
       "markdown.annotations": [
         {
-          "command": "scimark.comment",
+          "command": "manuscript-markdown.comment",
           "when": "editorLangId == markdown",
-          "group": "1_scimark@1"
+          "group": "1_manuscript-markdown@1"
         },
         {
-          "command": "scimark.additionAndComment",
+          "command": "manuscript-markdown.additionAndComment",
           "when": "editorLangId == markdown",
-          "group": "1_scimark@2"
+          "group": "1_manuscript-markdown@2"
         },
         {
-          "command": "scimark.deletionAndComment",
+          "command": "manuscript-markdown.deletionAndComment",
           "when": "editorLangId == markdown",
-          "group": "1_scimark@3"
+          "group": "1_manuscript-markdown@3"
         },
         {
-          "command": "scimark.substituteAndComment",
+          "command": "manuscript-markdown.substituteAndComment",
           "when": "editorLangId == markdown",
-          "group": "1_scimark@4"
+          "group": "1_manuscript-markdown@4"
         },
         {
-          "command": "scimark.markAddition",
+          "command": "manuscript-markdown.markAddition",
           "when": "editorLangId == markdown",
-          "group": "2_scimark@2"
+          "group": "2_manuscript-markdown@2"
         },
         {
-          "command": "scimark.markDeletion",
+          "command": "manuscript-markdown.markDeletion",
           "when": "editorLangId == markdown",
-          "group": "2_scimark@3"
+          "group": "2_manuscript-markdown@3"
         },
         {
-          "command": "scimark.markSubstitution",
+          "command": "manuscript-markdown.markSubstitution",
           "when": "editorLangId == markdown",
-          "group": "2_scimark@4"
+          "group": "2_manuscript-markdown@4"
         },
         {
-          "command": "scimark.prevChange",
+          "command": "manuscript-markdown.prevChange",
           "when": "editorLangId == markdown",
           "group": "3_navigation@1"
         },
         {
-          "command": "scimark.nextChange",
+          "command": "manuscript-markdown.nextChange",
           "when": "editorLangId == markdown",
           "group": "3_navigation@2"
         }
       ],
       "markdown.formatting": [
         {
-          "command": "scimark.formatBold",
+          "command": "manuscript-markdown.formatBold",
           "when": "editorLangId == markdown",
           "group": "1_format@1"
         },
         {
-          "command": "scimark.formatItalic",
+          "command": "manuscript-markdown.formatItalic",
           "when": "editorLangId == markdown",
           "group": "1_format@2"
         },
         {
-          "command": "scimark.formatBoldItalic",
+          "command": "manuscript-markdown.formatBoldItalic",
           "when": "editorLangId == markdown",
           "group": "1_format@3"
         },
         {
-          "command": "scimark.formatStrikethrough",
+          "command": "manuscript-markdown.formatStrikethrough",
           "when": "editorLangId == markdown",
           "group": "1_format@4"
         },
         {
-          "command": "scimark.formatUnderline",
+          "command": "manuscript-markdown.formatUnderline",
           "when": "editorLangId == markdown",
           "group": "1_format@5"
         },
         {
-          "command": "scimark.formatHighlight",
+          "command": "manuscript-markdown.formatHighlight",
           "when": "editorLangId == markdown",
           "group": "1a_highlight@1"
         },
@@ -383,42 +383,42 @@
           "group": "1a_highlight@2"
         },
         {
-          "command": "scimark.formatInlineCode",
+          "command": "manuscript-markdown.formatInlineCode",
           "when": "editorLangId == markdown",
           "group": "1_format@7"
         },
         {
-          "command": "scimark.formatCodeBlock",
+          "command": "manuscript-markdown.formatCodeBlock",
           "when": "editorLangId == markdown",
           "group": "1_format@8"
         },
         {
-          "command": "scimark.formatLink",
+          "command": "manuscript-markdown.formatLink",
           "when": "editorLangId == markdown",
           "group": "1_format@9"
         },
         {
-          "command": "scimark.formatBulletedList",
+          "command": "manuscript-markdown.formatBulletedList",
           "when": "editorLangId == markdown",
           "group": "2_lists@1"
         },
         {
-          "command": "scimark.formatNumberedList",
+          "command": "manuscript-markdown.formatNumberedList",
           "when": "editorLangId == markdown",
           "group": "2_lists@2"
         },
         {
-          "command": "scimark.formatTaskList",
+          "command": "manuscript-markdown.formatTaskList",
           "when": "editorLangId == markdown",
           "group": "2_lists@3"
         },
         {
-          "command": "scimark.formatQuoteBlock",
+          "command": "manuscript-markdown.formatQuoteBlock",
           "when": "editorLangId == markdown",
           "group": "2_lists@4"
         },
         {
-          "command": "scimark.reflowTable",
+          "command": "manuscript-markdown.reflowTable",
           "when": "editorLangId == markdown",
           "group": "2_tables@5"
         },
@@ -430,155 +430,155 @@
       ],
       "markdown.heading": [
         {
-          "command": "scimark.formatHeading1",
+          "command": "manuscript-markdown.formatHeading1",
           "when": "editorLangId == markdown",
           "group": "1_heading@1"
         },
         {
-          "command": "scimark.formatHeading2",
+          "command": "manuscript-markdown.formatHeading2",
           "when": "editorLangId == markdown",
           "group": "1_heading@2"
         },
         {
-          "command": "scimark.formatHeading3",
+          "command": "manuscript-markdown.formatHeading3",
           "when": "editorLangId == markdown",
           "group": "1_heading@3"
         },
         {
-          "command": "scimark.formatHeading4",
+          "command": "manuscript-markdown.formatHeading4",
           "when": "editorLangId == markdown",
           "group": "1_heading@4"
         },
         {
-          "command": "scimark.formatHeading5",
+          "command": "manuscript-markdown.formatHeading5",
           "when": "editorLangId == markdown",
           "group": "1_heading@5"
         },
         {
-          "command": "scimark.formatHeading6",
+          "command": "manuscript-markdown.formatHeading6",
           "when": "editorLangId == markdown",
           "group": "1_heading@6"
         }
       ],
       "markdown.highlightColor": [
         {
-          "command": "scimark.formatHighlight_yellow",
+          "command": "manuscript-markdown.formatHighlight_yellow",
           "when": "editorLangId == markdown",
           "group": "1_color@1"
         },
         {
-          "command": "scimark.formatHighlight_green",
+          "command": "manuscript-markdown.formatHighlight_green",
           "when": "editorLangId == markdown",
           "group": "1_color@2"
         },
         {
-          "command": "scimark.formatHighlight_turquoise",
+          "command": "manuscript-markdown.formatHighlight_turquoise",
           "when": "editorLangId == markdown",
           "group": "1_color@3"
         },
         {
-          "command": "scimark.formatHighlight_pink",
+          "command": "manuscript-markdown.formatHighlight_pink",
           "when": "editorLangId == markdown",
           "group": "1_color@4"
         },
         {
-          "command": "scimark.formatHighlight_blue",
+          "command": "manuscript-markdown.formatHighlight_blue",
           "when": "editorLangId == markdown",
           "group": "1_color@5"
         },
         {
-          "command": "scimark.formatHighlight_red",
+          "command": "manuscript-markdown.formatHighlight_red",
           "when": "editorLangId == markdown",
           "group": "1_color@6"
         },
         {
-          "command": "scimark.formatHighlight_dark-blue",
+          "command": "manuscript-markdown.formatHighlight_dark-blue",
           "when": "editorLangId == markdown",
           "group": "2_color@1"
         },
         {
-          "command": "scimark.formatHighlight_teal",
+          "command": "manuscript-markdown.formatHighlight_teal",
           "when": "editorLangId == markdown",
           "group": "2_color@2"
         },
         {
-          "command": "scimark.formatHighlight_violet",
+          "command": "manuscript-markdown.formatHighlight_violet",
           "when": "editorLangId == markdown",
           "group": "2_color@3"
         },
         {
-          "command": "scimark.formatHighlight_dark-red",
+          "command": "manuscript-markdown.formatHighlight_dark-red",
           "when": "editorLangId == markdown",
           "group": "2_color@4"
         },
         {
-          "command": "scimark.formatHighlight_dark-yellow",
+          "command": "manuscript-markdown.formatHighlight_dark-yellow",
           "when": "editorLangId == markdown",
           "group": "2_color@5"
         },
         {
-          "command": "scimark.formatHighlight_gray-50",
+          "command": "manuscript-markdown.formatHighlight_gray-50",
           "when": "editorLangId == markdown",
           "group": "3_color@1"
         },
         {
-          "command": "scimark.formatHighlight_gray-25",
+          "command": "manuscript-markdown.formatHighlight_gray-25",
           "when": "editorLangId == markdown",
           "group": "3_color@2"
         },
         {
-          "command": "scimark.formatHighlight_black",
+          "command": "manuscript-markdown.formatHighlight_black",
           "when": "editorLangId == markdown",
           "group": "3_color@3"
         }
       ],
       "markdown.exportDocx": [
         {
-          "command": "scimark.exportToWord",
+          "command": "manuscript-markdown.exportToWord",
           "when": "editorLangId == markdown",
           "group": "1_export@1"
         },
         {
-          "command": "scimark.exportToWordWithTemplate",
+          "command": "manuscript-markdown.exportToWordWithTemplate",
           "when": "editorLangId == markdown",
           "group": "1_export@2"
         },
         {
-          "command": "scimark.setCitationStyle",
+          "command": "manuscript-markdown.setCitationStyle",
           "when": "editorLangId == markdown",
           "group": "2_style@1"
         }
       ],
       "docx.actions": [
         {
-          "command": "scimark.convertDocx",
+          "command": "manuscript-markdown.convertDocx",
           "when": "resourceExtname == .docx",
           "group": "1_actions@1"
         },
         {
-          "command": "scimark.openInWord",
+          "command": "manuscript-markdown.openInWord",
           "when": "resourceExtname == .docx && !remoteName",
           "group": "1_actions@2"
         }
       ],
       "explorer/context": [
         {
-          "command": "scimark.convertDocx",
+          "command": "manuscript-markdown.convertDocx",
           "when": "resourceExtname == .docx",
           "group": "9_export@0"
         },
         {
-          "command": "scimark.openInWord",
+          "command": "manuscript-markdown.openInWord",
           "when": "resourceExtname == .docx && !remoteName",
           "group": "9_export@1"
         },
         {
-          "command": "scimark.exportToWord",
+          "command": "manuscript-markdown.exportToWord",
           "when": "resourceExtname == .md",
           "group": "9_export@1"
         },
         {
-          "command": "scimark.exportToWordWithTemplate",
+          "command": "manuscript-markdown.exportToWordWithTemplate",
           "when": "resourceExtname == .md",
           "group": "9_export@2"
         }
@@ -586,12 +586,12 @@
     },
     "keybindings": [
       {
-        "command": "scimark.nextChange",
+        "command": "manuscript-markdown.nextChange",
         "key": "alt+shift+j",
         "when": "editorTextFocus && editorLangId == markdown"
       },
       {
-        "command": "scimark.prevChange",
+        "command": "manuscript-markdown.prevChange",
         "key": "alt+shift+k",
         "when": "editorTextFocus && editorLangId == markdown"
       }
@@ -610,44 +610,44 @@
     ],
     "grammars": [
       {
-        "path": "./syntaxes/scimark.json",
-        "scopeName": "scimark.injection",
+        "path": "./syntaxes/manuscript-markdown.json",
+        "scopeName": "manuscript-markdown.injection",
         "injectTo": [
           "text.html.markdown"
         ]
       }
     ],
     "markdown.previewStyles": [
-      "./media/scimark.css"
+      "./media/manuscript-markdown.css"
     ],
     "markdown.previewScripts": [
-      "./media/scimark-preview.js"
+      "./media/manuscript-markdown-preview.js"
     ],
     "markdown.markdownItPlugins": true,
     "configuration": {
       "title": "Manuscript Markdown",
       "properties": {
-        "scimark.includeAuthorNameInComments": {
+        "manuscriptMarkdown.includeAuthorNameInComments": {
           "type": "boolean",
           "default": true,
           "description": "Include author name in comment attribution"
         },
-        "scimark.authorName": {
+        "manuscriptMarkdown.authorName": {
           "type": "string",
           "default": "",
           "description": "Author name to use in comments (leave empty to use OS username)"
         },
-        "scimark.includeTimestampInComments": {
+        "manuscriptMarkdown.includeTimestampInComments": {
           "type": "boolean",
           "default": true,
           "description": "Include timestamp in comment author attribution (format: username (yyyy-mm-dd hh:mm))"
         },
-        "scimark.enableCitekeyLanguageServer": {
+        "manuscriptMarkdown.enableCitekeyLanguageServer": {
           "type": "boolean",
           "default": true,
           "description": "Enable language server features: @ completions, go-to-definition, find references for citation keys, and comment hover."
         },
-        "scimark.defaultHighlightColor": {
+        "manuscriptMarkdown.defaultHighlightColor": {
           "type": "string",
           "enum": [
             "yellow",
@@ -668,13 +668,13 @@
           "default": "yellow",
           "description": "Default background color for ==highlight== formatting when no color is specified"
         },
-        "scimark.tableIndent": {
+        "manuscriptMarkdown.tableIndent": {
           "type": "integer",
           "default": 2,
           "minimum": 0,
           "description": "Number of spaces per indent level for HTML tables in DOCX to Markdown conversion"
         },
-        "scimark.citationKeyFormat": {
+        "manuscriptMarkdown.citationKeyFormat": {
           "type": "string",
           "enum": [
             "authorYearTitle",
@@ -689,7 +689,7 @@
           ],
           "description": "Citation key format for DOCX to Markdown conversion"
         },
-        "scimark.blockquoteStyle": {
+        "manuscriptMarkdown.blockquoteStyle": {
           "type": "string",
           "enum": [
             "Quote",
@@ -699,12 +699,12 @@
           "default": "GitHub",
           "description": "Word paragraph style to use for blockquotes when converting Markdown to DOCX"
         },
-        "scimark.alwaysUseCommentIds": {
+        "manuscriptMarkdown.alwaysUseCommentIds": {
           "type": "boolean",
           "default": false,
           "description": "Always use ID-based comment syntax ({#id}...{/id}{#id>>...<<}) even for non-overlapping comments during DOCX to Markdown conversion"
         },
-        "scimark.citekeyReferencesFromMarkdown": {
+        "manuscriptMarkdown.citekeyReferencesFromMarkdown": {
           "type": "boolean",
           "default": false,
           "description": "Include markdown usages in Find All References when invoked from a markdown file. Off by default because VS Code's built-in Markdown Language Features extension already reports these; enabling this may produce duplicate entries."
@@ -722,7 +722,7 @@
     "package": "bun run rebuild && bunx vsce package",
     "build:binary": "bun scripts/build-binary.ts binary",
     "build:current": "bun scripts/build-binary.ts current",
-    "install-local": "bun run package && code --install-extension scimark-$(node -p \"require('./package.json').version\").vsix --force"
+    "install-local": "bun run package && code --install-extension manuscript-markdown-$(node -p \"require('./package.json').version\").vsix --force"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

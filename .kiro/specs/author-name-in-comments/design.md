@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design enhances the Scientific Markdown extension's comment functionality by automatically prepending author names to comments. The implementation modifies the existing comment insertion logic in `src/formatting.ts` to include author information, adds configuration settings for customization, and implements a simple username retrieval mechanism using the OS username as a fallback.
+This design enhances the Manuscript Markdown extension's comment functionality by automatically prepending author names to comments. The implementation modifies the existing comment insertion logic in `src/formatting.ts` to include author information, adds configuration settings for customization, and implements a simple username retrieval mechanism using the OS username as a fallback.
 
 The design prioritizes simplicity and performance by using synchronous operations and avoiding complex Git API interactions. Configuration settings provide flexibility for users who want to specify a custom name or disable the feature entirely.
 
@@ -57,8 +57,8 @@ export function getAuthorName(): string | null;
 **Implementation Details**:
 
 - Check settings in priority order:
-  1. `scimark.disableAuthorNames` - if true, return null immediately
-  2. `scimark.authorName` - if set, return this value
+  1. `manuscriptMarkdown.disableAuthorNames` - if true, return null immediately
+  2. `manuscriptMarkdown.authorName` - if set, return this value
   3. OS username via `os.userInfo()` - return username or null
 - All operations are synchronous
 - No caching - settings can change between invocations
@@ -117,14 +117,14 @@ export function highlightAndComment(
 {
   "contributes": {
     "configuration": {
-      "title": "Scientific Markdown",
+      "title": "Manuscript Markdown",
       "properties": {
-        "scimark.disableAuthorNames": {
+        "manuscriptMarkdown.disableAuthorNames": {
           "type": "boolean",
           "default": false,
           "description": "Disable automatic author names in comments"
         },
-        "scimark.authorName": {
+        "manuscriptMarkdown.authorName": {
           "type": "string",
           "default": "",
           "description": "Author name to use in comments (leave empty to use OS username)"
@@ -147,7 +147,7 @@ Update all comment command handlers to retrieve and pass the author name:
 import * as author from './author';
 
 // Example for insertComment command
-vscode.commands.registerCommand('scimark.insertComment', () => 
+vscode.commands.registerCommand('manuscript-markdown.insertComment', () => 
   applyFormatting((text) => {
     const authorName = author.getAuthorName();
     return formatting.wrapSelection(text, '{>>', '<<}', 3, authorName);

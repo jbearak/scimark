@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Scientific Markdown Setup Script
+# Manuscript Markdown Setup Script
 # Builds the VSIX package and installs it to supported editors
 #
 # USAGE:
@@ -22,7 +22,7 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
-echo "=== Scientific Markdown Setup ==="
+echo "=== Manuscript Markdown Setup ==="
 echo ""
 
 # Colors for output
@@ -51,14 +51,14 @@ echo ""
 
 # Step 3b: Build CLI binary
 echo "Building CLI binary..."
-if bun build src/cli.ts --compile --outfile dist/scimark; then
+if bun build src/cli.ts --compile --outfile dist/manuscript-markdown; then
   echo -e "${GREEN}✓ CLI binary built${NC}"
   
   # Install CLI to ~/bin
   mkdir -p ~/bin
-  cp dist/scimark ~/bin/scimark
-  chmod +x ~/bin/scimark
-  echo -e "${GREEN}✓ CLI installed to ~/bin/scimark${NC}"
+  cp dist/manuscript-markdown ~/bin/manuscript-markdown
+  chmod +x ~/bin/manuscript-markdown
+  echo -e "${GREEN}✓ CLI installed to ~/bin/manuscript-markdown${NC}"
 else
   echo -e "${RED}CLI compilation failed (continuing with extension install)${NC}" >&2
 fi
@@ -66,7 +66,7 @@ echo ""
 
 # Find the newest VSIX file
 VERSION=$(node -p "require('./package.json').version")
-VSIX_FILE="scimark-${VERSION}.vsix"
+VSIX_FILE="manuscript-markdown-${VERSION}.vsix"
 
 if [ ! -f "$VSIX_FILE" ]; then
     echo -e "${RED}Error: No VSIX file found: $VSIX_FILE${NC}"
@@ -103,8 +103,8 @@ echo ""
 
 echo "=== Setup Complete ==="
 echo "Extension: $VSIX_FILE"
-if [ -f "$HOME/bin/scimark" ]; then
-  echo "CLI: ~/bin/scimark"
+if [ -f "$HOME/bin/manuscript-markdown" ]; then
+  echo "CLI: ~/bin/manuscript-markdown"
   case ":$PATH:" in
     *":$HOME/bin:"*) ;;
     *) echo -e "${YELLOW}Note: Add ~/bin to your PATH if not already present${NC}" ;;

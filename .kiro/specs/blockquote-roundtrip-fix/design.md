@@ -137,7 +137,7 @@ Assuming our root cause analysis is correct:
 
 1. **Encode inter-block gap counts**: After `annotateBlockquoteBoundaries`, scan the original markdown source to compute the exact blank-line count between each pair of consecutive blockquote groups. Store this as a `gapAfter` property on the last token of each group (the token with `alertLast=true` or the last blockquote token before a non-blockquote token). Alternatively, build a separate gap map keyed by group index.
 
-2. **Emit gap metadata into docx custom properties**: In `convertMdToDocx`, serialize the gap map as a custom XML property (similar to `codeBlockLanguageProps` / `footnoteIdMappingProps`). Use a key format like `scimark.blockquoteGap.{index}` with the blank-line count as the value. This preserves the metadata through the docx file without affecting rendering.
+2. **Emit gap metadata into docx custom properties**: In `convertMdToDocx`, serialize the gap map as a custom XML property (similar to `codeBlockLanguageProps` / `footnoteIdMappingProps`). Use a key format like `manuscript-markdown.blockquoteGap.{index}` with the blank-line count as the value. This preserves the metadata through the docx file without affecting rendering.
 
 3. **Annotate blockquote group indices on tokens**: In `annotateBlockquoteBoundaries` or a new post-pass, assign a sequential `blockquoteGroupIndex` to each blockquote token so the gap map can be correlated during docx→md conversion.
 

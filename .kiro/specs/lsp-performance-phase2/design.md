@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design addresses six remaining performance hot paths in the Scientific Markdown VS Code extension that were not covered by Phase 1 optimizations:
+This design addresses six remaining performance hot paths in the Manuscript Markdown VS Code extension that were not covered by Phase 1 optimizations:
 
 1. **Debounced LSP validation** — `onDidChangeContent` fires the full validation pipeline synchronously on every keystroke
 2. **Async filesystem calls** — `canonicalizeFsPath()` and `isExistingFile()` use blocking `fs.realpathSync.native()` and `fs.statSync()` on the LSP thread

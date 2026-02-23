@@ -2,21 +2,21 @@
 
 ## Introduction
 
-This feature adds Scientific Markdown syntax highlighting support to VS Code's built-in Markdown Preview. Currently, the extension provides syntax highlighting only in the editor view through TextMate grammar injection. This enhancement will render CriticMarkup annotations visually in the preview pane, allowing users to see styled additions, deletions, substitutions, comments, and highlights when previewing their Markdown documents.
+This feature adds Manuscript Markdown syntax highlighting support to VS Code's built-in Markdown Preview. Currently, the extension provides syntax highlighting only in the editor view through TextMate grammar injection. This enhancement will render CriticMarkup annotations visually in the preview pane, allowing users to see styled additions, deletions, substitutions, comments, and highlights when previewing their Markdown documents.
 
 ## Glossary
 
-- **Scientific Markdown**: A lightweight markup syntax for tracking changes and annotations in plain text documents, using patterns like `{++addition++}`, `{--deletion--}`, `{~~old~>new~~}`, `{>>comment<<}`, and `{==highlight==}`
+- **Manuscript Markdown**: A lightweight markup syntax for tracking changes and annotations in plain text documents, using patterns like `{++addition++}`, `{--deletion--}`, `{~~old~>new~~}`, `{>>comment<<}`, and `{==highlight==}`
 - **Markdown Preview**: VS Code's built-in HTML preview panel that renders Markdown documents
 - **Markdown-it Plugin**: An extension mechanism for the markdown-it parser that VS Code uses to render Markdown previews
-- **Extension**: The VS Code Scientific Markdown extension being enhanced
+- **Extension**: The VS Code Manuscript Markdown extension being enhanced
 - **Preview Stylesheet**: CSS file that defines visual styling for rendered elements in the Markdown Preview
 
 ## Requirements
 
 ### Requirement 1
 
-**User Story:** As a user, I want to see Scientific Markdown additions rendered with visual styling in the Markdown Preview, so that I can easily identify suggested additions when reviewing documents.
+**User Story:** As a user, I want to see Manuscript Markdown additions rendered with visual styling in the Markdown Preview, so that I can easily identify suggested additions when reviewing documents.
 
 #### Acceptance Criteria
 
@@ -27,7 +27,7 @@ This feature adds Scientific Markdown syntax highlighting support to VS Code's b
 
 ### Requirement 2
 
-**User Story:** As a user, I want to see Scientific Markdown deletions rendered with visual styling in the Markdown Preview, so that I can easily identify suggested deletions when reviewing documents.
+**User Story:** As a user, I want to see Manuscript Markdown deletions rendered with visual styling in the Markdown Preview, so that I can easily identify suggested deletions when reviewing documents.
 
 #### Acceptance Criteria
 
@@ -38,7 +38,7 @@ This feature adds Scientific Markdown syntax highlighting support to VS Code's b
 
 ### Requirement 3
 
-**User Story:** As a user, I want to see Scientific Markdown substitutions rendered with visual styling in the Markdown Preview, so that I can easily identify suggested text replacements when reviewing documents.
+**User Story:** As a user, I want to see Manuscript Markdown substitutions rendered with visual styling in the Markdown Preview, so that I can easily identify suggested text replacements when reviewing documents.
 
 #### Acceptance Criteria
 
@@ -49,7 +49,7 @@ This feature adds Scientific Markdown syntax highlighting support to VS Code's b
 
 ### Requirement 4
 
-**User Story:** As a user, I want to see Scientific Markdown comments rendered with visual styling in the Markdown Preview, so that I can easily identify editorial comments when reviewing documents.
+**User Story:** As a user, I want to see Manuscript Markdown comments rendered with visual styling in the Markdown Preview, so that I can easily identify editorial comments when reviewing documents.
 
 #### Acceptance Criteria
 
@@ -60,7 +60,7 @@ This feature adds Scientific Markdown syntax highlighting support to VS Code's b
 
 ### Requirement 5
 
-**User Story:** As a user, I want to see Scientific Markdown highlights rendered with visual styling in the Markdown Preview, so that I can easily identify highlighted sections when reviewing documents.
+**User Story:** As a user, I want to see Manuscript Markdown highlights rendered with visual styling in the Markdown Preview, so that I can easily identify highlighted sections when reviewing documents.
 
 #### Acceptance Criteria
 
@@ -71,7 +71,7 @@ This feature adds Scientific Markdown syntax highlighting support to VS Code's b
 
 ### Requirement 6
 
-**User Story:** As a user, I want the preview styling to adapt to my active VS Code theme (light or dark), so that Scientific Markdown colors remain readable and consistent with my theme preference.
+**User Story:** As a user, I want the preview styling to adapt to my active VS Code theme (light or dark), so that Manuscript Markdown colors remain readable and consistent with my theme preference.
 
 #### Acceptance Criteria
 
@@ -88,18 +88,18 @@ This feature adds Scientific Markdown syntax highlighting support to VS Code's b
 #### Acceptance Criteria
 
 1. WHEN the Extension activates THEN the Extension SHALL register a markdown-it plugin with the Markdown Preview
-2. WHEN the markdown-it parser processes a document THEN the Extension SHALL parse Scientific Markdown syntax before standard Markdown rendering
-3. WHEN the plugin transforms Scientific Markdown syntax THEN the Extension SHALL generate HTML elements with appropriate CSS classes
+2. WHEN the markdown-it parser processes a document THEN the Extension SHALL parse Manuscript Markdown syntax before standard Markdown rendering
+3. WHEN the plugin transforms Manuscript Markdown syntax THEN the Extension SHALL generate HTML elements with appropriate CSS classes
 4. WHEN the preview updates THEN the Extension SHALL apply the plugin transformations without requiring a reload
 
 ### Requirement 8
 
-**User Story:** As a user, I want Scientific Markdown syntax to be parsed correctly even when mixed with standard Markdown, so that I can use both markup systems together without conflicts.
+**User Story:** As a user, I want Manuscript Markdown syntax to be parsed correctly even when mixed with standard Markdown, so that I can use both markup systems together without conflicts.
 
 #### Acceptance Criteria
 
-1. WHEN Scientific Markdown appears inside Markdown bold or italic text THEN the Extension SHALL render both the Markdown formatting and the Scientific Markdown styling
-2. WHEN Scientific Markdown appears inside Markdown lists THEN the Extension SHALL preserve the list structure and apply Scientific Markdown styling
-3. WHEN Scientific Markdown appears inside Markdown code blocks THEN the Extension SHALL treat it as literal text without applying Scientific Markdown styling
-4. WHEN Scientific Markdown appears inside Markdown inline code THEN the Extension SHALL treat it as literal text without applying Scientific Markdown styling
+1. WHEN Manuscript Markdown appears inside Markdown bold or italic text THEN the Extension SHALL render both the Markdown formatting and the Manuscript Markdown styling
+2. WHEN Manuscript Markdown appears inside Markdown lists THEN the Extension SHALL preserve the list structure and apply Manuscript Markdown styling
+3. WHEN Manuscript Markdown appears inside Markdown code blocks THEN the Extension SHALL treat it as literal text without applying Manuscript Markdown styling
+4. WHEN Manuscript Markdown appears inside Markdown inline code THEN the Extension SHALL treat it as literal text without applying Manuscript Markdown styling
 ****

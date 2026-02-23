@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Enhance the existing docx-to-markdown converter in the Scientific Markdown VS Code extension to handle rich formatting from OOXML documents. The converter currently extracts plain text, comments, and Zotero citations. This feature adds support for character-level formatting (bold, italic, underline, strikethrough, highlight, superscript, subscript), hyperlinks, headings (levels 1–6), and lists (bulleted and numbered).
+Enhance the existing docx-to-markdown converter in the Manuscript Markdown VS Code extension to handle rich formatting from OOXML documents. The converter currently extracts plain text, comments, and Zotero citations. This feature adds support for character-level formatting (bold, italic, underline, strikethrough, highlight, superscript, subscript), hyperlinks, headings (levels 1–6), and lists (bulleted and numbered).
 
 ## Glossary
 
@@ -151,7 +151,7 @@ Enhance the existing docx-to-markdown converter in the Scientific Markdown VS Co
 
 #### Acceptance Criteria
 
-1. THE Extension SHALL register a `scimark.formatHighlight` command that wraps the selected text in `==` delimiters (producing `==text==`).
+1. THE Extension SHALL register a `manuscript-markdown.formatHighlight` command that wraps the selected text in `==` delimiters (producing `==text==`).
 2. THE Extension SHALL add the `formatHighlight` command to the `markdown.formatting` submenu in both the editor title bar and the editor context menu, placed after Underline in the `1_format` group.
 3. WHEN no text is selected, THE Extension SHALL expand the selection to the word at the cursor position before applying highlight formatting, consistent with other formatting commands.
 
@@ -161,8 +161,8 @@ Enhance the existing docx-to-markdown converter in the Scientific Markdown VS Co
 
 #### Acceptance Criteria
 
-1. THE Extension SHALL add a TextMate grammar pattern to `syntaxes/scimark.json` that matches `==…==` (the formatting highlight syntax, distinct from CriticMarkup `{==…==}`).
-2. THE TextMate grammar pattern SHALL assign a scope name that produces a visually distinct style (e.g. `markup.highlight.scimark`).
+1. THE Extension SHALL add a TextMate grammar pattern to `syntaxes/manuscript-markdown.json` that matches `==…==` (the formatting highlight syntax, distinct from CriticMarkup `{==…==}`).
+2. THE TextMate grammar pattern SHALL assign a scope name that produces a visually distinct style (e.g. `markup.highlight.manuscript-markdown`).
 3. THE TextMate grammar pattern SHALL NOT match CriticMarkup highlight syntax `{==…==}`, which is handled by the existing `highlight` pattern.
 
 ### Requirement 16: Highlight Preview Rendering

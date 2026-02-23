@@ -165,7 +165,7 @@ Boolean toggles use bare elements (no `w:val` attribute) for true, and are omitt
 | `{==text==}{>>author (date): comment<<}` | `<w:commentRangeStart/>` ... text runs ... `<w:commentRangeEnd/><w:r><w:commentReference/></w:r>` + entry in `word/comments.xml` |
 | `{>>comment<<}` (standalone) | Zero-width comment anchor at position |
 
-Author attribution is parsed from the comment text when present (`author (ISO-date): comment`). When absent, falls back to the configured `scimark.authorName` setting or OS username, with current timestamp.
+Author attribution is parsed from the comment text when present (`author (ISO-date): comment`). When absent, falls back to the configured `manuscriptMarkdown.authorName` setting or OS username, with current timestamp.
 
 ### Pandoc Citation → OOXML Mapping
 

@@ -289,7 +289,7 @@ function taskListRule(state: any): void {
 /**
  * Defines a Manuscript Markdown pattern configuration
  */
-interface scimarkPattern {
+interface manuscriptMarkdownPattern {
   name: string;           // Pattern identifier (e.g., 'addition', 'deletion')
   regex: RegExp;          // Regular expression to match the pattern
   cssClass: string;       // CSS class to apply to rendered HTML
@@ -300,35 +300,35 @@ interface scimarkPattern {
  * Pattern configurations for all five Manuscript Markdown types
  * Note: Using .*? instead of .+? to allow empty patterns
  */
-const patterns: scimarkPattern[] = [
+const patterns: manuscriptMarkdownPattern[] = [
   { 
     name: 'addition', 
     regex: /\{\+\+(.*?)\+\+\}/gs, 
-    cssClass: 'scimark-addition', 
+    cssClass: 'manuscript-markdown-addition', 
     htmlTag: 'ins' 
   },
   { 
     name: 'deletion', 
     regex: /\{--(.*?)--\}/gs, 
-    cssClass: 'scimark-deletion', 
+    cssClass: 'manuscript-markdown-deletion', 
     htmlTag: 'del' 
   },
   { 
     name: 'substitution', 
     regex: /\{~~(.*?)~>(.*?)~~\}/gs, 
-    cssClass: 'scimark-substitution', 
+    cssClass: 'manuscript-markdown-substitution', 
     htmlTag: 'span' 
   },
   { 
     name: 'comment', 
     regex: /\{>>(.*?)<<\}/gs, 
-    cssClass: 'scimark-comment', 
+    cssClass: 'manuscript-markdown-comment', 
     htmlTag: 'span' 
   },
   { 
     name: 'highlight', 
     regex: /\{==(.*?)==\}/gs, 
-    cssClass: 'scimark-highlight', 
+    cssClass: 'manuscript-markdown-highlight', 
     htmlTag: 'mark' 
   }
 ];
@@ -378,7 +378,7 @@ function addInlineContent(state: StateInline, content: string): void {
  * @param silent - Whether to only check without creating tokens
  * @returns true if a Manuscript Markdown block was found and processed
  */
-function scimarkBlock(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
+function manuscriptMarkdownBlock(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
   const pos = state.bMarks[startLine] + state.tShift[startLine];
   const max = state.eMarks[startLine];
   
@@ -502,7 +502,7 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
         // parse bounds and the identifier matches [a-z0-9](?:[a-z0-9-]*[a-z0-9])? (no
         // leading/trailing -); otherwise keep as literal text so adjacent CriticMarkup
         // (e.g. {--…--}) is not swallowed as a color suffix.
-        let cssClass = 'scimark-format-highlight';
+        let cssClass = 'manuscript-markdown-format-highlight';
         let endPos = pos + 2;
         let hasColorSuffix = false;
         if (pos + 2 < max && src.charCodeAt(pos + 2) === 0x7B /* { */) {
@@ -512,22 +512,22 @@ function parseFormatHighlight(state: StateInline, silent: boolean): boolean {
             if (/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(colorId)) {
               hasColorSuffix = true;
               if (VALID_COLOR_IDS.includes(colorId)) {
-                cssClass = 'scimark-format-highlight scimark-highlight-' + colorId;
+                cssClass = 'manuscript-markdown-format-highlight manuscript-markdown-highlight-' + colorId;
               } else {
                 const defaultColor = resolveDefaultColor();
                 if (defaultColor !== 'yellow') {
-                  cssClass = 'scimark-format-highlight scimark-highlight-' + defaultColor;
+                  cssClass = 'manuscript-markdown-format-highlight manuscript-markdown-highlight-' + defaultColor;
                 }
               }
               endPos = closeBrace + 1;
             }
           }
         }
-        if (!hasColorSuffix && cssClass === 'scimark-format-highlight') {
+        if (!hasColorSuffix && cssClass === 'manuscript-markdown-format-highlight') {
           // Apply configurable default color only for ==text== without color suffix
           const defaultColor = resolveDefaultColor();
           if (defaultColor !== 'yellow') {
-            cssClass = 'scimark-format-highlight scimark-highlight-' + defaultColor;
+            cssClass = 'manuscript-markdown-format-highlight manuscript-markdown-highlight-' + defaultColor;
           }
         }
         tokenOpen.attrSet('class', cssClass);
@@ -583,7 +583,7 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
       if (!silent) {
         const content = src.slice(start + 3, endPos);
         const tokenOpen = state.push('manuscript_markdown_addition_open', 'ins', 1);
-        tokenOpen.attrSet('class', 'scimark-addition');
+        tokenOpen.attrSet('class', 'manuscript-markdown-addition');
         
         // Add parsed inline content to allow nested Markdown processing
         addInlineContent(state, content);
@@ -603,7 +603,7 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
       if (!silent) {
         const content = src.slice(start + 3, endPos);
         const tokenOpen = state.push('manuscript_markdown_deletion_open', 'del', 1);
-        tokenOpen.attrSet('class', 'scimark-deletion');
+        tokenOpen.attrSet('class', 'manuscript-markdown-deletion');
         
         // Add parsed inline content to allow nested Markdown processing
         addInlineContent(state, content);
@@ -628,11 +628,11 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
           const newText = fullContent.slice(separatorPos + 2);
           
           const tokenOpen = state.push('manuscript_markdown_substitution_open', 'span', 1);
-          tokenOpen.attrSet('class', 'scimark-substitution');
+          tokenOpen.attrSet('class', 'manuscript-markdown-substitution');
           
           // Old text with deletion styling
           const tokenOldOpen = state.push('manuscript_markdown_substitution_old_open', 'del', 1);
-          tokenOldOpen.attrSet('class', 'scimark-deletion');
+          tokenOldOpen.attrSet('class', 'manuscript-markdown-deletion');
           
           // Add parsed inline content to allow nested Markdown processing
           addInlineContent(state, oldText);
@@ -641,7 +641,7 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
           
           // New text with addition styling
           const tokenNewOpen = state.push('manuscript_markdown_substitution_new_open', 'ins', 1);
-          tokenNewOpen.attrSet('class', 'scimark-addition');
+          tokenNewOpen.attrSet('class', 'manuscript-markdown-addition');
           
           // Add parsed inline content to allow nested Markdown processing
           addInlineContent(state, newText);
@@ -670,7 +670,7 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
             const id = src.slice(start + 2, idEnd);
             const content = src.slice(idEnd + 2, endPos);
             const tokenOpen = state.push('manuscript_markdown_comment_open', 'span', 1);
-            tokenOpen.attrSet('class', 'scimark-comment');
+            tokenOpen.attrSet('class', 'manuscript-markdown-comment');
             tokenOpen.meta = { id, commentText: content };
             addInlineContent(state, content);
             state.push('manuscript_markdown_comment_close', 'span', -1);
@@ -684,7 +684,7 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
         if (!silent) {
           const id = src.slice(start + 2, idEnd);
           const token = state.push('manuscript_markdown_range_marker', 'span', 0);
-          token.attrSet('class', 'scimark-range-marker');
+          token.attrSet('class', 'manuscript-markdown-range-marker');
           token.meta = { id, type: 'start' };
         }
         state.pos = idEnd + 1;
@@ -701,7 +701,7 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
       if (!silent) {
         const id = src.slice(start + 2, idEnd);
         const token = state.push('manuscript_markdown_range_marker', 'span', 0);
-        token.attrSet('class', 'scimark-range-marker');
+        token.attrSet('class', 'manuscript-markdown-range-marker');
         token.meta = { id, type: 'end' };
       }
       state.pos = idEnd + 1;
@@ -716,7 +716,7 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
       if (!silent) {
         const content = src.slice(start + 3, endPos);
         const tokenOpen = state.push('manuscript_markdown_comment_open', 'span', 1);
-        tokenOpen.attrSet('class', 'scimark-comment');
+        tokenOpen.attrSet('class', 'manuscript-markdown-comment');
         tokenOpen.meta = { commentText: content };
 
         // Add parsed inline content to allow nested Markdown processing
@@ -737,7 +737,7 @@ function parseManuscriptMarkdown(state: StateInline, silent: boolean): boolean {
       if (!silent) {
         const content = src.slice(start + 3, endPos);
         const tokenOpen = state.push('manuscript_markdown_highlight_open', 'mark', 1);
-        tokenOpen.attrSet('class', 'scimark-highlight');
+        tokenOpen.attrSet('class', 'manuscript-markdown-highlight');
         
         // Add parsed inline content to allow nested Markdown processing
         addInlineContent(state, content);
@@ -807,7 +807,7 @@ function associateCommentsRule(state: any): void {
             child.type = 'manuscript_markdown_comment_range_open';
             child.tag = 'span';
             child.nesting = 1;
-            child.attrSet('class', 'scimark-comment-range');
+            child.attrSet('class', 'manuscript-markdown-comment-range');
             child.attrSet('data-comment', commentText);
           } else if (child.meta.type === 'end') {
             child.type = 'manuscript_markdown_comment_range_close';
@@ -907,7 +907,7 @@ function paraPlaceholderRule(state: StateInline, silent: boolean): boolean {
  * Main plugin function that registers Manuscript Markdown parsing with markdown-it
  * @param md - The MarkdownIt instance to extend
  */
-export function scimarkPlugin(md: MarkdownIt): void {
+export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
   // Preprocess source before block parsing to handle multi-paragraph CriticMarkup
   md.core.ruler.before('normalize', 'manuscript_markdown_preprocess', (state: any) => {
     state.src = preprocessCriticMarkup(wrapBareLatexEnvironments(state.src));
@@ -915,7 +915,7 @@ export function scimarkPlugin(md: MarkdownIt): void {
 
   // Register the block-level rule to handle multi-line patterns with empty lines
   // This must run very early, before heading and paragraph parsing
-  md.block.ruler.before('heading', 'manuscript_markdown_block', scimarkBlock);
+  md.block.ruler.before('heading', 'manuscript_markdown_block', manuscriptMarkdownBlock);
 
   // Register inline rule for paragraph placeholder (before other inline rules)
   md.inline.ruler.before('emphasis', 'para_placeholder', paraPlaceholderRule);
@@ -978,7 +978,7 @@ export function scimarkPlugin(md: MarkdownIt): void {
   // Renderer for ==highlight== patterns
   md.renderer.rules['manuscript_markdown_format_highlight_open'] = (tokens, idx) => {
     const token = tokens[idx];
-    const className = token.attrGet('class') || 'scimark-format-highlight';
+    const className = token.attrGet('class') || 'manuscript-markdown-format-highlight';
     const dataComment = token.attrGet('data-comment');
     let attrs = `class="${className}"`;
     if (dataComment) {
@@ -999,7 +999,7 @@ export function scimarkPlugin(md: MarkdownIt): void {
   // Renderers for ID-based comment ranges (range markers with matching comments)
   md.renderer.rules['manuscript_markdown_comment_range_open'] = (tokens, idx) => {
     const token = tokens[idx];
-    const className = token.attrGet('class') || 'scimark-comment-range';
+    const className = token.attrGet('class') || 'manuscript-markdown-comment-range';
     const dataComment = token.attrGet('data-comment');
     let attrs = `class="${className}"`;
     if (dataComment) {
@@ -1016,7 +1016,7 @@ export function scimarkPlugin(md: MarkdownIt): void {
   md.renderer.rules['manuscript_markdown_comment_indicator'] = (tokens, idx) => {
     const token = tokens[idx];
     const dataComment = token.attrGet('data-comment') || '';
-    return `<span class="scimark-comment-indicator" data-comment="${escapeHtmlAttr(dataComment)}"></span>`;
+    return `<span class="manuscript-markdown-comment-indicator" data-comment="${escapeHtmlAttr(dataComment)}"></span>`;
   };
 
   // GFM disallowed raw HTML tags must be rendered as escaped text, not live HTML.

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Implement colored highlight support for the Scientific Markdown VS Code extension. The work proceeds bottom-up: shared color map → formatting function → preview rendering → editor decorations → toolbar/menu reorganization → TextMate grammar → navigation support → configuration setting.
+Implement colored highlight support for the Manuscript Markdown VS Code extension. The work proceeds bottom-up: shared color map → formatting function → preview rendering → editor decorations → toolbar/menu reorganization → TextMate grammar → navigation support → configuration setting.
 
 ## Tasks
 
@@ -24,10 +24,10 @@ Implement colored highlight support for the Scientific Markdown VS Code extensio
     - _Requirements: 1.4, 2.4_
 
 - [x] 3. Update preview rendering
-  - [x] 3.1 Update `src/preview/scimark-plugin.ts` to parse `==text=={color}` syntax
+  - [x] 3.1 Update `src/preview/manuscript-markdown-plugin.ts` to parse `==text=={color}` syntax
     - Extend `parseFormatHighlight` to detect optional `{color}` suffix after closing `==`
-    - Apply CSS class `scimark-format-highlight scimark-highlight-{color}` for valid colors
-    - For unrecognized colors, fall back to configured default color; if unresolved, fall back to `scimark-format-highlight` (yellow/amber)
+    - Apply CSS class `manuscript-markdown-format-highlight manuscript-markdown-highlight-{color}` for valid colors
+    - For unrecognized colors, fall back to configured default color; if unresolved, fall back to `manuscript-markdown-format-highlight` (yellow/amber)
     - Import `VALID_COLOR_IDS` from `highlight-colors.ts`
     - _Requirements: 2.1, 3.1, 3.2, 3.4_
 
@@ -35,11 +35,11 @@ Implement colored highlight support for the Scientific Markdown VS Code extensio
     - Change the CSS class or styling for `{==text==}` to use Comment_Gray background
     - _Requirements: 3.3, 5.3_
 
-  - [x] 3.3 Add color CSS classes to `media/scimark.css`
-    - Add `.scimark-highlight-{color}` class for each of the 14 colors with light-theme rgba values
+  - [x] 3.3 Add color CSS classes to `media/manuscript-markdown.css`
+    - Add `.manuscript-markdown-highlight-{color}` class for each of the 14 colors with light-theme rgba values
     - Add `@media (prefers-color-scheme: dark)` overrides with dark-theme rgba values for each color
-    - Update `.scimark-highlight` (CriticMarkup) to use Comment_Gray background with light/dark theme variants
-    - Keep `.scimark-format-highlight` as existing yellow/amber default (already theme-aware via CSS variables)
+    - Update `.manuscript-markdown-highlight` (CriticMarkup) to use Comment_Gray background with light/dark theme variants
+    - Keep `.manuscript-markdown-format-highlight` as existing yellow/amber default (already theme-aware via CSS variables)
     - Bright colors get higher opacity on light, lower on dark; dark colors get the inverse
     - _Requirements: 3.1, 3.2, 3.3, 3.5, 3.6, 5.1_
 
@@ -64,7 +64,7 @@ Implement colored highlight support for the Scientific Markdown VS Code extensio
     - For CriticMarkup: `{ light: { backgroundColor: CRITIC_HIGHLIGHT_DECORATION.light }, dark: { backgroundColor: CRITIC_HIGHLIGHT_DECORATION.dark } }`
     - Implement `updateHighlightDecorations(editor)` function that scans document text, groups matches by color, and applies decorations
     - Register `onDidChangeActiveTextEditor` and `onDidChangeTextDocument` listeners to trigger updates
-    - For default highlights (`==text==`), read `scimark.defaultHighlightColor` setting to determine color
+    - For default highlights (`==text==`), read `manuscriptMarkdown.defaultHighlightColor` setting to determine color
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 8.3_
 
   - [x]* 5.2 Write property test for highlight range extraction (Property 6)
@@ -73,7 +73,7 @@ Implement colored highlight support for the Scientific Markdown VS Code extensio
 
 - [x] 6. Update toolbar and menu structure
   - [x] 6.1 Add 14 color commands to `package.json` contributes.commands
-    - One command per color: `scimark.formatHighlight_{color}` with title matching the color name
+    - One command per color: `manuscript-markdown.formatHighlight_{color}` with title matching the color name
     - _Requirements: 1.3, 1.4_
 
   - [x] 6.2 Add `markdown.highlightColor` submenu to `package.json` contributes.submenus
@@ -81,18 +81,18 @@ Implement colored highlight support for the Scientific Markdown VS Code extensio
     - _Requirements: 1.2_
 
   - [x] 6.3 Reorganize `markdown.formatting` menu in `package.json`
-    - Move `scimark.formatHighlight` from `1_format` group to new `1a_highlight` group
+    - Move `manuscript-markdown.formatHighlight` from `1_format` group to new `1a_highlight` group
     - Add `markdown.highlightColor` submenu to `1a_highlight` group
     - Add all 14 color commands to `markdown.highlightColor` submenu
     - _Requirements: 1.1, 1.2, 1.3_
 
   - [x] 6.4 Register color commands in `src/extension.ts`
-    - Loop over `VALID_COLOR_IDS` and register `scimark.formatHighlight_{color}` commands
+    - Loop over `VALID_COLOR_IDS` and register `manuscript-markdown.formatHighlight_{color}` commands
     - Each command calls `applyFormatting` with `wrapColoredHighlight`
     - _Requirements: 1.4_
 
 - [x] 7. Update TextMate grammar
-  - [x] 7.1 Add colored highlight pattern to `syntaxes/scimark.json`
+  - [x] 7.1 Add colored highlight pattern to `syntaxes/manuscript-markdown.json`
     - Add `colored_format_highlight` pattern before `format_highlight` in the patterns array
     - Match `==text=={color}` with captures for content and color suffix
     - _Requirements: 6.1, 6.2_
@@ -110,7 +110,7 @@ Implement colored highlight support for the Scientific Markdown VS Code extensio
     - **Validates: Requirements 7.2**
 
 - [x] 9. Add configurable default highlight color setting
-  - [x] 9.1 Add `scimark.defaultHighlightColor` to `package.json` contributes.configuration
+  - [x] 9.1 Add `manuscriptMarkdown.defaultHighlightColor` to `package.json` contributes.configuration
     - Type: string enum with all 14 color identifiers
     - Default: "yellow"
     - _Requirements: 8.1, 8.4_

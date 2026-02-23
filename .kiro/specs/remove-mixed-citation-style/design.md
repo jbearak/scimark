@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design covers the complete removal of the `scimark.mixedCitationStyle` setting from the Scientific Markdown extension. The setting was introduced to control how mixed Zotero/non-Zotero grouped citations render — `"separate"` (each portion in its own parentheses) vs `"unified"` (one set of parentheses). After the Zotero citation mismatch fix (PR #113), non-Zotero entries use string IDs and synthetic URIs, making unified style always work correctly. Additionally, the setting was non-functional — the converter always produced unified output regardless of the setting value.
+This design covers the complete removal of the `manuscriptMarkdown.mixedCitationStyle` setting from the Manuscript Markdown extension. The setting was introduced to control how mixed Zotero/non-Zotero grouped citations render — `"separate"` (each portion in its own parentheses) vs `"unified"` (one set of parentheses). After the Zotero citation mismatch fix (PR #113), non-Zotero entries use string IDs and synthetic URIs, making unified style always work correctly. Additionally, the setting was non-functional — the converter always produced unified output regardless of the setting value.
 
 The removal touches seven areas: VS Code setting definition (`package.json`), converter API (`src/md-to-docx.ts`), extension host code (`src/extension.ts`), CLI (`src/cli.ts`), tests, documentation, and internal comments.
 
@@ -29,7 +29,7 @@ Key observation: `mixedCitationStyle` is declared in `MdToDocxOptions` but never
 
 | File | Change | Rationale |
 |------|--------|-----------|
-| `package.json` | Remove `scimark.mixedCitationStyle` from `contributes.configuration` | Req 1 |
+| `package.json` | Remove `manuscriptMarkdown.mixedCitationStyle` from `contributes.configuration` | Req 1 |
 | `src/md-to-docx.ts` | Remove `mixedCitationStyle` property from `MdToDocxOptions` interface | Req 2 |
 | `src/extension.ts` | Remove `config.get('mixedCitationStyle', ...)` call and stop passing it to `convertMdToDocx` | Req 3 |
 | `src/cli.ts` | Remove from `CliOptions` interface, `parseArgs` defaults, flag parsing, `showHelp`, and `runMdToDocx` passthrough | Req 4 |
@@ -85,7 +85,7 @@ This is a removal spec. Most acceptance criteria verify the absence of code, typ
 
 No new error handling is introduced. The only behavioral change is that the CLI argument parser will now reject `--mixed-citation-style` as an unknown flag (the existing `Unknown option` error path handles this automatically once the flag parsing code is removed).
 
-Users who have `scimark.mixedCitationStyle` in their VS Code `settings.json` will see no error — VS Code silently ignores unknown settings. The setting simply becomes inert.
+Users who have `manuscriptMarkdown.mixedCitationStyle` in their VS Code `settings.json` will see no error — VS Code silently ignores unknown settings. The setting simply becomes inert.
 
 ## Testing Strategy
 

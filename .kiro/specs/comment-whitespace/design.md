@@ -2,14 +2,14 @@
 
 ## Overview
 
-CriticMarkup comments (`{>>comment<<}`) fail to associate with a preceding CriticMarkup element when whitespace separates them (e.g., `{==text==} {>>comment<<}`). The `associateCommentsRule` Pass 3 in `src/preview/scimark-plugin.ts` checks only the immediately preceding token in the rebuilt `newChildren` array for a CriticMarkup close type. When whitespace exists between the element and comment, markdown-it's inline parser produces a `text` token containing the space, which becomes the immediate predecessor. The fix will look back past whitespace-only text tokens to find the CriticMarkup close token.
+CriticMarkup comments (`{>>comment<<}`) fail to associate with a preceding CriticMarkup element when whitespace separates them (e.g., `{==text==} {>>comment<<}`). The `associateCommentsRule` Pass 3 in `src/preview/manuscript-markdown-plugin.ts` checks only the immediately preceding token in the rebuilt `newChildren` array for a CriticMarkup close type. When whitespace exists between the element and comment, markdown-it's inline parser produces a `text` token containing the space, which becomes the immediate predecessor. The fix will look back past whitespace-only text tokens to find the CriticMarkup close token.
 
 ## Glossary
 
 - **Bug_Condition (C)**: A CriticMarkup comment token is preceded by a whitespace-only text token that itself is preceded by a CriticMarkup close token in the `newChildren` array
 - **Property (P)**: The comment text is associated with the preceding element via `data-comment` on its open token, identical to the no-whitespace case
 - **Preservation**: All existing behavior for directly-adjacent comments, standalone comments, ID-based comments, empty comments, non-whitespace-separated comments, and mouse/keyboard interactions must remain unchanged
-- **associateCommentsRule**: The core rule in `scimark-plugin.ts` that post-processes inline tokens to associate comment tokens with annotated elements
+- **associateCommentsRule**: The core rule in `manuscript-markdown-plugin.ts` that post-processes inline tokens to associate comment tokens with annotated elements
 - **isCriticMarkupClose**: Helper that checks if a token type is a CriticMarkup or format highlight close token
 - **newChildren**: The rebuilt token array in Pass 3 where tokens are accumulated and comments are processed
 
@@ -100,7 +100,7 @@ _For any_ inline token sequence where a CriticMarkup comment is either directly 
 
 Assuming our root cause analysis is correct:
 
-**File**: `src/preview/scimark-plugin.ts`
+**File**: `src/preview/manuscript-markdown-plugin.ts`
 
 **Function**: `associateCommentsRule` — Pass 3 comment association logic
 
@@ -138,7 +138,7 @@ The testing strategy follows a two-phase approach: first, surface counterexample
 
 **Expected Counterexamples**:
 - `data-comment` attribute is absent from the element's open tag
-- Comment renders as a standalone `<span class="scimark-comment-indicator">` instead
+- Comment renders as a standalone `<span class="manuscript-markdown-comment-indicator">` instead
 - Root cause confirmed: whitespace text token breaks the single-token lookback
 
 ### Fix Checking

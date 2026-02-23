@@ -1,22 +1,22 @@
-# Design Document: Multi-line Scientific Markdown Support
+# Design Document: Multi-line Manuscript Markdown Support
 
 ## Overview
 
-This design enables Scientific Markdown patterns to span multiple lines in the VS Code extension. The current implementation already has partial multi-line support in the preview plugin (using `indexOf` for end marker detection) and navigation code (using `[\s\S]+?` regex patterns), but the TextMate grammar may have limitations in how it handles multi-line patterns for syntax highlighting.
+This design enables Manuscript Markdown patterns to span multiple lines in the VS Code extension. The current implementation already has partial multi-line support in the preview plugin (using `indexOf` for end marker detection) and navigation code (using `[\s\S]+?` regex patterns), but the TextMate grammar may have limitations in how it handles multi-line patterns for syntax highlighting.
 
 The solution involves:
 1. Verifying and potentially updating the TextMate grammar to ensure proper multi-line matching
 2. Ensuring the navigation commands correctly handle multi-line patterns
 3. Confirming the preview plugin properly renders multi-line patterns
-4. Adding comprehensive tests to validate multi-line behavior across all five Scientific Markdown pattern types
+4. Adding comprehensive tests to validate multi-line behavior across all five Manuscript Markdown pattern types
 
 ## Architecture
 
 The extension has three main components that need to support multi-line patterns:
 
-1. **TextMate Grammar** (`syntaxes/scimark.json`): Provides syntax highlighting through pattern injection into Markdown documents
-2. **Navigation Module** (`src/changes.ts`): Finds and navigates between Scientific Markdown patterns using regex
-3. **Preview Plugin** (`src/preview/scimark-plugin.ts`): Renders Scientific Markdown in the Markdown preview using markdown-it
+1. **TextMate Grammar** (`syntaxes/manuscript-markdown.json`): Provides syntax highlighting through pattern injection into Markdown documents
+2. **Navigation Module** (`src/changes.ts`): Finds and navigates between Manuscript Markdown patterns using regex
+3. **Preview Plugin** (`src/preview/manuscript-markdown-plugin.ts`): Renders Manuscript Markdown in the Markdown preview using markdown-it
 
 ### Current State Analysis
 
@@ -80,7 +80,7 @@ Or use `contentName` to apply the scope to all content:
 {
   "begin": "\\{\\+\\+",
   "end": "\\+\\+\\}",
-  "name": "markup.inserted.scimark",
+  "name": "markup.inserted.manuscript-markdown",
   "contentName": "markup.inserted"
 }
 ```
@@ -90,7 +90,7 @@ Or use `contentName` to apply the scope to all content:
 The `changes.ts` module exports:
 
 ```typescript
-// Get all Scientific Markdown pattern matches in a document
+// Get all Manuscript Markdown pattern matches in a document
 export function getAllMatches(document: vscode.TextDocument): vscode.Range[]
 
 // Navigate to next pattern
@@ -120,13 +120,13 @@ The inline parsing function uses `indexOf` to find end markers, which works acro
 2. **Escape empty lines**: Pre-process to protect empty lines within patterns
 3. **Custom tokenization**: Use a more sophisticated tokenization strategy that preserves pattern boundaries
 
-The most robust solution is to add a block-level rule that identifies Scientific Markdown patterns before markdown-it's paragraph parser splits them up.
+The most robust solution is to add a block-level rule that identifies Manuscript Markdown patterns before markdown-it's paragraph parser splits them up.
 
 ## Data Models
 
 ### Pattern Match Range
 
-A Scientific Markdown pattern match is represented as a `vscode.Range`:
+A Manuscript Markdown pattern match is represented as a `vscode.Range`:
 
 ```typescript
 interface Range {
@@ -139,7 +139,7 @@ For multi-line patterns, `start.line` will be less than `end.line`.
 
 ### Pattern Types
 
-All five Scientific Markdown patterns need multi-line support:
+All five Manuscript Markdown patterns need multi-line support:
 
 1. **Addition**: `{++text++}` - Marks inserted text
 2. **Deletion**: `{--text--}` - Marks removed text
@@ -154,35 +154,35 @@ Correctness Properties
 
 After analyzing the acceptance criteria, we identified that syntax highlighting (requirements 1.2, 2.2, 3.2, 4.2, 5.2) and performance requirements (6.1, 6.2, 6.3) are not suitable for property-based testing. Syntax highlighting is a visual rendering concern controlled by VS Code's TextMate engine, and performance testing requires different methodologies than property-based testing.
 
-The testable requirements fall into three categories: pattern recognition, navigation, and preview rendering. Rather than creating separate properties for each of the five Scientific Markdown types, we consolidate them into comprehensive properties that test all types together.
+The testable requirements fall into three categories: pattern recognition, navigation, and preview rendering. Rather than creating separate properties for each of the five Manuscript Markdown types, we consolidate them into comprehensive properties that test all types together.
 
 ### Property 1: Multi-line pattern recognition
 
-*For any* Scientific Markdown pattern type (addition, deletion, substitution, comment, or highlight) and any text content containing newlines, when that content is wrapped in the appropriate pattern markers, the getAllMatches function should return a range that encompasses the entire pattern from opening marker to closing marker.
+*For any* Manuscript Markdown pattern type (addition, deletion, substitution, comment, or highlight) and any text content containing newlines, when that content is wrapped in the appropriate pattern markers, the getAllMatches function should return a range that encompasses the entire pattern from opening marker to closing marker.
 
 **Validates: Requirements 1.1, 2.1, 3.1, 4.1, 5.1**
 
 ### Property 2: Multi-line navigation correctness
 
-*For any* document containing one or more multi-line Scientific Markdown patterns, when calling the next() or prev() navigation functions, the selected range should correspond to a complete Scientific Markdown pattern (from opening to closing marker) and should include all lines spanned by that pattern.
+*For any* document containing one or more multi-line Manuscript Markdown patterns, when calling the next() or prev() navigation functions, the selected range should correspond to a complete Manuscript Markdown pattern (from opening to closing marker) and should include all lines spanned by that pattern.
 
 **Validates: Requirements 1.3, 2.3, 3.3, 4.3, 5.3**
 
 ### Property 3: Multi-line preview rendering
 
-*For any* Scientific Markdown pattern type and any text content containing newlines (including empty lines), when that pattern is rendered through the markdown-it plugin, the output HTML should contain the appropriate HTML tag (ins, del, span, or mark) with the correct CSS class, and the content should be preserved including all newline characters and empty lines.
+*For any* Manuscript Markdown pattern type and any text content containing newlines (including empty lines), when that pattern is rendered through the markdown-it plugin, the output HTML should contain the appropriate HTML tag (ins, del, span, or mark) with the correct CSS class, and the content should be preserved including all newline characters and empty lines.
 
 **Validates: Requirements 1.4, 2.4, 3.4, 4.4, 5.4, 6.2**
 
 ### Property 4: Empty line preservation
 
-*For any* Scientific Markdown pattern containing one or more empty lines, the pattern should be recognized as a single complete pattern (not split at empty lines), and all components (navigation, preview rendering) should treat it as a single unit preserving all empty lines.
+*For any* Manuscript Markdown pattern containing one or more empty lines, the pattern should be recognized as a single complete pattern (not split at empty lines), and all components (navigation, preview rendering) should treat it as a single unit preserving all empty lines.
 
 **Validates: Requirements 6.1, 6.2, 6.3, 6.4**
 
 ### Property 5: Mid-line multi-line pattern recognition
 
-*For any* Scientific Markdown pattern type and any text content containing newlines, when that pattern appears after other text on the same line (mid-line position), the pattern should be recognized correctly by all components (navigation, preview rendering). The position of the pattern on the line should not affect its recognition or processing.
+*For any* Manuscript Markdown pattern type and any text content containing newlines, when that pattern appears after other text on the same line (mid-line position), the pattern should be recognized correctly by all components (navigation, preview rendering). The position of the pattern on the line should not affect its recognition or processing.
 
 **Validates: Requirements 1.1, 1.3, 1.4, 2.1, 2.3, 2.4, 3.1, 3.3, 3.4, 4.1, 4.3, 4.4, 5.1, 5.3, 5.4**
 
@@ -195,7 +195,7 @@ Multi-line patterns may encounter several error conditions:
 1. **Unclosed patterns**: Pattern starts but never closes (e.g., `{++text without closing`)
    - TextMate grammar: Will not highlight beyond the line
    - Navigation: Will not match incomplete patterns
-   - Preview: Will not render as Scientific Markdown, will appear as plain text
+   - Preview: Will not render as Manuscript Markdown, will appear as plain text
 
 2. **Nested patterns**: One pattern inside another (e.g., `{++outer {--inner--}++}`)
    - Current implementation filters contained ranges
@@ -234,14 +234,14 @@ We will use **fast-check** (already a dev dependency) for property-based testing
 **Test generators needed:**
 
 1. **Multi-line text generator**: Generates strings containing newline characters
-   - Should avoid Scientific Markdown special characters (`{`, `}`, `~`, `>`, `<`, `=`, `+`, `-`)
+   - Should avoid Manuscript Markdown special characters (`{`, `}`, `~`, `>`, `<`, `=`, `+`, `-`)
    - Should generate varying numbers of lines (1-10)
    - Should include edge cases like empty lines, whitespace-only lines
 
-2. **Pattern type generator**: Generates one of the five Scientific Markdown pattern types
+2. **Pattern type generator**: Generates one of the five Manuscript Markdown pattern types
    - Returns pattern configuration (opening marker, closing marker, HTML tag, CSS class)
 
-3. **Document generator**: Generates complete Markdown documents with multiple Scientific Markdown patterns
+3. **Document generator**: Generates complete Markdown documents with multiple Manuscript Markdown patterns
    - Mixes single-line and multi-line patterns
    - Includes plain text between patterns
    - Varies pattern types
@@ -249,7 +249,7 @@ We will use **fast-check** (already a dev dependency) for property-based testing
 **Property test implementations:**
 
 Each property-based test will be tagged with a comment explicitly referencing the correctness property:
-- Format: `// Feature: multiline-scimark-support, Property {number}: {property_text}`
+- Format: `// Feature: multiline-manuscript-markdown-support, Property {number}: {property_text}`
 
 1. **Property 1 test**: Generate random multi-line text and pattern types, wrap text in markers, call getAllMatches, verify returned range covers entire pattern
 2. **Property 2 test**: Generate random documents with multi-line patterns, call navigation functions, verify selected ranges are complete patterns
@@ -289,12 +289,12 @@ The current grammar does NOT support multi-line matching in VS Code. We need to:
 The preview plugin needs to handle empty lines within patterns:
 
 1. **Add block-level rule**: Register a rule that runs before paragraph parsing
-2. **Priority ordering**: Ensure Scientific Markdown patterns are identified before markdown-it splits on empty lines
+2. **Priority ordering**: Ensure Manuscript Markdown patterns are identified before markdown-it splits on empty lines
 3. **Preserve content**: Ensure all content including empty lines is preserved in the output
 
 ### Mid-line Multi-line Pattern Limitation
 
-**Issue**: The `manuscriptMarkdownBlock` function only detects patterns that start at the beginning of a line. It checks the first 3 characters of each line and returns false if they don't match a Scientific Markdown opening marker.
+**Issue**: The `manuscriptMarkdownBlock` function only detects patterns that start at the beginning of a line. It checks the first 3 characters of each line and returns false if they don't match a Manuscript Markdown opening marker.
 
 **Impact**: Multi-line patterns that start mid-line (e.g., `Some text {++multi\nline++}`) are not fully supported:
 - ✅ **Navigation commands work correctly** - The regex-based pattern matching in `changes.ts` handles mid-line patterns

@@ -1,6 +1,6 @@
 # Writing Research Papers
 
-Scientific Markdown lets you write and revise papers in plain text while collaborating with colleagues who expect to use Word to comment on or suggest edits — and keep your work tracked in a Git repository.
+Manuscript Markdown lets you write and revise papers in plain text while collaborating with colleagues who expect to use Word to comment on or suggest edits — and keep your work tracked in a Git repository.
 
 ## Document Structure
 

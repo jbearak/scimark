@@ -11,18 +11,22 @@ describe('Toolbar Configuration Property-Based Tests', () => {
     return JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
   };
 
-  // Helper to get Scientific Markdown-related toolbar entries
+  // Helper to get Manuscript Markdown-related toolbar entries
   const getManuscriptMarkdownToolbarEntries = (packageJson: any) => {
     const editorTitleMenu = packageJson.contributes?.menus?.['editor/title'] || [];
     
     return editorTitleMenu.filter((entry: any) => {
-      // Check if it's a Scientific Markdown command
+      // Only include entries with the markdown-editor when clause
+      if (entry.when !== 'editorLangId == markdown && !isInDiffEditor') {
+        return false;
+      }
+      // Check if it's a Manuscript Markdown command
       if (entry.command && entry.command.startsWith('manuscript-markdown.')) {
         return true;
       }
       // Check if it's a markdown submenu (annotations or formatting)
       if (entry.submenu && (
-        entry.submenu === 'markdown.annotations' || 
+        entry.submenu === 'markdown.annotations' ||
         entry.submenu === 'markdown.formatting'
       )) {
         return true;
@@ -40,7 +44,7 @@ describe('Toolbar Configuration Property-Based Tests', () => {
    * markdown files outside diff editor mode.
    */
   describe('Property 1: Toolbar button visibility configuration', () => {
-    it('should validate when clause for all Scientific Markdown toolbar entries', () => {
+    it('should validate when clause for all Manuscript Markdown toolbar entries', () => {
       fc.assert(
         fc.property(
           fc.constant(loadPackageJson()),
@@ -88,11 +92,11 @@ describe('Toolbar Configuration Property-Based Tests', () => {
    * Feature: editor-toolbar-buttons, Property 2: Button grouping and ordering
    * Validates: Requirements 3.1, 3.2
    * 
-   * For the two Scientific Markdown toolbar buttons (formatting submenu, annotations submenu),
+   * For the two Manuscript Markdown toolbar buttons (formatting submenu, annotations submenu),
    * they should be in the navigation group and ordered as: formatting (@1), annotations (@2)
    */
   describe('Property 2: Button grouping and ordering', () => {
-    it('should validate navigation group and ordering for all Scientific Markdown toolbar entries', () => {
+    it('should validate navigation group and ordering for all Manuscript Markdown toolbar entries', () => {
       fc.assert(
         fc.property(
           fc.constant(loadPackageJson()),

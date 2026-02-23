@@ -2,27 +2,27 @@
 
 ## Overview
 
-CriticMarkup syntax and Scientific Markdown extensions (format highlights, citations) are incorrectly parsed, decorated, and acted upon inside code regions (inline code spans and fenced code blocks). Code regions are inert zones in Markdown — their content is literal text and no markup should be interpreted within them. This fix adds code-region awareness to five subsystems: editor decorations/navigation, preview rendering, MD→DOCX conversion, DOCX→MD conversion, and the LSP citation scanner.
+CriticMarkup syntax and Manuscript Markdown extensions (format highlights, citations) are incorrectly parsed, decorated, and acted upon inside code regions (inline code spans and fenced code blocks). Code regions are inert zones in Markdown — their content is literal text and no markup should be interpreted within them. This fix adds code-region awareness to five subsystems: editor decorations/navigation, preview rendering, MD→DOCX conversion, DOCX→MD conversion, and the LSP citation scanner.
 
 The TextMate grammar already correctly excludes CriticMarkup scopes from code regions via `injectionSelector` (requirement 3.8), so syntax highlighting is unaffected.
 
 ## Glossary
 
-- **Bug_Condition (C)**: CriticMarkup or Scientific Markdown syntax appears inside a code region (inline code span or fenced code block) and is interpreted as live markup instead of literal text
+- **Bug_Condition (C)**: CriticMarkup or Manuscript Markdown syntax appears inside a code region (inline code span or fenced code block) and is interpreted as live markup instead of literal text
 - **Property (P)**: All syntax inside code regions is treated as literal text — no decorations, no navigation stops, no preview rendering, no conversion interpretation, no LSP actions
 - **Preservation**: All behavior for syntax outside code regions must remain unchanged; CriticMarkup surrounding code spans (delimiters outside backticks) must continue to work
 - **Code Region**: Either an inline code span (backtick-delimited: `` `...` ``, ``` ``...`` ```, etc.) or a fenced code block (triple-backtick or tilde block)
 - **`extractAllDecorationRanges()`**: Single-pass char-by-char scanner in `src/highlight-colors.ts` that extracts all decoration ranges (highlights, comments, additions, deletions, substitutions, delimiters)
 - **`getAllMatches()`**: Regex-based scanner in `src/changes.ts` that finds all CriticMarkup/highlight matches for navigation
 - **`scanCitationUsages()`**: Regex-based scanner in `src/lsp/citekey-language.ts` that finds all `[@key]` citation references
-- **`manuscriptMarkdownPlugin`**: markdown-it plugin in `src/preview/scimark-plugin.ts` that renders CriticMarkup in preview
+- **`manuscriptMarkdownPlugin`**: markdown-it plugin in `src/preview/manuscript-markdown-plugin.ts` that renders CriticMarkup in preview
 - **`processInlineChildren()`**: Token processor in `src/md-to-docx.ts` that converts markdown-it inline tokens to `MdRun` objects for DOCX generation
 
 ## Bug Details
 
 ### Fault Condition
 
-The bug manifests when CriticMarkup or Scientific Markdown syntax appears inside a code region. Five subsystems fail to check whether a match position falls within a code region before acting on it.
+The bug manifests when CriticMarkup or Manuscript Markdown syntax appears inside a code region. Five subsystems fail to check whether a match position falls within a code region before acting on it.
 
 **Formal Specification:**
 ```
@@ -90,7 +90,7 @@ Based on code analysis, the root causes are:
 
 2. **`getAllMatches()` has no code-region awareness**: The combined regex in `src/changes.ts` runs against the full document text. It finds all CriticMarkup/highlight matches without filtering out those inside code regions. Navigation commands then stop on these false matches.
 
-3. **Preview plugin inline rules fire inside code content**: The markdown-it inline rules (`parseManuscriptMarkdown`, `parseFormatHighlight`) registered in `src/preview/scimark-plugin.ts` run on all inline content. While markdown-it's built-in `backtick` rule normally consumes inline code before custom rules fire, there may be edge cases where CriticMarkup delimiters interact with backtick parsing (e.g., unbalanced backticks, CriticMarkup spanning across code boundaries).
+3. **Preview plugin inline rules fire inside code content**: The markdown-it inline rules (`parseManuscriptMarkdown`, `parseFormatHighlight`) registered in `src/preview/manuscript-markdown-plugin.ts` run on all inline content. While markdown-it's built-in `backtick` rule normally consumes inline code before custom rules fire, there may be edge cases where CriticMarkup delimiters interact with backtick parsing (e.g., unbalanced backticks, CriticMarkup spanning across code boundaries).
 
 4. **DOCX→MD converter emits formatting inside code runs**: In `src/converter.ts`, `wrapWithFormatting()` applies highlight/bold/italic/strikethrough wrapping even when `fmt.code` is true. When a DOCX code run also has bold or highlight formatting, the output is e.g., `**\`code\`**` which is correct, but if the code run has CriticMarkup-triggering formatting (track changes, comments), those get emitted inside the code span. Comments whose boundaries fall inside code runs need expansion to surround the entire code span.
 
@@ -173,7 +173,7 @@ Create a utility function that computes code region ranges from document text. T
 
 ### 4. Preview Rendering — markdown-it Plugin
 
-**File**: `src/preview/scimark-plugin.ts`
+**File**: `src/preview/manuscript-markdown-plugin.ts`
 
 **Specific Changes**:
 1. **No changes needed for inline code**: markdown-it's built-in `backtick` rule runs before custom inline rules and consumes inline code content as `code_inline` tokens. Custom rules never see content inside backtick spans.

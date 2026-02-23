@@ -94,7 +94,7 @@ test('parseArgs handles defaults correctly', () => {
   expect(result.inputPath).toBe('test.md');
   expect(result.force).toBe(false);
   expect(result.citationKeyFormat).toBe('authorYearTitle');
-  expect(result.cslCacheDir).toMatch(/.scimark\/csl-cache$/);
+  expect(result.cslCacheDir).toMatch(/.manuscript-markdown\/csl-cache$/);
 });
 
 test('parseArgs throws on unknown flags', () => {

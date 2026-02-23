@@ -41,5 +41,5 @@ No workspace directory tree scanning is performed.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `scimark.enableCitekeyLanguageServer` | boolean | `true` | Enable/disable all language server features |
-| `scimark.citekeyReferencesFromMarkdown` | boolean | `false` | Include markdown usages in Find All References when invoked from a markdown file. Off by default because VS Code's built-in Markdown Language Features already reports these |
+| `manuscriptMarkdown.enableCitekeyLanguageServer` | boolean | `true` | Enable/disable all language server features |
+| `manuscriptMarkdown.citekeyReferencesFromMarkdown` | boolean | `false` | Include markdown usages in Find All References when invoked from a markdown file. Off by default because VS Code's built-in Markdown Language Features already reports these |

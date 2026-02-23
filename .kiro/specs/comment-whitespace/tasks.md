@@ -7,21 +7,21 @@
   - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
   - **GOAL**: Surface counterexamples that demonstrate the bug exists
   - **Scoped PBT Approach**: Scope the property to concrete failing cases: CriticMarkup element followed by whitespace-only characters then a non-empty, non-ID comment
-  - Add test in `src/preview/scimark-plugin.test.ts`
+  - Add test in `src/preview/manuscript-markdown-plugin.test.ts`
   - Use `fast-check` with short bounded generators (per AGENTS.md) to generate: random CriticMarkup element types (highlight, addition, deletion, substitution, format highlight), random whitespace strings (spaces/tabs, 1-5 chars), and random comment text
   - Set up markdown-it with `manuscriptMarkdownPlugin`, render input like `{==text==}<whitespace>{>>comment<<}`, and assert `data-comment` attribute appears on the element's open tag
   - The bug condition: `newChildren` has a whitespace-only text token immediately before the comment, preceded by a CriticMarkup close token
   - Expected behavior assertion: rendered HTML contains `data-comment="<commentText>"` on the element tag (e.g., `<mark`, `<ins`, `<del`, `<span`)
   - Run test on UNFIXED code
   - **EXPECTED OUTCOME**: Test FAILS (this is correct - it proves the bug exists, comment renders as standalone indicator instead of associating)
-  - Document counterexamples found: `data-comment` attribute absent, comment renders as `<span class="scimark-comment-indicator">` instead
+  - Document counterexamples found: `data-comment` attribute absent, comment renders as `<span class="manuscript-markdown-comment-indicator">` instead
   - Mark task complete when test is written, run, and failure is documented
   - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3_
 
 - [x] 2. Write preservation property tests (BEFORE implementing fix)
   - **Property 2: Preservation** - Non-Whitespace-Separated Behavior
   - **IMPORTANT**: Follow observation-first methodology
-  - Add test in `src/preview/scimark-plugin.test.ts`
+  - Add test in `src/preview/manuscript-markdown-plugin.test.ts`
   - Use `fast-check` with short bounded generators (per AGENTS.md)
   - Observe on UNFIXED code: `{==text==}{>>comment<<}` (direct adjacency) associates correctly with `data-comment`
   - Observe on UNFIXED code: `{==text==}some text{>>comment<<}` (non-whitespace separation) renders comment as standalone indicator
@@ -39,7 +39,7 @@
 
 - [x] 3. Fix for whitespace-separated comment association
 
-  - [x] 3.1 Implement the fix in `src/preview/scimark-plugin.ts`
+  - [x] 3.1 Implement the fix in `src/preview/manuscript-markdown-plugin.ts`
     - In `associateCommentsRule` Pass 3, replace the single-token lookback with a whitespace-skipping lookback
     - Before the `isCriticMarkupClose` check, scan backwards through `newChildren` to skip tokens where `type === 'text'` and `content` matches `/^\s+$/`
     - Use the first non-whitespace token as the candidate for `isCriticMarkupClose`

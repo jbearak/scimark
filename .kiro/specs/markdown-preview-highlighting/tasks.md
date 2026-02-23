@@ -6,28 +6,28 @@
   - Add `@types/markdown-it` to devDependencies
   - _Requirements: 7.1_
 
-- [ ] $$2. Implement markdown-it plugin for Scientific Markdown parsing
+- [ ] $$2. Implement markdown-it plugin for Manuscript Markdown parsing
   - [x] 2.1 Create plugin file structure and basic markdown-it plugin skeleton
-    - Create `src/preview/scimark-plugin.ts`
+    - Create `src/preview/manuscript-markdown-plugin.ts`
     - Define manuscriptMarkdownPattern interface
-    - Define pattern configurations for all five Scientific Markdown types
+    - Define pattern configurations for all five Manuscript Markdown types
     - Export main plugin function that accepts MarkdownIt instance
     - _Requirements: 7.1, 7.3_
 
   - [x] 2.2 Implement pattern matching and token generation
-    - Implement inline rule function that scans for Scientific Markdown patterns
-    - Create custom tokens for each Scientific Markdown type
+    - Implement inline rule function that scans for Manuscript Markdown patterns
+    - Create custom tokens for each Manuscript Markdown type
     - Handle pattern precedence and nesting
     - _Requirements: 1.1, 2.1, 3.1, 4.1, 5.1_
 
-  - [x] 2.3 Implement HTML rendering for Scientific Markdown tokens
-    - Create renderer functions for each Scientific Markdown token type
+  - [x] 2.3 Implement HTML rendering for Manuscript Markdown tokens
+    - Create renderer functions for each Manuscript Markdown token type
     - Generate HTML with appropriate tags and CSS classes
     - Handle substitution special case (old and new text)
     - _Requirements: 1.1, 2.1, 3.1, 4.1, 5.1_
 
   - [x] 2.4 Write property test for pattern transformation
-    - **Property 1: Scientific Markdown pattern transformation**
+    - **Property 1: Manuscript Markdown pattern transformation**
     - **Validates: Requirements 1.1, 2.1, 3.1, 4.1, 5.1**
 
   - [x] 2.5 Write property test for multiple instance consistency
@@ -46,7 +46,7 @@
     - **Validates: Requirements 1.3, 2.3, 3.3, 4.3, 5.3**
 
   - [x] 3.3 Ensure nested Markdown is processed correctly
-    - Configure plugin to allow markdown-it to process content inside Scientific Markdown
+    - Configure plugin to allow markdown-it to process content inside Manuscript Markdown
     - Test with bold, italic, links, and other Markdown syntax
     - _Requirements: 1.4, 2.4, 3.4, 4.4, 5.4, 8.1_
 
@@ -74,16 +74,16 @@
   - [x] 5.2 Write unit tests for edge cases
     - Test unclosed patterns
     - Test empty patterns
-    - Test Scientific Markdown in code blocks (should not be processed)
-    - Test Scientific Markdown in inline code (should not be processed)
+    - Test Manuscript Markdown in code blocks (should not be processed)
+    - Test Manuscript Markdown in inline code (should not be processed)
     - _Requirements: 8.3, 8.4_
 
 - [ ] 6. Create theme-aware preview stylesheet
-  - [x] 6.1 Create CSS file with theme-aware Scientific Markdown styling
-    - Create `media/scimark.css` with CSS custom properties
+  - [x] 6.1 Create CSS file with theme-aware Manuscript Markdown styling
+    - Create `media/manuscript-markdown.css` with CSS custom properties
     - Define default (light theme) color palette using CSS variables
     - Define dark theme color palette using `@media (prefers-color-scheme: dark)`
-    - Apply CSS variables to all five Scientific Markdown type styles
+    - Apply CSS variables to all five Manuscript Markdown type styles
     - Use brighter colors for dark themes and darker colors for light themes
     - Add semi-transparent backgrounds for readability
     - _Requirements: 6.1, 6.2, 6.4, 6.5_
@@ -101,7 +101,7 @@
 - [x] 7. Integrate plugin with VS Code extension
   - [x] 7.1 Update extension activation to register plugin
     - Modify `src/extension.ts` to return `extendMarkdownIt` function
-    - Import and use the Scientific Markdown plugin
+    - Import and use the Manuscript Markdown plugin
     - _Requirements: 7.1_
 
   - [x] 7.2 Update package.json to declare preview stylesheet
@@ -114,9 +114,9 @@
     - _Requirements: 7.1_
 
 - [x] 8. Test list structure preservation
-  - [x] 8.1 Test Scientific Markdown in Markdown lists
-    - Create test cases with Scientific Markdown in ordered lists
-    - Create test cases with Scientific Markdown in unordered lists
+  - [x] 8.1 Test Manuscript Markdown in Markdown lists
+    - Create test cases with Manuscript Markdown in ordered lists
+    - Create test cases with Manuscript Markdown in unordered lists
     - Verify list structure is preserved
     - _Requirements: 8.2_
 

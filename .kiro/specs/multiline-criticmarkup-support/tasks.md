@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [x] 1. Fix TextMate grammar to support multi-line patterns
-  - Modify `syntaxes/scimark.json` to add `contentName` or `patterns` array for each Scientific Markdown type
+  - Modify `syntaxes/manuscript-markdown.json` to add `contentName` or `patterns` array for each Manuscript Markdown type
   - Test different approaches (contentName vs patterns array) to find what works in VS Code
   - Verify that syntax highlighting works for multi-line patterns in the editor
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 3.1, 3.2, 4.1, 4.2, 5.1, 5.2, 6.4_
@@ -12,8 +12,8 @@
 
 - [x] 2. Fix preview plugin to handle empty lines within patterns
   - Investigate why markdown-it splits patterns at empty lines
-  - Add block-level rule to `src/preview/scimark-plugin.ts` that runs before paragraph parsing
-  - Ensure Scientific Markdown patterns are identified before markdown-it processes empty lines as paragraph breaks
+  - Add block-level rule to `src/preview/manuscript-markdown-plugin.ts` that runs before paragraph parsing
+  - Ensure Manuscript Markdown patterns are identified before markdown-it processes empty lines as paragraph breaks
   - Test with patterns containing empty lines
   - _Requirements: 1.4, 2.4, 3.4, 4.4, 5.4, 6.1, 6.2_
 
@@ -58,7 +58,7 @@
   - _Requirements: All_
 
 - [x] 7. Fix mid-line multi-line pattern support
-  - Modify `manuscriptMarkdownBlock` function in `src/preview/scimark-plugin.ts` to detect patterns starting mid-line
+  - Modify `manuscriptMarkdownBlock` function in `src/preview/manuscript-markdown-plugin.ts` to detect patterns starting mid-line
   - Current implementation only checks if line starts with pattern markers
   - Need to scan entire line content, not just the beginning
   - Ensure block-level rule captures patterns regardless of position on line
@@ -84,7 +84,7 @@
 
 ### Task 7: Mid-line Multi-line Pattern Support
 
-Task 7 was initially implemented to support multi-line Scientific Markdown patterns that start mid-line (after other text on the same line). However, after implementation and testing, we discovered fundamental limitations:
+Task 7 was initially implemented to support multi-line Manuscript Markdown patterns that start mid-line (after other text on the same line). However, after implementation and testing, we discovered fundamental limitations:
 
 1. **TextMate Grammar Limitations**: VS Code's TextMate engine has inherent limitations with multi-line pattern highlighting that cannot be easily overcome.
 

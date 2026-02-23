@@ -1,8 +1,8 @@
 # Implementation Plan
 
 - [x] 1. Add configuration settings to package.json
-  - Add `scimark.disableAuthorNames` boolean setting with default false
-  - Add `scimark.authorNameOverride` string setting with default empty string
+  - Add `manuscriptMarkdown.disableAuthorNames` boolean setting with default false
+  - Add `manuscriptMarkdown.authorNameOverride` string setting with default empty string
   - Add configuration schema under `contributes.configuration`
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
@@ -57,11 +57,11 @@
 
 - [x] 4. Update extension command handlers
   - Import author module in `src/extension.ts`
-  - Update `scimark.insertComment` handler to retrieve and pass author name
-  - Update `scimark.highlightAndComment` handler to retrieve and pass author name
-  - Update `scimark.substituteAndComment` handler to retrieve and pass author name
-  - Update `scimark.additionAndComment` handler to retrieve and pass author name
-  - Update `scimark.deletionAndComment` handler to retrieve and pass author name
+  - Update `manuscript-markdown.insertComment` handler to retrieve and pass author name
+  - Update `manuscript-markdown.highlightAndComment` handler to retrieve and pass author name
+  - Update `manuscript-markdown.substituteAndComment` handler to retrieve and pass author name
+  - Update `manuscript-markdown.additionAndComment` handler to retrieve and pass author name
+  - Update `manuscript-markdown.deletionAndComment` handler to retrieve and pass author name
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
 - [x] 4.1 Write unit test for settings changes taking effect immediately

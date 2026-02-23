@@ -1,6 +1,6 @@
 # CLI Tool
 
-Standalone command-line tool for converting between Scientific Markdown and DOCX.
+Standalone command-line tool for converting between Manuscript Markdown and DOCX.
 
 ## Installation
 
@@ -10,7 +10,7 @@ Standalone command-line tool for converting between Scientific Markdown and DOCX
 ./setup.sh
 ```
 
-This builds the CLI binary and installs it to `~/bin/scimark`. Ensure `~/bin` is on your PATH.
+This builds the CLI binary and installs it to `~/bin/manuscript-markdown`. Ensure `~/bin` is on your PATH.
 
 ### Via bun
 
@@ -19,7 +19,7 @@ bun run src/cli.ts <input> [options]
 ```
 ### Via npx (not currently supported)
 
-`npx scimark` is not currently available from npm because this repository/package is private and does not publish a CLI `bin` entry.
+`npx manuscript-markdown` is not currently available from npm because this repository/package is private and does not publish a CLI `bin` entry.
 
 ## Usage
 
@@ -28,7 +28,7 @@ Conversion direction is auto-detected from the input file extension.
 ### DOCX to Markdown
 
 ```sh
-scimark paper.docx
+manuscript-markdown paper.docx
 ```
 
 Produces `paper.md` and `paper.bib` (if citations are present).
@@ -36,7 +36,7 @@ Produces `paper.md` and `paper.bib` (if citations are present).
 ### Markdown to DOCX
 
 ```sh
-scimark paper.md
+manuscript-markdown paper.md
 ```
 
 Produces `paper.docx`. Automatically loads `paper.bib` if present.
@@ -55,20 +55,20 @@ Produces `paper.docx`. Automatically loads `paper.bib` if present.
 | `--no-template` | MD→DOCX | Disable auto-reuse of existing DOCX styles | `false` |
 | `--author <name>` | MD→DOCX | Author name | OS username |
 | `--blockquote-style <style>` | MD→DOCX | Blockquote paragraph style: `Quote`, `IntenseQuote` | `Quote` |
-| `--csl-cache-dir <path>` | MD→DOCX | CSL style cache directory | `~/.scimark/csl-cache` |
+| `--csl-cache-dir <path>` | MD→DOCX | CSL style cache directory | `~/.manuscript-markdown/csl-cache` |
 
 ## Examples
 
 ```sh
 # Convert DOCX with numeric citation keys
-scimark paper.docx --citation-key-format numeric
+manuscript-markdown paper.docx --citation-key-format numeric
 
 # Convert to DOCX with a template and specific author
-scimark paper.md --template styles.docx --author "Jane Doe"
+manuscript-markdown paper.md --template styles.docx --author "Jane Doe"
 
 # Force overwrite and specify output path
-scimark paper.docx --output /tmp/draft --force
+manuscript-markdown paper.docx --output /tmp/draft --force
 
 # Use a specific BibTeX file
-scimark paper.md --bib references.bib
+manuscript-markdown paper.md --bib references.bib
 ```

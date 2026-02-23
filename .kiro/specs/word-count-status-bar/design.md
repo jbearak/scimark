@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design document describes the implementation of a word count status bar item for the Scientific Markdown VS Code extension. The feature will display real-time word count information in the VS Code status bar, showing either the word count of selected text or the entire document. The implementation follows VS Code extension best practices and integrates cleanly with the existing Scientific Markdown architecture.
+This design document describes the implementation of a word count status bar item for the Manuscript Markdown VS Code extension. The feature will display real-time word count information in the VS Code status bar, showing either the word count of selected text or the entire document. The implementation follows VS Code extension best practices and integrates cleanly with the existing Manuscript Markdown architecture.
 
 The word count feature will be implemented as a separate module (`src/wordcount.ts`) that manages a status bar item, listens to editor events, and updates the display based on the active editor and selection state.
 
@@ -14,7 +14,7 @@ The word count feature consists of three main components:
 2. **Word Count Calculator**: A pure function that calculates word counts from text strings
 3. **Event Handlers**: Listeners for editor changes, selection changes, and document changes
 
-The architecture follows the existing pattern established in the Scientific Markdown extension where features are implemented in separate modules and registered during extension activation.
+The architecture follows the existing pattern established in the Manuscript Markdown extension where features are implemented in separate modules and registered during extension activation.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -301,7 +301,7 @@ Property-based tests will verify universal properties across many generated inpu
 
 ### Testing Framework
 
-- **Test runner:** Bun test (following existing Scientific Markdown conventions)
+- **Test runner:** Bun test (following existing Manuscript Markdown conventions)
 - **Property-based testing library:** fast-check
 - **Test file location:** `src/wordcount.test.ts`
 - **Minimum iterations per property test:** 100

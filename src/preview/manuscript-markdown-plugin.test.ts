@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import MarkdownIt from 'markdown-it';
-import { scimarkPlugin } from './scimark-plugin';
+import { manuscriptMarkdownPlugin } from './manuscript-markdown-plugin';
 import { VALID_COLOR_IDS, setDefaultHighlightColor, getDefaultHighlightColor } from '../highlight-colors';
 
 // Helper function to escape HTML entities like markdown-it does
@@ -24,11 +24,11 @@ const hasNoSpecialSyntax = (s: string) => {
   return !/[\\`*_\[\]&<>"']/.test(s);
 };
 
-describe('Scientific Markdown Plugin Property Tests', () => {
+describe('Manuscript Markdown Plugin Property Tests', () => {
   describe('GFM alerts', () => {
     it('renders NOTE alert with title row and strips marker text', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const html = md.render('> [!NOTE]\n> Useful information.');
       expect(html).toContain('markdown-alert markdown-alert-note');
       expect(html).toContain('markdown-alert-title');
@@ -40,7 +40,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
 
     it('renders all alert variants with per-type classes and title case labels', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const html = md.render(
         '> [!TIP]\n> tip text\n\n' +
         '> [!IMPORTANT]\n> important text\n\n' +
@@ -59,7 +59,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
 
     it('keeps non-alert blockquotes unchanged', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const html = md.render('> regular quote');
       expect(html).toContain('<blockquote>');
       expect(html).not.toContain('markdown-alert');
@@ -67,7 +67,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
 
     it('splits merged blockquote with multiple alert markers into separate alerts', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       // Without blank lines, markdown-it merges these into one blockquote
       const src = '> [!NOTE]\n> A note.\n> [!WARNING]\n> A warning.\n> [!TIP]\n> A tip.';
       const html = md.render(src);
@@ -86,7 +86,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
 
     it('preserves plain blockquote content before first alert marker in merged blockquote', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const src = '> Plain text.\n> [!NOTE]\n> A note.';
       const html = md.render(src);
       expect(html).toContain('Plain text.');
@@ -94,9 +94,9 @@ describe('Scientific Markdown Plugin Property Tests', () => {
     });
   });
 
-  // Feature: markdown-preview-highlighting, Property 1: Scientific Markdown pattern transformation
+  // Feature: markdown-preview-highlighting, Property 1: Manuscript Markdown pattern transformation
   // Validates: Requirements 1.1, 2.1, 3.1, 4.1, 5.1
-  describe('Property 1: Scientific Markdown pattern transformation', () => {
+  describe('Property 1: Manuscript Markdown pattern transformation', () => {
 
     it('should transform addition patterns into HTML with correct CSS class', () => {
       fc.assert(
@@ -104,13 +104,13 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 100 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)),
           (text) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = `{++${text}++}`;
             const output = md.render(input);
             
             // Should contain the CSS class
-            expect(output).toContain('scimark-addition');
+            expect(output).toContain('manuscript-markdown-addition');
             // Should contain the text content (HTML-escaped)
             expect(output).toContain(escapeHtml(text));
             // Should use ins tag
@@ -127,13 +127,13 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 100 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)),
           (text) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = `{--${text}--}`;
             const output = md.render(input);
             
             // Should contain the CSS class
-            expect(output).toContain('scimark-deletion');
+            expect(output).toContain('manuscript-markdown-deletion');
             // Should contain the text content (HTML-escaped)
             expect(output).toContain(escapeHtml(text));
             // Should use del tag
@@ -150,13 +150,13 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 100 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('<') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (text) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = `{>>${text}<<}`;
             const output = md.render(input);
             
             // Should contain the CSS class
-            expect(output).toContain('scimark-comment');
+            expect(output).toContain('manuscript-markdown-comment');
             // Should contain the text content (HTML-escaped)
             expect(output).toContain(escapeHtml(text));
             // Should use span tag
@@ -173,13 +173,13 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 100 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)),
           (text) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = `{==${text}==}`;
             const output = md.render(input);
             
             // Should contain the CSS class
-            expect(output).toContain('scimark-highlight');
+            expect(output).toContain('manuscript-markdown-highlight');
             // Should contain the text content (HTML-escaped)
             expect(output).toContain(escapeHtml(text));
             // Should use mark tag
@@ -197,14 +197,14 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (oldText, newText) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = `{~~${oldText}~>${newText}~~}`;
             const output = md.render(input);
             
             // Should contain both deletion and addition CSS classes
-            expect(output).toContain('scimark-deletion');
-            expect(output).toContain('scimark-addition');
+            expect(output).toContain('manuscript-markdown-deletion');
+            expect(output).toContain('manuscript-markdown-addition');
             // Should contain both text contents (HTML-escaped); strip tags to allow linkified content
             expect(stripHtmlTags(output)).toContain(escapeHtml(oldText));
             expect(stripHtmlTags(output)).toContain(escapeHtml(newText));
@@ -227,13 +227,13 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)), { minLength: 2, maxLength: 5 }),
           (texts) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = texts.map(t => `{++${t}++}`).join(' ');
             const output = md.render(input);
             
             // Count occurrences of the CSS class
-            const classCount = (output.match(/scimark-addition/g) || []).length;
+            const classCount = (output.match(/manuscript-markdown-addition/g) || []).length;
             expect(classCount).toBe(texts.length);
             
             // All texts should be present (HTML-escaped); strip tags to allow linkified content
@@ -252,13 +252,13 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)), { minLength: 2, maxLength: 5 }),
           (texts) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = texts.map(t => `{--${t}--}`).join(' ');
             const output = md.render(input);
             
             // Count occurrences of the CSS class
-            const classCount = (output.match(/scimark-deletion/g) || []).length;
+            const classCount = (output.match(/manuscript-markdown-deletion/g) || []).length;
             expect(classCount).toBe(texts.length);
             
             // All texts should be present (HTML-escaped); strip tags to allow linkified content
@@ -280,13 +280,13 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('<') && !s.includes('>') && hasNoSpecialSyntax(s)), { minLength: 2, maxLength: 5 }),
           (texts) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = texts.map(t => `{>>${t}<<}`).join(' ');
             const output = md.render(input);
             
             // Count occurrences of the CSS class
-            const classCount = (output.match(/scimark-comment/g) || []).length;
+            const classCount = (output.match(/manuscript-markdown-comment/g) || []).length;
             expect(classCount).toBe(texts.length);
             
             // All texts should be present (HTML-escaped)
@@ -305,13 +305,13 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)), { minLength: 2, maxLength: 5 }),
           (texts) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = texts.map(t => `{==${t}==}`).join(' ');
             const output = md.render(input);
             
             // Count occurrences of the CSS class
-            const classCount = (output.match(/scimark-highlight/g) || []).length;
+            const classCount = (output.match(/manuscript-markdown-highlight/g) || []).length;
             expect(classCount).toBe(texts.length);
             
             // All texts should be present (HTML-escaped)
@@ -336,14 +336,14 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           ),
           (pairs) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = pairs.map(([old, newText]) => `{~~${old}~>${newText}~~}`).join(' ');
             const output = md.render(input);
             
             // Each substitution should have both deletion and addition classes
-            const deletionCount = (output.match(/scimark-deletion/g) || []).length;
-            const additionCount = (output.match(/scimark-addition/g) || []).length;
+            const deletionCount = (output.match(/manuscript-markdown-deletion/g) || []).length;
+            const additionCount = (output.match(/manuscript-markdown-addition/g) || []).length;
             expect(deletionCount).toBe(pairs.length);
             expect(additionCount).toBe(pairs.length);
             
@@ -380,34 +380,34 @@ describe('Scientific Markdown Plugin Property Tests', () => {
       return true;
     });
 
-    // Arbitrary for Scientific Markdown pattern types
-    const scimarkPattern = fc.constantFrom(
-      { type: 'addition', open: '{++', close: '++}', cssClass: 'scimark-addition' },
-      { type: 'deletion', open: '{--', close: '--}', cssClass: 'scimark-deletion' },
-      { type: 'comment', open: '{>>', close: '<<}', cssClass: 'scimark-comment' },
-      { type: 'highlight', open: '{==', close: '==}', cssClass: 'scimark-highlight' }
+    // Arbitrary for Manuscript Markdown pattern types
+    const manuscriptMarkdownPattern = fc.constantFrom(
+      { type: 'addition', open: '{++', close: '++}', cssClass: 'manuscript-markdown-addition' },
+      { type: 'deletion', open: '{--', close: '--}', cssClass: 'manuscript-markdown-deletion' },
+      { type: 'comment', open: '{>>', close: '<<}', cssClass: 'manuscript-markdown-comment' },
+      { type: 'highlight', open: '{==', close: '==}', cssClass: 'manuscript-markdown-highlight' }
     );
 
     // Comments excluded: when adjacent to another CriticMarkup element, comments associate
     // via data-comment rather than rendering with their own CSS class
     const nonCommentPattern = fc.constantFrom(
-      { type: 'addition', open: '{++', close: '++}', cssClass: 'scimark-addition' },
-      { type: 'deletion', open: '{--', close: '--}', cssClass: 'scimark-deletion' },
-      { type: 'highlight', open: '{==', close: '==}', cssClass: 'scimark-highlight' }
+      { type: 'addition', open: '{++', close: '++}', cssClass: 'manuscript-markdown-addition' },
+      { type: 'deletion', open: '{--', close: '--}', cssClass: 'manuscript-markdown-deletion' },
+      { type: 'highlight', open: '{==', close: '==}', cssClass: 'manuscript-markdown-highlight' }
     );
 
-    it('should preserve unordered list structure with Scientific Markdown', () => {
+    it('should preserve unordered list structure with Manuscript Markdown', () => {
       fc.assert(
         fc.property(
           fc.array(
-            fc.tuple(validListItemContent, scimarkPattern, validListItemContent),
+            fc.tuple(validListItemContent, manuscriptMarkdownPattern, validListItemContent),
             { minLength: 2, maxLength: 5 }
           ),
           (items) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
-            // Generate unordered list with Scientific Markdown in each item
+            // Generate unordered list with Manuscript Markdown in each item
             const input = items.map(([prefix, pattern, content]) => 
               `- ${prefix} ${pattern.open}${content}${pattern.close}`
             ).join('\n');
@@ -422,7 +422,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
             const liCount = (output.match(/<li>/g) || []).length;
             expect(liCount).toBe(items.length);
             
-            // Each item should have its Scientific Markdown styling applied
+            // Each item should have its Manuscript Markdown styling applied
             items.forEach(([prefix, pattern, content]) => {
               expect(output).toContain(pattern.cssClass);
               // Check for content (trimmed, as markdown-it normalizes whitespace)
@@ -441,18 +441,18 @@ describe('Scientific Markdown Plugin Property Tests', () => {
       );
     });
 
-    it('should preserve ordered list structure with Scientific Markdown', () => {
+    it('should preserve ordered list structure with Manuscript Markdown', () => {
       fc.assert(
         fc.property(
           fc.array(
-            fc.tuple(validListItemContent, scimarkPattern, validListItemContent),
+            fc.tuple(validListItemContent, manuscriptMarkdownPattern, validListItemContent),
             { minLength: 2, maxLength: 5 }
           ),
           (items) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
-            // Generate ordered list with Scientific Markdown in each item
+            // Generate ordered list with Manuscript Markdown in each item
             const input = items.map(([prefix, pattern, content], idx) => 
               `${idx + 1}. ${prefix} ${pattern.open}${content}${pattern.close}`
             ).join('\n');
@@ -467,7 +467,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
             const liCount = (output.match(/<li>/g) || []).length;
             expect(liCount).toBe(items.length);
             
-            // Each item should have its Scientific Markdown styling applied
+            // Each item should have its Manuscript Markdown styling applied
             items.forEach(([prefix, pattern, content]) => {
               expect(output).toContain(pattern.cssClass);
               // Check for content (trimmed, as markdown-it normalizes whitespace)
@@ -486,7 +486,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
       );
     });
 
-    it('should preserve list structure with multiple Scientific Markdown patterns per item', () => {
+    it('should preserve list structure with multiple Manuscript Markdown patterns per item', () => {
       fc.assert(
         fc.property(
           fc.array(
@@ -501,9 +501,9 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           ),
           (items) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
-            // Generate list with multiple Scientific Markdown patterns per item
+            // Generate list with multiple Manuscript Markdown patterns per item
             const input = items.map(([text1, pattern1, text2, pattern2, text3]) => 
               `- ${text1} ${pattern1.open}${text2}${pattern1.close} ${pattern2.open}${text3}${pattern2.close}`
             ).join('\n');
@@ -518,7 +518,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
             const liCount = (output.match(/<li>/g) || []).length;
             expect(liCount).toBe(items.length);
             
-            // Each item should have both Scientific Markdown patterns applied
+            // Each item should have both Manuscript Markdown patterns applied
             items.forEach(([text1, pattern1, text2, pattern2, text3]) => {
               expect(output).toContain(pattern1.cssClass);
               expect(output).toContain(pattern2.cssClass);
@@ -555,7 +555,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           ),
           (items) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             // Generate list with substitution patterns
             const input = items.map(([prefix, oldText, newText]) => 
@@ -574,7 +574,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
             
             // Each item should have substitution styling (both deletion and addition)
             items.forEach(([prefix, oldText, newText]) => {
-              expect(output).toContain('scimark-substitution');
+              expect(output).toContain('manuscript-markdown-substitution');
               // Check for content (trimmed, as markdown-it normalizes whitespace)
               const trimmedPrefix = prefix.trim();
               const trimmedOld = oldText.trim();
@@ -601,7 +601,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
   describe('Property 3: Multiline content preservation', () => {
     // Helper to filter out strings that would trigger block-level Markdown parsing or inline formatting
     // Block-level elements (headings, lists, code blocks, etc.) are parsed before inline elements,
-    // which would break up the Scientific Markdown pattern
+    // which would break up the Manuscript Markdown pattern
     const isValidMultilineContent = (s: string) => {
       if (!s || s.trim().length === 0) return false;
       // Exclude strings with Markdown special characters
@@ -623,14 +623,14 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && isValidMultilineContent(s)), { minLength: 2, maxLength: 4 }),
           (lines) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const text = lines.join('\n');
             const input = `{++${text}++}`;
             const output = md.render(input);
             
             // Should contain the CSS class
-            expect(output).toContain('scimark-addition');
+            expect(output).toContain('manuscript-markdown-addition');
             // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
             lines.forEach(line => {
               const trimmed = line.trim();
@@ -650,14 +650,14 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && isValidMultilineContent(s)), { minLength: 2, maxLength: 4 }),
           (lines) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const text = lines.join('\n');
             const input = `{--${text}--}`;
             const output = md.render(input);
             
             // Should contain the CSS class
-            expect(output).toContain('scimark-deletion');
+            expect(output).toContain('manuscript-markdown-deletion');
             // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
             lines.forEach(line => {
               const trimmed = line.trim();
@@ -677,14 +677,14 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('<') && !s.includes('>') && isValidMultilineContent(s)), { minLength: 2, maxLength: 4 }),
           (lines) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const text = lines.join('\n');
             const input = `{>>${text}<<}`;
             const output = md.render(input);
             
             // Should contain the CSS class
-            expect(output).toContain('scimark-comment');
+            expect(output).toContain('manuscript-markdown-comment');
             // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
             lines.forEach(line => {
               const trimmed = line.trim();
@@ -704,14 +704,14 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && isValidMultilineContent(s)), { minLength: 2, maxLength: 4 }),
           (lines) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const text = lines.join('\n');
             const input = `{==${text}==}`;
             const output = md.render(input);
             
             // Should contain the CSS class
-            expect(output).toContain('scimark-highlight');
+            expect(output).toContain('manuscript-markdown-highlight');
             // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
             lines.forEach(line => {
               const trimmed = line.trim();
@@ -732,7 +732,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.array(fc.string({ minLength: 1, maxLength: 30 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && isValidMultilineContent(s)), { minLength: 2, maxLength: 3 }),
           (oldLines, newLines) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const oldText = oldLines.join('\n');
             const newText = newLines.join('\n');
@@ -740,8 +740,8 @@ describe('Scientific Markdown Plugin Property Tests', () => {
             const output = md.render(input);
             
             // Should contain both CSS classes
-            expect(output).toContain('scimark-deletion');
-            expect(output).toContain('scimark-addition');
+            expect(output).toContain('manuscript-markdown-deletion');
+            expect(output).toContain('manuscript-markdown-addition');
             // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
             oldLines.forEach(line => {
               const trimmed = line.trim();
@@ -772,21 +772,21 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (oldText, newText) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             const input = `{~~${oldText}~>${newText}~~}`;
             const output = md.render(input);
             
             // Should contain wrapper span with substitution class
-            expect(output).toContain('scimark-substitution');
+            expect(output).toContain('manuscript-markdown-substitution');
             
             // Should contain old text with deletion styling
-            expect(output).toContain('scimark-deletion');
+            expect(output).toContain('manuscript-markdown-deletion');
             expect(output).toContain('<del');
             expect(output).toContain(escapeHtml(oldText));
             
             // Should contain new text with addition styling
-            expect(output).toContain('scimark-addition');
+            expect(output).toContain('manuscript-markdown-addition');
             expect(output).toContain('<ins');
             expect(output).toContain(escapeHtml(newText));
             
@@ -807,7 +807,7 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 30, maxLength: 80 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (shortText, longText) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             // Test short -> long
             const input1 = `{~~${shortText}~>${longText}~~}`;
@@ -815,8 +815,8 @@ describe('Scientific Markdown Plugin Property Tests', () => {
             
             expect(output1).toContain(escapeHtml(shortText));
             expect(output1).toContain(escapeHtml(longText));
-            expect(output1).toContain('scimark-deletion');
-            expect(output1).toContain('scimark-addition');
+            expect(output1).toContain('manuscript-markdown-deletion');
+            expect(output1).toContain('manuscript-markdown-addition');
             
             // Test long -> short
             const input2 = `{~~${longText}~>${shortText}~~}`;
@@ -824,8 +824,8 @@ describe('Scientific Markdown Plugin Property Tests', () => {
             
             expect(output2).toContain(escapeHtml(longText));
             expect(output2).toContain(escapeHtml(shortText));
-            expect(output2).toContain('scimark-deletion');
-            expect(output2).toContain('scimark-addition');
+            expect(output2).toContain('manuscript-markdown-deletion');
+            expect(output2).toContain('manuscript-markdown-addition');
           }
         ),
         { numRuns: 100 }
@@ -838,17 +838,17 @@ describe('Scientific Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (text) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
             
             // Empty old text (effectively an addition)
             const input1 = `{~~${text}~>~~}`;
             const output1 = md.render(input1);
-            expect(output1).toContain('scimark-substitution');
+            expect(output1).toContain('manuscript-markdown-substitution');
             
             // Empty new text (effectively a deletion)
             const input2 = `{~~~>${text}~~}`;
             const output2 = md.render(input2);
-            expect(output2).toContain('scimark-substitution');
+            expect(output2).toContain('manuscript-markdown-substitution');
           }
         ),
         { numRuns: 100 }
@@ -860,14 +860,14 @@ describe('Scientific Markdown Plugin Property Tests', () => {
 describe('GFM behavior in preview plugin', () => {
   it('renders bare URLs as links', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('See https://example.com now.');
     expect(output).toContain('<a href="https://example.com">https://example.com</a>');
   });
 
   it('renders task list items with disabled checkbox inputs', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('- [x] done\n- [ ] todo');
     expect(output).toContain('class="task-list-item"');
     expect(output).toContain('class="task-list-item-checkbox"');
@@ -879,7 +879,7 @@ describe('GFM behavior in preview plugin', () => {
 
   it('escapes GFM-disallowed raw HTML tags', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('<script>alert(1)</script>');
     expect(output).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(output).not.toContain('<script>alert(1)</script>');
@@ -889,7 +889,7 @@ describe('GFM behavior in preview plugin', () => {
 describe('Preview color suffix parsing edge cases', () => {
   it('should not consume malformed suffix content with spaces', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
 
     const output = md.render('==hello=={see note} world');
     expect(output).toContain('<mark');
@@ -899,10 +899,10 @@ describe('Preview color suffix parsing edge cases', () => {
 
   it('should consume valid unknown color suffix but fall back styling', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
 
     const output = md.render('==hello=={unknowncolor} world');
-    expect(output).toContain('scimark-format-highlight');
+    expect(output).toContain('manuscript-markdown-format-highlight');
     expect(output).toContain('<mark');
     expect(output).toContain('hello');
     expect(output).toContain(' world');
@@ -917,65 +917,65 @@ describe('Edge Cases', () => {
   describe('Unclosed patterns', () => {
     it('should treat unclosed addition pattern as literal text', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{++unclosed text';
       const output = md.render(input);
       
-      // Should not contain Scientific Markdown CSS class
-      expect(output).not.toContain('scimark-addition');
+      // Should not contain Manuscript Markdown CSS class
+      expect(output).not.toContain('manuscript-markdown-addition');
       // Should contain the literal text
       expect(output).toContain('{++unclosed text');
     });
 
     it('should treat unclosed deletion pattern as literal text', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{--unclosed text';
       const output = md.render(input);
       
-      // Should not contain Scientific Markdown CSS class
-      expect(output).not.toContain('scimark-deletion');
+      // Should not contain Manuscript Markdown CSS class
+      expect(output).not.toContain('manuscript-markdown-deletion');
       // Should contain the literal text
       expect(output).toContain('{--unclosed text');
     });
 
     it('should treat unclosed substitution pattern as literal text', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{~~old~>new';
       const output = md.render(input);
       
-      // Should not contain Scientific Markdown CSS class
-      expect(output).not.toContain('scimark-substitution');
+      // Should not contain Manuscript Markdown CSS class
+      expect(output).not.toContain('manuscript-markdown-substitution');
       // Should contain the literal text
       expect(output).toContain('{~~old~&gt;new');
     });
 
     it('should treat unclosed comment pattern as literal text', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{>>unclosed comment';
       const output = md.render(input);
       
-      // Should not contain Scientific Markdown CSS class
-      expect(output).not.toContain('scimark-comment');
+      // Should not contain Manuscript Markdown CSS class
+      expect(output).not.toContain('manuscript-markdown-comment');
       // Should contain the literal text (with HTML escaping)
       expect(output).toContain('{&gt;&gt;unclosed comment');
     });
 
     it('should treat unclosed highlight pattern as literal text', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{==unclosed text';
       const output = md.render(input);
       
-      // Should not contain Scientific Markdown CSS class
-      expect(output).not.toContain('scimark-highlight');
+      // Should not contain Manuscript Markdown CSS class
+      expect(output).not.toContain('manuscript-markdown-highlight');
       // Should contain the literal text
       expect(output).toContain('{==unclosed text');
     });
@@ -984,13 +984,13 @@ describe('Edge Cases', () => {
   describe('Empty patterns', () => {
     it('should render empty addition pattern as empty styled element', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{++++}';
       const output = md.render(input);
       
       // Should contain the CSS class
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-addition');
       // Should contain the ins tag
       expect(output).toContain('<ins');
       expect(output).toContain('</ins>');
@@ -998,13 +998,13 @@ describe('Edge Cases', () => {
 
     it('should render empty deletion pattern as empty styled element', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{----}';
       const output = md.render(input);
       
       // Should contain the CSS class
-      expect(output).toContain('scimark-deletion');
+      expect(output).toContain('manuscript-markdown-deletion');
       // Should contain the del tag
       expect(output).toContain('<del');
       expect(output).toContain('</del>');
@@ -1012,13 +1012,13 @@ describe('Edge Cases', () => {
 
     it('should render empty substitution pattern as empty styled element', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{~~~>~~}';
       const output = md.render(input);
       
       // Should contain the CSS class
-      expect(output).toContain('scimark-substitution');
+      expect(output).toContain('manuscript-markdown-substitution');
       // Should contain both del and ins tags
       expect(output).toContain('<del');
       expect(output).toContain('<ins');
@@ -1026,90 +1026,90 @@ describe('Edge Cases', () => {
 
     it('should remove empty comment pattern silently', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
 
       const input = '{>><<}';
       const output = md.render(input);
 
       // Empty comment should be removed entirely — no indicator, no comment span
-      expect(output).not.toContain('scimark-comment');
+      expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
       expect(output).toBe('<p></p>\n');
     });
 
     it('should render empty highlight pattern as empty styled element', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{====}';
       const output = md.render(input);
       
       // Should contain the CSS class
-      expect(output).toContain('scimark-highlight');
+      expect(output).toContain('manuscript-markdown-highlight');
       // Should contain the mark tag
       expect(output).toContain('<mark');
       expect(output).toContain('</mark>');
     });
   });
 
-  describe('Scientific Markdown in code blocks', () => {
-    it('should not process Scientific Markdown in fenced code blocks', () => {
+  describe('Manuscript Markdown in code blocks', () => {
+    it('should not process Manuscript Markdown in fenced code blocks', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '```\n{++addition++}\n{--deletion--}\n```';
       const output = md.render(input);
       
-      // Should not contain Scientific Markdown CSS classes
-      expect(output).not.toContain('scimark-addition');
-      expect(output).not.toContain('scimark-deletion');
+      // Should not contain Manuscript Markdown CSS classes
+      expect(output).not.toContain('manuscript-markdown-addition');
+      expect(output).not.toContain('manuscript-markdown-deletion');
       // Should contain the literal text in a code block
       expect(output).toContain('<code>');
       expect(output).toContain('{++addition++}');
       expect(output).toContain('{--deletion--}');
     });
 
-    it('should not process Scientific Markdown in indented code blocks', () => {
+    it('should not process Manuscript Markdown in indented code blocks', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '    {++addition++}\n    {--deletion--}';
       const output = md.render(input);
       
-      // Should not contain Scientific Markdown CSS classes
-      expect(output).not.toContain('scimark-addition');
-      expect(output).not.toContain('scimark-deletion');
+      // Should not contain Manuscript Markdown CSS classes
+      expect(output).not.toContain('manuscript-markdown-addition');
+      expect(output).not.toContain('manuscript-markdown-deletion');
       // Should contain the literal text in a code block
       expect(output).toContain('<code>');
     });
   });
 
-  describe('Scientific Markdown in inline code', () => {
-    it('should not process Scientific Markdown in inline code', () => {
+  describe('Manuscript Markdown in inline code', () => {
+    it('should not process Manuscript Markdown in inline code', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = 'This is `{++addition++}` in inline code';
       const output = md.render(input);
       
-      // Should not contain Scientific Markdown CSS class
-      expect(output).not.toContain('scimark-addition');
+      // Should not contain Manuscript Markdown CSS class
+      expect(output).not.toContain('manuscript-markdown-addition');
       // Should contain the literal text in inline code
       expect(output).toContain('<code>');
       expect(output).toContain('{++addition++}');
     });
 
-    it('should not process multiple Scientific Markdown patterns in inline code', () => {
+    it('should not process multiple Manuscript Markdown patterns in inline code', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = 'Code: `{++add++} {--del--} {==highlight==}`';
       const output = md.render(input);
       
-      // Should not contain any Scientific Markdown CSS classes
-      expect(output).not.toContain('scimark-addition');
-      expect(output).not.toContain('scimark-deletion');
-      expect(output).not.toContain('scimark-highlight');
+      // Should not contain any Manuscript Markdown CSS classes
+      expect(output).not.toContain('manuscript-markdown-addition');
+      expect(output).not.toContain('manuscript-markdown-deletion');
+      expect(output).not.toContain('manuscript-markdown-highlight');
       // Should contain the literal text in inline code
       expect(output).toContain('<code>');
     });
@@ -1118,7 +1118,7 @@ describe('Edge Cases', () => {
   describe('Nested same-type patterns', () => {
     it('should process first complete addition pattern when nested', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       // When patterns are nested, the parser finds the first closing marker
       // So {++outer {++inner++} text++} matches from first {++ to first ++}
@@ -1127,7 +1127,7 @@ describe('Edge Cases', () => {
       const output = md.render(input);
       
       // Should contain the CSS class
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-addition');
       // Should contain "outer" and "{++inner" (the content before first ++})
       expect(output).toContain('outer');
       expect(output).toContain('{++inner');
@@ -1135,13 +1135,13 @@ describe('Edge Cases', () => {
 
     it('should process first complete deletion pattern when nested', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{--outer {--inner--} text--}';
       const output = md.render(input);
       
       // Should contain the CSS class
-      expect(output).toContain('scimark-deletion');
+      expect(output).toContain('manuscript-markdown-deletion');
       // Should contain "outer" and "{--inner" (the content before first --})
       expect(output).toContain('outer');
       expect(output).toContain('{--inner');
@@ -1149,13 +1149,13 @@ describe('Edge Cases', () => {
 
     it('should process first complete highlight pattern when nested', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{==outer {==inner==} text==}';
       const output = md.render(input);
       
       // Should contain the CSS class
-      expect(output).toContain('scimark-highlight');
+      expect(output).toContain('manuscript-markdown-highlight');
       // Should contain "outer" and "{==inner" (the content before first ==})
       expect(output).toContain('outer');
       expect(output).toContain('{==inner');
@@ -1163,10 +1163,10 @@ describe('Edge Cases', () => {
   });
 
   // Validates: Requirements 8.2
-  describe('Scientific Markdown in Markdown lists', () => {
-    it('should process Scientific Markdown in unordered list items', () => {
+  describe('Manuscript Markdown in Markdown lists', () => {
+    it('should process Manuscript Markdown in unordered list items', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = `- Item with {++addition++}
 - Item with {--deletion--}
@@ -1178,10 +1178,10 @@ describe('Edge Cases', () => {
       expect(output).toContain('<li>');
       expect(output).toContain('</ul>');
       
-      // Should contain Scientific Markdown styling
-      expect(output).toContain('scimark-addition');
-      expect(output).toContain('scimark-deletion');
-      expect(output).toContain('scimark-highlight');
+      // Should contain Manuscript Markdown styling
+      expect(output).toContain('manuscript-markdown-addition');
+      expect(output).toContain('manuscript-markdown-deletion');
+      expect(output).toContain('manuscript-markdown-highlight');
       
       // Should contain the text content
       expect(output).toContain('Item with');
@@ -1190,9 +1190,9 @@ describe('Edge Cases', () => {
       expect(output).toContain('highlight');
     });
 
-    it('should process Scientific Markdown in ordered list items', () => {
+    it('should process Manuscript Markdown in ordered list items', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = `1. First item with {++addition++}
 2. Second item with {--deletion--}
@@ -1204,10 +1204,10 @@ describe('Edge Cases', () => {
       expect(output).toContain('<li>');
       expect(output).toContain('</ol>');
       
-      // Should contain Scientific Markdown styling
-      expect(output).toContain('scimark-addition');
-      expect(output).toContain('scimark-deletion');
-      expect(output).toContain('scimark-comment');
+      // Should contain Manuscript Markdown styling
+      expect(output).toContain('manuscript-markdown-addition');
+      expect(output).toContain('manuscript-markdown-deletion');
+      expect(output).toContain('manuscript-markdown-comment');
       
       // Should contain the text content
       expect(output).toContain('First item');
@@ -1215,9 +1215,9 @@ describe('Edge Cases', () => {
       expect(output).toContain('Third item');
     });
 
-    it('should process Scientific Markdown substitution in list items', () => {
+    it('should process Manuscript Markdown substitution in list items', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = `- Item with {~~old text~>new text~~}
 - Another item with {~~before~>after~~}`;
@@ -1228,9 +1228,9 @@ describe('Edge Cases', () => {
       expect(output).toContain('<li>');
       
       // Should contain substitution styling
-      expect(output).toContain('scimark-substitution');
-      expect(output).toContain('scimark-deletion');
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-substitution');
+      expect(output).toContain('manuscript-markdown-deletion');
+      expect(output).toContain('manuscript-markdown-addition');
       
       // Should contain both old and new text
       expect(output).toContain('old text');
@@ -1239,9 +1239,9 @@ describe('Edge Cases', () => {
       expect(output).toContain('after');
     });
 
-    it('should process multiple Scientific Markdown patterns in a single list item', () => {
+    it('should process multiple Manuscript Markdown patterns in a single list item', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = `- Item with {++addition++} and {--deletion--} and {==highlight==}`;
       const output = md.render(input);
@@ -1250,10 +1250,10 @@ describe('Edge Cases', () => {
       expect(output).toContain('<ul>');
       expect(output).toContain('<li>');
       
-      // Should contain all Scientific Markdown styling
-      expect(output).toContain('scimark-addition');
-      expect(output).toContain('scimark-deletion');
-      expect(output).toContain('scimark-highlight');
+      // Should contain all Manuscript Markdown styling
+      expect(output).toContain('manuscript-markdown-addition');
+      expect(output).toContain('manuscript-markdown-deletion');
+      expect(output).toContain('manuscript-markdown-highlight');
       
       // Should contain the text content
       expect(output).toContain('addition');
@@ -1261,9 +1261,9 @@ describe('Edge Cases', () => {
       expect(output).toContain('highlight');
     });
 
-    it('should preserve nested list structure with Scientific Markdown', () => {
+    it('should preserve nested list structure with Manuscript Markdown', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = `- Parent item {++added++}
   - Nested item {--deleted--}
@@ -1275,11 +1275,11 @@ describe('Edge Cases', () => {
       expect(output).toContain('<ul>');
       expect(output).toContain('<li>');
       
-      // Should contain all Scientific Markdown styling
-      expect(output).toContain('scimark-addition');
-      expect(output).toContain('scimark-deletion');
-      expect(output).toContain('scimark-highlight');
-      expect(output).toContain('scimark-comment');
+      // Should contain all Manuscript Markdown styling
+      expect(output).toContain('manuscript-markdown-addition');
+      expect(output).toContain('manuscript-markdown-deletion');
+      expect(output).toContain('manuscript-markdown-highlight');
+      expect(output).toContain('manuscript-markdown-comment');
       
       // Should contain the text content
       expect(output).toContain('Parent item');
@@ -1290,7 +1290,7 @@ describe('Edge Cases', () => {
   });
 });
 
-// Feature: multiline-Scientific Markdown-support, Property 4: Empty line preservation
+// Feature: multiline-Manuscript Markdown-support, Property 4: Empty line preservation
 // Validates: Requirements 6.1, 6.2, 6.3, 6.4
 describe('Property 4: Empty line preservation', () => {
   // Generator for text that can contain empty lines
@@ -1319,14 +1319,14 @@ describe('Property 4: Empty line preservation', () => {
         multilineTextWithEmptyLines,
         (lines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const text = lines.join('\n');
           const input = `{++${text}++}`;
           const output = md.render(input);
           
           // Should contain the CSS class
-          expect(output).toContain('scimark-addition');
+          expect(output).toContain('manuscript-markdown-addition');
           // Should use ins tag
           expect(output).toContain('<ins');
           
@@ -1349,14 +1349,14 @@ describe('Property 4: Empty line preservation', () => {
         multilineTextWithEmptyLines,
         (lines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const text = lines.join('\n');
           const input = `{--${text}--}`;
           const output = md.render(input);
           
           // Should contain the CSS class
-          expect(output).toContain('scimark-deletion');
+          expect(output).toContain('manuscript-markdown-deletion');
           // Should use del tag
           expect(output).toContain('<del');
           
@@ -1381,14 +1381,14 @@ describe('Property 4: Empty line preservation', () => {
         ),
         (lines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const text = lines.join('\n');
           const input = `{>>${text}<<}`;
           const output = md.render(input);
           
           // Should contain the CSS class
-          expect(output).toContain('scimark-comment');
+          expect(output).toContain('manuscript-markdown-comment');
           // Should use span tag
           expect(output).toContain('<span');
           
@@ -1411,14 +1411,14 @@ describe('Property 4: Empty line preservation', () => {
         multilineTextWithEmptyLines,
         (lines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const text = lines.join('\n');
           const input = `{==${text}==}`;
           const output = md.render(input);
           
           // Should contain the CSS class
-          expect(output).toContain('scimark-highlight');
+          expect(output).toContain('manuscript-markdown-highlight');
           // Should use mark tag
           expect(output).toContain('<mark');
           
@@ -1446,7 +1446,7 @@ describe('Property 4: Empty line preservation', () => {
         ),
         (oldLines, newLines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const oldText = oldLines.join('\n');
           const newText = newLines.join('\n');
@@ -1454,10 +1454,10 @@ describe('Property 4: Empty line preservation', () => {
           const output = md.render(input);
           
           // Should contain substitution CSS class
-          expect(output).toContain('scimark-substitution');
+          expect(output).toContain('manuscript-markdown-substitution');
           // Should contain both deletion and addition classes
-          expect(output).toContain('scimark-deletion');
-          expect(output).toContain('scimark-addition');
+          expect(output).toContain('manuscript-markdown-deletion');
+          expect(output).toContain('manuscript-markdown-addition');
           
           // Should preserve non-empty line content from old text
           oldLines.forEach(line => {
@@ -1481,9 +1481,9 @@ describe('Property 4: Empty line preservation', () => {
   });
 });
 
-// Feature: multiline-Scientific Markdown-support, Property 3: Multi-line preview rendering
+// Feature: multiline-Manuscript Markdown-support, Property 3: Multi-line preview rendering
 // Validates: Requirements 1.4, 2.4, 3.4, 4.4, 5.4, 6.2
-describe('Property 3: Multi-line preview rendering (multiline-Scientific Markdown-support)', () => {
+describe('Property 3: Multi-line preview rendering (multiline-Manuscript Markdown-support)', () => {
   // Generator for multi-line text (without empty lines for this property)
   const multilineText = fc.array(
     fc.string({ minLength: 1, maxLength: 50 }).filter(s => 
@@ -1501,14 +1501,14 @@ describe('Property 3: Multi-line preview rendering (multiline-Scientific Markdow
         multilineText,
         (lines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const text = lines.join('\n');
           const input = `{++${text}++}`;
           const output = md.render(input);
           
           // Should contain the CSS class
-          expect(output).toContain('scimark-addition');
+          expect(output).toContain('manuscript-markdown-addition');
           // Should use ins tag
           expect(output).toContain('<ins');
           expect(output).toContain('</ins>');
@@ -1532,14 +1532,14 @@ describe('Property 3: Multi-line preview rendering (multiline-Scientific Markdow
         multilineText,
         (lines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const text = lines.join('\n');
           const input = `{--${text}--}`;
           const output = md.render(input);
           
           // Should contain the CSS class
-          expect(output).toContain('scimark-deletion');
+          expect(output).toContain('manuscript-markdown-deletion');
           // Should use del tag
           expect(output).toContain('<del');
           expect(output).toContain('</del>');
@@ -1565,14 +1565,14 @@ describe('Property 3: Multi-line preview rendering (multiline-Scientific Markdow
         ),
         (lines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const text = lines.join('\n');
           const input = `{>>${text}<<}`;
           const output = md.render(input);
           
           // Should contain the CSS class
-          expect(output).toContain('scimark-comment');
+          expect(output).toContain('manuscript-markdown-comment');
           // Should use span tag
           expect(output).toContain('<span');
           expect(output).toContain('</span>');
@@ -1596,14 +1596,14 @@ describe('Property 3: Multi-line preview rendering (multiline-Scientific Markdow
         multilineText,
         (lines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const text = lines.join('\n');
           const input = `{==${text}==}`;
           const output = md.render(input);
           
           // Should contain the CSS class
-          expect(output).toContain('scimark-highlight');
+          expect(output).toContain('manuscript-markdown-highlight');
           // Should use mark tag
           expect(output).toContain('<mark');
           expect(output).toContain('</mark>');
@@ -1632,7 +1632,7 @@ describe('Property 3: Multi-line preview rendering (multiline-Scientific Markdow
         ),
         (oldLines, newLines) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const oldText = oldLines.join('\n');
           const newText = newLines.join('\n');
@@ -1640,10 +1640,10 @@ describe('Property 3: Multi-line preview rendering (multiline-Scientific Markdow
           const output = md.render(input);
           
           // Should contain substitution wrapper
-          expect(output).toContain('scimark-substitution');
+          expect(output).toContain('manuscript-markdown-substitution');
           // Should contain both deletion and addition classes
-          expect(output).toContain('scimark-deletion');
-          expect(output).toContain('scimark-addition');
+          expect(output).toContain('manuscript-markdown-deletion');
+          expect(output).toContain('manuscript-markdown-addition');
           // Should use both del and ins tags
           expect(output).toContain('<del');
           expect(output).toContain('<ins');
@@ -1674,7 +1674,7 @@ describe('Property 3: Multi-line preview rendering (multiline-Scientific Markdow
 // Multi-line patterns that start mid-line are not fully supported in preview or syntax highlighting
 // They work for navigation only
 
-// Feature: multiline-Scientific Markdown-support, Property 5: Mid-line multi-line pattern recognition (PARTIAL)
+// Feature: multiline-Manuscript Markdown-support, Property 5: Mid-line multi-line pattern recognition (PARTIAL)
 // Validates: Requirements 1.1, 1.3, 1.4, 2.1, 2.3, 2.4, 3.1, 3.3, 3.4, 4.1, 4.3, 4.4, 5.1, 5.3, 5.4
 // LIMITATION: Only navigation is tested here, preview/syntax highlighting not supported
 describe('Property 5: Mid-line multi-line pattern recognition (navigation only)', () => {
@@ -1683,7 +1683,7 @@ describe('Property 5: Mid-line multi-line pattern recognition (navigation only)'
   const plainText = fc.string({ minLength: 1, maxLength: 30 }).filter(s => {
     if (!s || s.trim().length === 0) return false;
     if (!hasNoSpecialSyntax(s)) return false;
-    // Exclude Scientific Markdown markers
+    // Exclude Manuscript Markdown markers
     if (s.includes('{') || s.includes('}')) return false;
     // Exclude newlines
     if (s.includes('\n')) return false;
@@ -1711,10 +1711,10 @@ describe('Property 5: Mid-line multi-line pattern recognition (navigation only)'
 
   // Pattern type generator
   const patternTypeGen = fc.constantFrom(
-    { name: 'addition', open: '{++', close: '++}', cssClass: 'scimark-addition', tag: 'ins' },
-    { name: 'deletion', open: '{--', close: '--}', cssClass: 'scimark-deletion', tag: 'del' },
-    { name: 'comment', open: '{>>', close: '<<}', cssClass: 'scimark-comment', tag: 'span' },
-    { name: 'highlight', open: '{==', close: '==}', cssClass: 'scimark-highlight', tag: 'mark' }
+    { name: 'addition', open: '{++', close: '++}', cssClass: 'manuscript-markdown-addition', tag: 'ins' },
+    { name: 'deletion', open: '{--', close: '--}', cssClass: 'manuscript-markdown-deletion', tag: 'del' },
+    { name: 'comment', open: '{>>', close: '<<}', cssClass: 'manuscript-markdown-comment', tag: 'span' },
+    { name: 'highlight', open: '{==', close: '==}', cssClass: 'manuscript-markdown-highlight', tag: 'mark' }
   );
 
   // Note: Property tests removed - mid-line multi-line patterns are not supported in preview
@@ -1726,14 +1726,14 @@ describe('Mid-line multi-line pattern limitations', () => {
   
   it('should handle single-line patterns mid-line correctly', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     
     const input = `Text {++add++} and {--del--} patterns`;
     const output = md.render(input);
     
     // Single-line patterns work fine mid-line
-    expect(output).toContain('scimark-addition');
-    expect(output).toContain('scimark-deletion');
+    expect(output).toContain('manuscript-markdown-addition');
+    expect(output).toContain('manuscript-markdown-deletion');
     expect(output).toContain('Text');
     expect(output).toContain('add');
     expect(output).toContain('and');
@@ -1743,7 +1743,7 @@ describe('Mid-line multi-line pattern limitations', () => {
 
   it('should document that mid-line multi-line patterns are not fully supported', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     
     // This pattern starts mid-line and spans multiple lines
     // It will NOT be properly handled by the block-level rule
@@ -1769,13 +1769,13 @@ describe('Property 10: Preview ==highlight== rendering', () => {
         fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('=') && !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)),
         (text) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           
           const input = `==${text}==`;
           const output = md.render(input);
           
           // Should contain the CSS class
-          expect(output).toContain('scimark-format-highlight');
+          expect(output).toContain('manuscript-markdown-format-highlight');
           // Should contain the text content (HTML-escaped)
           expect(output).toContain(escapeHtml(text));
           // Should use mark tag
@@ -1798,9 +1798,9 @@ describe('Property 2: Preview renders colored highlights with correct color clas
     fc.assert(
       fc.property(safeText, colorIdGen, (text: string, color: string) => {
         const md = new MarkdownIt();
-        md.use(scimarkPlugin);
+        md.use(manuscriptMarkdownPlugin);
         const output = md.render('==' + text + '=={' + color + '}');
-        expect(output).toContain('scimark-highlight-' + color);
+        expect(output).toContain('manuscript-markdown-highlight-' + color);
         expect(output).toContain('<mark');
         expect(output).toContain(escapeHtml(text));
       }),
@@ -1822,9 +1822,9 @@ describe('Property 3: Preview renders default highlights with yellow/amber', () 
       fc.assert(
         fc.property(safeText, (text: string) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           const output = md.render('==' + text + '==');
-          expect(output).toContain('scimark-format-highlight');
+          expect(output).toContain('manuscript-markdown-format-highlight');
           expect(output).toContain('<mark');
           expect(output).toContain(escapeHtml(text));
         }),
@@ -1846,10 +1846,10 @@ describe('Property 4: Preview renders CriticMarkup highlights with Comment_Gray'
     fc.assert(
       fc.property(safeText, (text: string) => {
         const md = new MarkdownIt();
-        md.use(scimarkPlugin);
+        md.use(manuscriptMarkdownPlugin);
         const output = md.render('{==' + text + '==}');
-        expect(output).toContain('class="scimark-highlight"');
-        expect(output).not.toContain('scimark-format-highlight');
+        expect(output).toContain('class="manuscript-markdown-highlight"');
+        expect(output).not.toContain('manuscript-markdown-format-highlight');
         expect(output).toContain('<mark');
       }),
       { numRuns: 100 }
@@ -1875,11 +1875,11 @@ describe('Property 5: Preview falls back for unrecognized colors', () => {
         fc.property(safeText, invalidColorGen, defaultColorGen, (text: string, badColor: string, defaultColor: string) => {
           setDefaultHighlightColor(defaultColor);
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           const output = md.render('==' + text + '=={' + badColor + '}');
-          expect(output).toContain('scimark-format-highlight');
+          expect(output).toContain('manuscript-markdown-format-highlight');
           if (defaultColor !== 'yellow') {
-            expect(output).toContain('scimark-highlight-' + defaultColor);
+            expect(output).toContain('manuscript-markdown-highlight-' + defaultColor);
           }
           expect(output).toContain('<mark');
         }),
@@ -1897,10 +1897,10 @@ describe('Property 5: Preview falls back for unrecognized colors', () => {
       fc.assert(
         fc.property(safeText, invalidColorGen, (text: string, badColor: string) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
           const output = md.render('==' + text + '=={' + badColor + '}');
-          expect(output).toContain('scimark-format-highlight');
-          expect(output).not.toContain('scimark-highlight-not-a-color');
+          expect(output).toContain('manuscript-markdown-format-highlight');
+          expect(output).not.toContain('manuscript-markdown-highlight-not-a-color');
         }),
         { numRuns: 100 }
       );
@@ -1917,58 +1917,58 @@ describe('Property 5: Preview falls back for unrecognized colors', () => {
 describe('Code region inertness in preview', () => {
   it('renders inline code with CriticMarkup addition as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('`{++added++}`');
     expect(output).toContain('<code>{++added++}</code>');
     expect(output).not.toContain('<ins');
-    expect(output).not.toContain('scimark-addition');
+    expect(output).not.toContain('manuscript-markdown-addition');
   });
 
   it('renders inline code with CriticMarkup deletion as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('`{--deleted--}`');
     expect(output).toContain('<code>{--deleted--}</code>');
     expect(output).not.toContain('<del');
-    expect(output).not.toContain('scimark-deletion');
+    expect(output).not.toContain('manuscript-markdown-deletion');
   });
 
   it('renders inline code with CriticMarkup substitution as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('`{~~old~>new~~}`');
     expect(output).toContain('<code>{~~old~&gt;new~~}</code>');
-    expect(output).not.toContain('scimark-substitution');
+    expect(output).not.toContain('manuscript-markdown-substitution');
   });
 
   it('renders inline code with CriticMarkup comment as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('`{>>comment<<}`');
     expect(output).toContain('<code>{&gt;&gt;comment&lt;&lt;}</code>');
-    expect(output).not.toContain('scimark-comment');
+    expect(output).not.toContain('manuscript-markdown-comment');
   });
 
   it('renders inline code with CriticMarkup highlight as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('`{==highlighted==}`');
     expect(output).toContain('<code>{==highlighted==}</code>');
-    expect(output).not.toContain('scimark-highlight');
+    expect(output).not.toContain('manuscript-markdown-highlight');
   });
 
   it('renders inline code with format highlight as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('`==highlighted==`');
     expect(output).toContain('<code>==highlighted==</code>');
     expect(output).not.toContain('<mark');
-    expect(output).not.toContain('scimark-format-highlight');
+    expect(output).not.toContain('manuscript-markdown-format-highlight');
   });
 
   it('renders inline code with colored highlight as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('`==text=={red}`');
     expect(output).toContain('<code>==text=={red}</code>');
     expect(output).not.toContain('<mark');
@@ -1976,14 +1976,14 @@ describe('Code region inertness in preview', () => {
 
   it('renders inline code with citation as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('`[@smith2020]`');
     expect(output).toContain('<code>[@smith2020]</code>');
   });
 
   it('renders fenced code block with CriticMarkup as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('```\n{++added++}\n{--deleted--}\n{==highlighted==}\n==format==\n```');
     expect(output).toContain('<code>');
     expect(output).toContain('{++added++}');
@@ -1993,36 +1993,36 @@ describe('Code region inertness in preview', () => {
     expect(output).not.toContain('<ins');
     expect(output).not.toContain('<del');
     expect(output).not.toContain('<mark');
-    expect(output).not.toContain('scimark');
+    expect(output).not.toContain('manuscript-markdown');
   });
 
   it('renders fenced code block with language tag as literal text', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('```markdown\n{++added++}\n```');
     expect(output).toContain('{++added++}');
     expect(output).not.toContain('<ins');
-    expect(output).not.toContain('scimark');
+    expect(output).not.toContain('manuscript-markdown');
   });
 
   it('still processes CriticMarkup outside inline code', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     const output = md.render('Before `code` {++after++}');
     // The inline code should be literal
     expect(output).toContain('<code>code</code>');
     // The CriticMarkup outside code should be processed
-    expect(output).toContain('scimark-addition');
+    expect(output).toContain('manuscript-markdown-addition');
     expect(output).toContain('<ins');
   });
 
   it('still processes CriticMarkup surrounding a code span', () => {
     const md = new MarkdownIt();
-    md.use(scimarkPlugin);
+    md.use(manuscriptMarkdownPlugin);
     // CriticMarkup delimiters are outside the code span — should be treated as live markup
     const output = md.render('{==`code`==}');
     expect(output).toContain('<code>code</code>');
-    expect(output).toContain('scimark-highlight');
+    expect(output).toContain('manuscript-markdown-highlight');
   });
 });
 
@@ -2032,9 +2032,9 @@ describe('Comment association in preview', () => {
   describe('Standalone comments', () => {
     it('should render standalone comment as indicator with data-comment', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{>>note<<}');
-      expect(output).toContain('scimark-comment-indicator');
+      expect(output).toContain('manuscript-markdown-comment-indicator');
       expect(output).toContain('data-comment="note"');
       // Should NOT contain visible comment text as rendered content
       expect(output).not.toMatch(/>note</);
@@ -2042,17 +2042,17 @@ describe('Comment association in preview', () => {
 
     it('should render standalone comment with special chars escaped in data-comment', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{>>a "quote" & <tag><<}');
-      expect(output).toContain('scimark-comment-indicator');
+      expect(output).toContain('manuscript-markdown-comment-indicator');
       expect(output).toContain('data-comment="a &quot;quote&quot; &amp; &lt;tag&gt;"');
     });
 
     it('should render multiple standalone comments as separate indicators', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{>>first<<} {>>second<<}');
-      const indicatorCount = (output.match(/scimark-comment-indicator/g) || []).length;
+      const indicatorCount = (output.match(/manuscript-markdown-comment-indicator/g) || []).length;
       expect(indicatorCount).toBe(2);
       expect(output).toContain('data-comment="first"');
       expect(output).toContain('data-comment="second"');
@@ -2062,85 +2062,85 @@ describe('Comment association in preview', () => {
   describe('Adjacent comment association', () => {
     it('should associate comment with preceding highlight via data-comment', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{==text==}{>>comment<<}');
-      expect(output).toContain('scimark-highlight');
+      expect(output).toContain('manuscript-markdown-highlight');
       expect(output).toContain('data-comment="comment"');
       // Should NOT contain a separate comment indicator
-      expect(output).not.toContain('scimark-comment-indicator');
+      expect(output).not.toContain('manuscript-markdown-comment-indicator');
       // Comment text should not appear as visible rendered content
       expect(output).not.toMatch(/>comment</);
     });
 
     it('should associate comment with preceding addition via data-comment', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{++added++}{>>why<<}');
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('data-comment="why"');
-      expect(output).not.toContain('scimark-comment-indicator');
+      expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
 
     it('should associate comment with preceding deletion via data-comment', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{--removed--}{>>reason<<}');
-      expect(output).toContain('scimark-deletion');
+      expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('data-comment="reason"');
-      expect(output).not.toContain('scimark-comment-indicator');
+      expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
 
     it('should associate comment with preceding substitution via data-comment', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{~~old~>new~~}{>>reason<<}');
-      expect(output).toContain('scimark-substitution');
+      expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('data-comment="reason"');
-      expect(output).not.toContain('scimark-comment-indicator');
+      expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
 
     it('should associate comment with preceding format highlight via data-comment', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('==text=={>>note<<}');
-      expect(output).toContain('scimark-format-highlight');
+      expect(output).toContain('manuscript-markdown-format-highlight');
       expect(output).toContain('data-comment="note"');
-      expect(output).not.toContain('scimark-comment-indicator');
+      expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
 
     it('should concatenate multiple sequential comments with newline separator', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{==text==}{>>first<<}{>>second<<}');
-      expect(output).toContain('scimark-highlight');
+      expect(output).toContain('manuscript-markdown-highlight');
       // Both comments should be on the same element, joined by newline
       expect(output).toContain('data-comment="first\nsecond"');
-      expect(output).not.toContain('scimark-comment-indicator');
+      expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
   });
 
   describe('ID-based comment ranges', () => {
     it('should create comment range span with data-comment for ID-based comments', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{#1}text{/1}{#1>>comment<<}');
-      expect(output).toContain('scimark-comment-range');
+      expect(output).toContain('manuscript-markdown-comment-range');
       expect(output).toContain('data-comment="comment"');
       expect(output).toContain('>text</span>');
     });
 
     it('should leave range markers without matching comment as empty renders', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{#1}text{/1}');
       // No matching comment — range markers render as empty string
-      expect(output).not.toContain('scimark-comment-range');
+      expect(output).not.toContain('manuscript-markdown-comment-range');
       expect(output).toContain('text');
     });
 
     it('should handle multiple ID-based ranges independently', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('{#a}alpha{/a}{#b}beta{/b}{#a>>note-a<<}{#b>>note-b<<}');
       expect(output).toContain('data-comment="note-a"');
       expect(output).toContain('data-comment="note-b"');
@@ -2150,16 +2150,16 @@ describe('Comment association in preview', () => {
   describe('Empty and edge cases', () => {
     it('should remove empty comment silently with no indicator', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('text{>><<}more');
-      expect(output).not.toContain('scimark-comment');
+      expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
       expect(output).toContain('textmore');
     });
 
     it('should not affect text surrounding associated comments', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('before {==text==}{>>note<<} after');
       expect(output).toContain('before');
       expect(output).toContain('after');
@@ -2169,12 +2169,12 @@ describe('Comment association in preview', () => {
 
     it('should handle comment after highlight in a list item', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       const output = md.render('- Item {==text==}{>>note<<}');
       expect(output).toContain('<ul>');
-      expect(output).toContain('scimark-highlight');
+      expect(output).toContain('manuscript-markdown-highlight');
       expect(output).toContain('data-comment="note"');
-      expect(output).not.toContain('scimark-comment-indicator');
+      expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
   });
 });
@@ -2214,7 +2214,7 @@ describe('Property 1: Whitespace-Separated Comment Association (Bug Condition Ex
         commentTextArb,
         (elemType, ws, commentText) => {
           const md = new MarkdownIt();
-          md.use(scimarkPlugin);
+          md.use(manuscriptMarkdownPlugin);
 
           // Build input: element + whitespace + comment
           // For substitution, use {~~old~>new~~} form
@@ -2230,7 +2230,7 @@ describe('Property 1: Whitespace-Separated Comment Association (Bug Condition Ex
           // Expected: data-comment attribute appears on the element's open tag
           expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
           // Expected: comment should NOT render as a standalone indicator
-          expect(output).not.toContain('scimark-comment-indicator');
+          expect(output).not.toContain('manuscript-markdown-comment-indicator');
         }
       ),
       { numRuns: 50 }
@@ -2246,11 +2246,11 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
 
   // CriticMarkup element definitions reused across sub-properties
   const elementTypes = [
-    { name: 'highlight',        open: '{==', close: '==}', tag: 'mark',  cssClass: 'scimark-highlight' },
-    { name: 'addition',         open: '{++', close: '++}', tag: 'ins',   cssClass: 'scimark-addition' },
-    { name: 'deletion',         open: '{--', close: '--}', tag: 'del',   cssClass: 'scimark-deletion' },
-    { name: 'substitution',     open: '{~~', close: '~~}', tag: 'span',  cssClass: 'scimark-substitution' },
-    { name: 'format highlight', open: '==',  close: '==',  tag: 'mark',  cssClass: 'scimark-format-highlight' },
+    { name: 'highlight',        open: '{==', close: '==}', tag: 'mark',  cssClass: 'manuscript-markdown-highlight' },
+    { name: 'addition',         open: '{++', close: '++}', tag: 'ins',   cssClass: 'manuscript-markdown-addition' },
+    { name: 'deletion',         open: '{--', close: '--}', tag: 'del',   cssClass: 'manuscript-markdown-deletion' },
+    { name: 'substitution',     open: '{~~', close: '~~}', tag: 'span',  cssClass: 'manuscript-markdown-substitution' },
+    { name: 'format highlight', open: '==',  close: '==',  tag: 'mark',  cssClass: 'manuscript-markdown-format-highlight' },
   ];
 
   const elementTypeArb = fc.constantFrom(...elementTypes);
@@ -2283,7 +2283,7 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
           commentTextArb,
           (elemType, commentText) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
 
             const input = buildElementInput(elemType) + '{>>' + commentText + '<<}';
             const output = md.render(input);
@@ -2291,7 +2291,7 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
             // Observed: data-comment attribute is set on the element
             expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
             // Observed: no standalone indicator
-            expect(output).not.toContain('scimark-comment-indicator');
+            expect(output).not.toContain('manuscript-markdown-comment-indicator');
             // Observed: element CSS class is present
             expect(output).toContain(elemType.cssClass);
           }
@@ -2312,13 +2312,13 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
           commentTextArb,
           (elemType, separator, commentText) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
 
             const input = buildElementInput(elemType) + separator + '{>>' + commentText + '<<}';
             const output = md.render(input);
 
             // Observed: comment renders as standalone indicator
-            expect(output).toContain('scimark-comment-indicator');
+            expect(output).toContain('manuscript-markdown-comment-indicator');
             expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
           }
         ),
@@ -2328,7 +2328,7 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
   });
 
   // --- Sub-property: Standalone comment with no preceding element (Req 3.3) ---
-  // Observed: {>>standalone<<} → <span class="scimark-comment-indicator" data-comment="standalone">
+  // Observed: {>>standalone<<} → <span class="manuscript-markdown-comment-indicator" data-comment="standalone">
   describe('Standalone comment with no preceding element', () => {
     it('should render comment as indicator when no CriticMarkup element precedes it', () => {
       fc.assert(
@@ -2336,13 +2336,13 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
           commentTextArb,
           (commentText) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
 
             const input = '{>>' + commentText + '<<}';
             const output = md.render(input);
 
             // Observed: renders as standalone indicator
-            expect(output).toContain('scimark-comment-indicator');
+            expect(output).toContain('manuscript-markdown-comment-indicator');
             expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
           }
         ),
@@ -2357,13 +2357,13 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
           commentTextArb,
           (plainText, commentText) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
 
             const input = plainText + ' {>>' + commentText + '<<}';
             const output = md.render(input);
 
             // Observed: renders as standalone indicator (plain text is not a CriticMarkup element)
-            expect(output).toContain('scimark-comment-indicator');
+            expect(output).toContain('manuscript-markdown-comment-indicator');
             expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
           }
         ),
@@ -2377,11 +2377,11 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
   describe('Empty comment removal', () => {
     it('should silently remove empty comments', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
 
       const output = md.render('{>><<}');
       // Observed: no comment indicator, no data-comment attribute
-      expect(output).not.toContain('scimark-comment');
+      expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
       expect(output).toBe('<p></p>\n');
     });
@@ -2392,7 +2392,7 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
           elementTypeArb,
           (elemType) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
 
             const input = buildElementInput(elemType) + '{>><<}';
             const output = md.render(input);
@@ -2400,7 +2400,7 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
             // Observed: element renders normally, no comment association
             expect(output).toContain(elemType.cssClass);
             expect(output).not.toContain('data-comment');
-            expect(output).not.toContain('scimark-comment-indicator');
+            expect(output).not.toContain('manuscript-markdown-comment-indicator');
           }
         ),
         { numRuns: 50 }
@@ -2419,7 +2419,7 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
           commentTextArb,
           (elemType, commentA, commentB) => {
             const md = new MarkdownIt();
-            md.use(scimarkPlugin);
+            md.use(manuscriptMarkdownPlugin);
 
             const input = buildElementInput(elemType) + '{>>' + commentA + '<<}{>>' + commentB + '<<}';
             const output = md.render(input);
@@ -2428,7 +2428,7 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
             const expectedAttr = 'data-comment="' + escapeHtml(commentA) + '\n' + escapeHtml(commentB) + '"';
             expect(output).toContain(expectedAttr);
             // Observed: no standalone indicator
-            expect(output).not.toContain('scimark-comment-indicator');
+            expect(output).not.toContain('manuscript-markdown-comment-indicator');
             // Observed: element CSS class present
             expect(output).toContain(elemType.cssClass);
           }

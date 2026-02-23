@@ -2,14 +2,14 @@
 
 ## Introduction
 
-This feature enhances the Scientific Markdown comment functionality by automatically prepending the author's name to comments. When users invoke comment-related commands from the context menu (Comment, Highlight and Comment, Substitute and Comment, Addition and Comment, Deletion and Comment), the system will retrieve the user's name and insert it in the format `@Name: ` at the beginning of the comment. This makes collaborative editing clearer by identifying who made each comment.
+This feature enhances the Manuscript Markdown comment functionality by automatically prepending the author's name to comments. When users invoke comment-related commands from the context menu (Comment, Highlight and Comment, Substitute and Comment, Addition and Comment, Deletion and Comment), the system will retrieve the user's name and insert it in the format `@Name: ` at the beginning of the comment. This makes collaborative editing clearer by identifying who made each comment.
 
 ## Glossary
 
-- **Scientific Markdown Comment**: A comment syntax in the form `{>>comment text<<}`
+- **Manuscript Markdown Comment**: A comment syntax in the form `{>>comment text<<}`
 - **User Name**: The name retrieved from extension settings or OS username
 - **Author Prefix**: The formatted string `@Name: ` that precedes comment text
-- **Comment Command**: A VS Code command that inserts Scientific Markdown comment syntax
+- **Comment Command**: A VS Code command that inserts Manuscript Markdown comment syntax
 - **Highlight-and-Comment Command**: A VS Code command that both highlights selected text and adds a comment
 - **Extension Setting**: A user-configurable value stored in VS Code's settings system
 - **Author Name Setting**: An extension setting that specifies the author name to use in comments

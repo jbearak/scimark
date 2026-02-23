@@ -6,8 +6,8 @@ Add YAML frontmatter support for customizing fonts and font sizes in DOCX output
 
 ## Glossary
 
-- **Converter**: The Markdown-to-DOCX conversion module (`src/md-to-docx.ts`) that transforms Scientific Markdown into OOXML.
-- **Frontmatter**: The YAML metadata block delimited by `---` at the start of a Scientific Markdown file, parsed by `parseFrontmatter()`.
+- **Converter**: The Markdown-to-DOCX conversion module (`src/md-to-docx.ts`) that transforms Manuscript Markdown into OOXML.
+- **Frontmatter**: The YAML metadata block delimited by `---` at the start of a Manuscript Markdown file, parsed by `parseFrontmatter()`.
 - **Body_Font**: The font family used for normal prose text and headings (no explicit default is set — the rendering application's default font is used).
 - **Code_Font**: The monospace font family used for inline code and code blocks (default: Consolas).
 - **Body_Font_Size**: The font size in points for the Normal style (default: 11pt).

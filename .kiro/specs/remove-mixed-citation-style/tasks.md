@@ -13,7 +13,7 @@
 - [x] 2.5 Remove `mixedCitationStyle: options.mixedCitationStyle` from the `convertMdToDocx` call in `runMdToDocx()` in `src/cli.ts`
 
 ## Task 3: Remove VS Code Setting Definition
-- [x] 3.1 Remove the `scimark.mixedCitationStyle` block from `contributes.configuration.properties` in `package.json`
+- [x] 3.1 Remove the `manuscriptMarkdown.mixedCitationStyle` block from `contributes.configuration.properties` in `package.json`
 
 ## Task 4: Update Tests
 - [x] 4.1 In `src/cli.test.ts` Property 2 test: remove the `fc.constantFrom('separate', 'unified')` generator, remove `--mixed-citation-style` from args construction, remove `mixedCitationStyle` from destructured params and assertion

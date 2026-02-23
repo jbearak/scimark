@@ -2,14 +2,14 @@
 
 ## Overview
 
-This feature extends the Scientific Markdown extension to support colored highlights using the syntax `==text=={color}`. It touches five areas of the codebase:
+This feature extends the Manuscript Markdown extension to support colored highlights using the syntax `==text=={color}`. It touches five areas of the codebase:
 
 1. **package.json** — new commands, a submenu, and menu reorganization
 2. **src/formatting.ts** — a new `wrapColoredHighlight` function
-3. **src/preview/scimark-plugin.ts** — parsing colored highlights and rendering with color-specific CSS classes
-4. **media/scimark.css** — CSS classes for each Word highlight color
+3. **src/preview/manuscript-markdown-plugin.ts** — parsing colored highlights and rendering with color-specific CSS classes
+4. **media/manuscript-markdown.css** — CSS classes for each Word highlight color
 5. **src/extension.ts** — register color commands, create `TextEditorDecorationType` instances, and update decorations on document change
-6. **syntaxes/scimark.json** — TextMate pattern for `==text=={color}`
+6. **syntaxes/manuscript-markdown.json** — TextMate pattern for `==text=={color}`
 7. **src/changes.ts** — extend the navigation regex to match `==text=={color}`
 
 The colored highlight syntax `==text=={color}` was chosen because:
@@ -25,9 +25,9 @@ graph TD
     B -->|registered in| C[extension.ts]
     C -->|calls| D[formatting.ts]
     C -->|manages| E[Editor Decorations]
-    F[scimark-plugin.ts] -->|parses & renders| G[Preview HTML]
-    H[scimark.css] -->|styles| G
-    I[scimark.json] -->|tokenizes| J[Editor Syntax Highlighting]
+    F[manuscript-markdown-plugin.ts] -->|parses & renders| G[Preview HTML]
+    H[manuscript-markdown.css] -->|styles| G
+    I[manuscript-markdown.json] -->|tokenizes| J[Editor Syntax Highlighting]
     K[changes.ts] -->|navigates| L[Pattern Matches]
     
     subgraph "Color Map (shared constant)"
@@ -138,7 +138,7 @@ Register 14 new commands, one per color:
 ```typescript
 for (const colorId of VALID_COLOR_IDS) {
   context.subscriptions.push(
-    vscode.commands.registerCommand(`scimark.formatHighlight_${colorId}`, () =>
+    vscode.commands.registerCommand(`manuscript-markdown.formatHighlight_${colorId}`, () =>
       applyFormatting((text) => formatting.wrapColoredHighlight(text, colorId))
     )
   );
@@ -168,13 +168,13 @@ decorationTypes.set('critic', vscode.window.createTextEditorDecorationType({
 
 The `light` and `dark` sub-properties of `DecorationRenderOptions` accept `ThemableDecorationRenderOptions`, which includes `backgroundColor`. VS Code automatically applies the correct variant based on the active theme kind. This avoids the problem of a single rgba value being invisible on one theme type.
 
-A `updateHighlightDecorations(editor)` function scans the document text with a regex, groups matches by color, and calls `editor.setDecorations(type, ranges)` for each. For default highlights (`==text==` without a color suffix), the function reads the `scimark.defaultHighlightColor` setting and uses that color's decoration type.
+A `updateHighlightDecorations(editor)` function scans the document text with a regex, groups matches by color, and calls `editor.setDecorations(type, ranges)` for each. For default highlights (`==text==` without a color suffix), the function reads the `manuscriptMarkdown.defaultHighlightColor` setting and uses that color's decoration type.
 
 Triggered on:
 - `vscode.window.onDidChangeActiveTextEditor`
 - `vscode.workspace.onDidChangeTextDocument`
 
-### 5. Preview Plugin (`src/preview/scimark-plugin.ts`)
+### 5. Preview Plugin (`src/preview/manuscript-markdown-plugin.ts`)
 
 Extend `parseFormatHighlight` to detect the optional `{color}` suffix after `==`:
 
@@ -184,16 +184,16 @@ if (nextChar === '{') {
   // parse color identifier up to }
   const colorId = extractColorId(src, pos + 2);
   if (colorId) {
-    tokenOpen.attrSet('class', `scimark-format-highlight scimark-highlight-${colorId}`);
+    tokenOpen.attrSet('class', `manuscript-markdown-format-highlight manuscript-markdown-highlight-${colorId}`);
     state.pos = pos + 2 + colorId.length + 2; // skip =={color}
     return true;
   }
 }
 // No color suffix — default highlight
-tokenOpen.attrSet('class', 'scimark-format-highlight');
+tokenOpen.attrSet('class', 'manuscript-markdown-format-highlight');
 ```
 
-### 6. CSS (`media/scimark.css`)
+### 6. CSS (`media/manuscript-markdown.css`)
 
 Add a class for each color with theme-aware variants using `@media (prefers-color-scheme)`. The VS Code Markdown preview respects this media query to switch between light and dark styles.
 
@@ -201,65 +201,65 @@ Light theme uses the raw highlight color at moderate opacity. Dark theme adjusts
 
 ```css
 /* Light theme (default) */
-.scimark-highlight-yellow { background-color: rgba(255, 255, 0, 0.40); }
-.scimark-highlight-green { background-color: rgba(0, 255, 0, 0.30); }
-.scimark-highlight-turquoise { background-color: rgba(0, 255, 255, 0.35); }
-.scimark-highlight-pink { background-color: rgba(255, 0, 255, 0.25); }
-.scimark-highlight-blue { background-color: rgba(0, 0, 255, 0.20); }
-.scimark-highlight-red { background-color: rgba(255, 0, 0, 0.25); }
-.scimark-highlight-dark-blue { background-color: rgba(0, 0, 128, 0.25); }
-.scimark-highlight-teal { background-color: rgba(0, 128, 128, 0.25); }
-.scimark-highlight-violet { background-color: rgba(128, 0, 128, 0.25); }
-.scimark-highlight-dark-red { background-color: rgba(128, 0, 0, 0.25); }
-.scimark-highlight-dark-yellow { background-color: rgba(128, 128, 0, 0.30); }
-.scimark-highlight-gray-50 { background-color: rgba(128, 128, 128, 0.30); }
-.scimark-highlight-gray-25 { background-color: rgba(192, 192, 192, 0.40); }
-.scimark-highlight-black { background-color: rgba(0, 0, 0, 0.15); }
+.manuscript-markdown-highlight-yellow { background-color: rgba(255, 255, 0, 0.40); }
+.manuscript-markdown-highlight-green { background-color: rgba(0, 255, 0, 0.30); }
+.manuscript-markdown-highlight-turquoise { background-color: rgba(0, 255, 255, 0.35); }
+.manuscript-markdown-highlight-pink { background-color: rgba(255, 0, 255, 0.25); }
+.manuscript-markdown-highlight-blue { background-color: rgba(0, 0, 255, 0.20); }
+.manuscript-markdown-highlight-red { background-color: rgba(255, 0, 0, 0.25); }
+.manuscript-markdown-highlight-dark-blue { background-color: rgba(0, 0, 128, 0.25); }
+.manuscript-markdown-highlight-teal { background-color: rgba(0, 128, 128, 0.25); }
+.manuscript-markdown-highlight-violet { background-color: rgba(128, 0, 128, 0.25); }
+.manuscript-markdown-highlight-dark-red { background-color: rgba(128, 0, 0, 0.25); }
+.manuscript-markdown-highlight-dark-yellow { background-color: rgba(128, 128, 0, 0.30); }
+.manuscript-markdown-highlight-gray-50 { background-color: rgba(128, 128, 128, 0.30); }
+.manuscript-markdown-highlight-gray-25 { background-color: rgba(192, 192, 192, 0.40); }
+.manuscript-markdown-highlight-black { background-color: rgba(0, 0, 0, 0.15); }
 
 /* Dark theme overrides */
 @media (prefers-color-scheme: dark) {
-  .scimark-highlight-yellow { background-color: rgba(255, 255, 0, 0.25); }
-  .scimark-highlight-green { background-color: rgba(0, 255, 0, 0.20); }
-  .scimark-highlight-turquoise { background-color: rgba(0, 255, 255, 0.20); }
-  .scimark-highlight-pink { background-color: rgba(255, 0, 255, 0.20); }
-  .scimark-highlight-blue { background-color: rgba(0, 0, 255, 0.30); }
-  .scimark-highlight-red { background-color: rgba(255, 0, 0, 0.25); }
-  .scimark-highlight-dark-blue { background-color: rgba(0, 0, 128, 0.40); }
-  .scimark-highlight-teal { background-color: rgba(0, 128, 128, 0.35); }
-  .scimark-highlight-violet { background-color: rgba(128, 0, 128, 0.35); }
-  .scimark-highlight-dark-red { background-color: rgba(128, 0, 0, 0.40); }
-  .scimark-highlight-dark-yellow { background-color: rgba(128, 128, 0, 0.35); }
-  .scimark-highlight-gray-50 { background-color: rgba(128, 128, 128, 0.35); }
-  .scimark-highlight-gray-25 { background-color: rgba(192, 192, 192, 0.25); }
-  .scimark-highlight-black { background-color: rgba(0, 0, 0, 0.40); }
+  .manuscript-markdown-highlight-yellow { background-color: rgba(255, 255, 0, 0.25); }
+  .manuscript-markdown-highlight-green { background-color: rgba(0, 255, 0, 0.20); }
+  .manuscript-markdown-highlight-turquoise { background-color: rgba(0, 255, 255, 0.20); }
+  .manuscript-markdown-highlight-pink { background-color: rgba(255, 0, 255, 0.20); }
+  .manuscript-markdown-highlight-blue { background-color: rgba(0, 0, 255, 0.30); }
+  .manuscript-markdown-highlight-red { background-color: rgba(255, 0, 0, 0.25); }
+  .manuscript-markdown-highlight-dark-blue { background-color: rgba(0, 0, 128, 0.40); }
+  .manuscript-markdown-highlight-teal { background-color: rgba(0, 128, 128, 0.35); }
+  .manuscript-markdown-highlight-violet { background-color: rgba(128, 0, 128, 0.35); }
+  .manuscript-markdown-highlight-dark-red { background-color: rgba(128, 0, 0, 0.40); }
+  .manuscript-markdown-highlight-dark-yellow { background-color: rgba(128, 128, 0, 0.35); }
+  .manuscript-markdown-highlight-gray-50 { background-color: rgba(128, 128, 128, 0.35); }
+  .manuscript-markdown-highlight-gray-25 { background-color: rgba(192, 192, 192, 0.25); }
+  .manuscript-markdown-highlight-black { background-color: rgba(0, 0, 0, 0.40); }
 }
 ```
 
-Update `.scimark-highlight` (CriticMarkup) to use Comment_Gray with theme-aware opacity:
+Update `.manuscript-markdown-highlight` (CriticMarkup) to use Comment_Gray with theme-aware opacity:
 
 ```css
 /* Light theme */
-.scimark-highlight { background-color: rgba(217, 217, 217, 0.50); color: inherit; }
+.manuscript-markdown-highlight { background-color: rgba(217, 217, 217, 0.50); color: inherit; }
 
 /* Dark theme */
 @media (prefers-color-scheme: dark) {
-  .scimark-highlight { background-color: rgba(217, 217, 217, 0.30); color: inherit; }
+  .manuscript-markdown-highlight { background-color: rgba(217, 217, 217, 0.30); color: inherit; }
 }
 ```
 
-Keep `.scimark-format-highlight` as the existing yellow/amber for plain `==text==` highlights (already theme-aware via CSS variables).
+Keep `.manuscript-markdown-format-highlight` as the existing yellow/amber for plain `==text==` highlights (already theme-aware via CSS variables).
 
-### 7. TextMate Grammar (`syntaxes/scimark.json`)
+### 7. TextMate Grammar (`syntaxes/manuscript-markdown.json`)
 
 Add a new pattern for colored highlights that matches before the plain `format_highlight`:
 
 ```json
 {
   "match": "(?<!\\{)==([^}=]+)==\\{([a-z0-9-]+)\\}",
-  "name": "markup.highlight.colored.scimark",
+  "name": "markup.highlight.colored.manuscript-markdown",
   "captures": {
     "1": { "name": "markup.highlight" },
-    "2": { "name": "entity.other.attribute-name.scimark" }
+    "2": { "name": "entity.other.attribute-name.manuscript-markdown" }
   }
 }
 ```
@@ -278,9 +278,9 @@ This is added as an alternative in the combined pattern, before the existing `==
 
 Reorganize the Formatting menu:
 
-- Remove `scimark.formatHighlight` from group `1_format`
+- Remove `manuscript-markdown.formatHighlight` from group `1_format`
 - Create new submenu `markdown.highlightColor` with label "Highlight Color"
-- Add `scimark.formatHighlight` and `markdown.highlightColor` submenu to a new group `1a_highlight` in `markdown.formatting`
+- Add `manuscript-markdown.formatHighlight` and `markdown.highlightColor` submenu to a new group `1a_highlight` in `markdown.formatting`
 - Add all 14 color commands to the `markdown.highlightColor` submenu
 
 ### 10. Configuration (`package.json` contributes.configuration)
@@ -289,7 +289,7 @@ Add a new setting for the default highlight color:
 
 ```json
 {
-  "scimark.defaultHighlightColor": {
+  "manuscriptMarkdown.defaultHighlightColor": {
     "type": "string",
     "enum": ["yellow", "green", "turquoise", "pink", "blue", "red", "dark-blue", "teal", "violet", "dark-red", "dark-yellow", "gray-50", "gray-25", "black"],
     "default": "yellow",
@@ -327,7 +327,7 @@ CriticMarkup Comment_Gray: `#D9D9D9` → light: `rgba(217, 217, 217, 0.50)`, dar
 
 | Pattern | Example | Meaning |
 |---------|---------|---------|
-| `==text==` | `==important==` | Default highlight (color from `scimark.defaultHighlightColor` setting, defaults to Yellow) |
+| `==text==` | `==important==` | Default highlight (color from `manuscriptMarkdown.defaultHighlightColor` setting, defaults to Yellow) |
 | `==text=={color}` | `==important=={yellow}` | Colored highlight |
 | `{==text==}` | `{==noted==}` | CriticMarkup highlight (Comment_Gray) |
 
@@ -345,25 +345,25 @@ CriticMarkup Comment_Gray: `#D9D9D9` → light: `rgba(217, 217, 217, 0.50)`, dar
 
 ### Property 2: Preview renders colored highlights with correct color class
 
-*For any* text string and *for any* valid color identifier, when the preview plugin parses `==text=={color}`, the resulting HTML SHALL contain a `<mark>` element with CSS class `scimark-highlight-{color}`.
+*For any* text string and *for any* valid color identifier, when the preview plugin parses `==text=={color}`, the resulting HTML SHALL contain a `<mark>` element with CSS class `manuscript-markdown-highlight-{color}`.
 
 **Validates: Requirements 2.1, 3.1**
 
 ### Property 3: Preview renders default format highlights with existing yellow/amber styling
 
-*For any* text string, when the preview plugin parses `==text==` (without a color suffix), the resulting HTML SHALL contain a `<mark>` element with CSS class `scimark-format-highlight` (which maps to the existing yellow/amber background).
+*For any* text string, when the preview plugin parses `==text==` (without a color suffix), the resulting HTML SHALL contain a `<mark>` element with CSS class `manuscript-markdown-format-highlight` (which maps to the existing yellow/amber background).
 
 **Validates: Requirements 3.2**
 
 ### Property 4: Preview renders CriticMarkup highlights with Comment_Gray
 
-*For any* text string, when the preview plugin parses `{==text==}`, the resulting HTML SHALL contain a `<mark>` element with CSS class `scimark-highlight` (which maps to Comment_Gray), not `scimark-format-highlight` or any color-specific class.
+*For any* text string, when the preview plugin parses `{==text==}`, the resulting HTML SHALL contain a `<mark>` element with CSS class `manuscript-markdown-highlight` (which maps to Comment_Gray), not `manuscript-markdown-format-highlight` or any color-specific class.
 
 **Validates: Requirements 3.3**
 
 ### Property 5: Preview falls back to configured default for unrecognized colors (yellow/amber second-level fallback)
 
-*For any* text string and *for any* string that is NOT a valid color identifier, when the preview plugin parses `==text=={invalid}`, the resulting HTML SHALL contain a `<mark>` element with styling derived from the configured default highlight color; if the configured default cannot be resolved, it SHALL fall back to `scimark-format-highlight` (yellow/amber).
+*For any* text string and *for any* string that is NOT a valid color identifier, when the preview plugin parses `==text=={invalid}`, the resulting HTML SHALL contain a `<mark>` element with styling derived from the configured default highlight color; if the configured default cannot be resolved, it SHALL fall back to `manuscript-markdown-format-highlight` (yellow/amber).
 
 **Validates: Requirements 3.4**
 
@@ -387,7 +387,7 @@ CriticMarkup Comment_Gray: `#D9D9D9` → light: `rgba(217, 217, 217, 0.50)`, dar
 
 ### Property 9: Default highlight color respects configuration
 
-*For any* valid color identifier set as `scimark.defaultHighlightColor`, when the editor decoration logic processes a default highlight `==text==`, it SHALL apply the decoration type corresponding to that configured color.
+*For any* valid color identifier set as `manuscriptMarkdown.defaultHighlightColor`, when the editor decoration logic processes a default highlight `==text==`, it SHALL apply the decoration type corresponding to that configured color.
 
 **Validates: Requirements 8.2, 8.3, 8.4**
 
@@ -409,9 +409,9 @@ Each correctness property above maps to one property-based test using `fast-chec
 
 - **Property 1**: Generate random strings and random valid color IDs → verify `wrapColoredHighlight` output structure
 - **Property 2**: Generate random strings and valid color IDs → feed `==text=={color}` through the markdown-it plugin → verify output HTML class
-- **Property 3**: Generate random strings → feed `==text==` through the plugin → verify output HTML class is `scimark-format-highlight` (yellow/amber)
-- **Property 4**: Generate random strings → feed `{==text==}` through the plugin → verify output HTML class is `scimark-highlight` (Comment_Gray)
-- **Property 5**: Generate random strings and random *invalid* color IDs → feed through plugin → verify fallback follows configured default color (and `scimark-format-highlight` only when default is unresolved)
+- **Property 3**: Generate random strings → feed `==text==` through the plugin → verify output HTML class is `manuscript-markdown-format-highlight` (yellow/amber)
+- **Property 4**: Generate random strings → feed `{==text==}` through the plugin → verify output HTML class is `manuscript-markdown-highlight` (Comment_Gray)
+- **Property 5**: Generate random strings and random *invalid* color IDs → feed through plugin → verify fallback follows configured default color (and `manuscript-markdown-format-highlight` only when default is unresolved)
 - **Property 6**: Generate documents with random highlight patterns → run extraction → verify colored highlights grouped by color and CriticMarkup highlights grouped under `'critic'`
 - **Property 7**: Generate random strings and valid color IDs → test regex match
 - **Property 8**: Generate documents with overlapping patterns → run filtering → verify no contained duplicates

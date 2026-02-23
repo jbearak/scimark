@@ -38,8 +38,8 @@ export function detect_platform(): PlatformInfo | undefined {
     }
 
     const binary_name = platform === 'windows'
-        ? `scimark-${platform}-${arch}.exe`
-        : `scimark-${platform}-${arch}`;
+        ? `manuscript-markdown-${platform}-${arch}.exe`
+        : `manuscript-markdown-${platform}-${arch}`;
 
     return { platform, arch, binary_name };
 }
@@ -48,11 +48,11 @@ export function detect_platform(): PlatformInfo | undefined {
 // pinned Bun. bun-windows-aarch64 is unavailable on Bun 1.3.9, so including
 // Windows ARM64 would cause deterministic CI release-build failures.
 const TARGETS: BuildTarget[] = [
-    { platform: 'darwin', arch: 'arm64', output_name: 'scimark-darwin-arm64' },
-    { platform: 'darwin', arch: 'x64', output_name: 'scimark-darwin-x64' },
-    { platform: 'linux', arch: 'x64', output_name: 'scimark-linux-x64' },
-    { platform: 'linux', arch: 'arm64', output_name: 'scimark-linux-arm64' },
-    { platform: 'windows', arch: 'x64', output_name: 'scimark-windows-x64.exe' },
+    { platform: 'darwin', arch: 'arm64', output_name: 'manuscript-markdown-darwin-arm64' },
+    { platform: 'darwin', arch: 'x64', output_name: 'manuscript-markdown-darwin-x64' },
+    { platform: 'linux', arch: 'x64', output_name: 'manuscript-markdown-linux-x64' },
+    { platform: 'linux', arch: 'arm64', output_name: 'manuscript-markdown-linux-arm64' },
+    { platform: 'windows', arch: 'x64', output_name: 'manuscript-markdown-windows-x64.exe' },
 ];
 
 const PATHS = {

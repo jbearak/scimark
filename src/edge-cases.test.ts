@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import MarkdownIt from 'markdown-it';
-import { scimarkPlugin } from './preview/scimark-plugin';
+import { manuscriptMarkdownPlugin } from './preview/manuscript-markdown-plugin';
 
 // Helper function to escape HTML entities like markdown-it does
 function escapeHtml(str: string): string {
@@ -46,12 +46,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render empty addition pattern with newlines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{++\n\n++}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('<ins');
     });
 
@@ -65,12 +65,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render empty deletion pattern with newlines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{--\n\n--}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-deletion');
+      expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('<del');
     });
 
@@ -84,12 +84,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render empty comment pattern with newlines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{>>\n\n<<}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-comment');
+      expect(output).toContain('manuscript-markdown-comment');
       expect(output).toContain('<span');
     });
 
@@ -103,12 +103,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render empty highlight pattern with newlines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{==\n\n==}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-highlight');
+      expect(output).toContain('manuscript-markdown-highlight');
       expect(output).toContain('<mark');
     });
 
@@ -122,12 +122,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render empty substitution pattern with newlines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{~~\n\n~>\n\n~~}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-substitution');
+      expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('<del');
       expect(output).toContain('<ins');
     });
@@ -144,12 +144,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render addition pattern with only whitespace in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{++   \n   ++}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('<ins');
     });
 
@@ -163,12 +163,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render deletion pattern with only whitespace in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{--   \n   --}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-deletion');
+      expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('<del');
     });
 
@@ -182,12 +182,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render comment pattern with only whitespace in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{>>   \n   <<}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-comment');
+      expect(output).toContain('manuscript-markdown-comment');
       expect(output).toContain('<span');
     });
 
@@ -201,12 +201,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render highlight pattern with only whitespace in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{==   \n   ==}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-highlight');
+      expect(output).toContain('manuscript-markdown-highlight');
       expect(output).toContain('<mark');
     });
 
@@ -220,12 +220,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render substitution pattern with only whitespace in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{~~   \n   ~>   \n   ~~}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-substitution');
+      expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('<del');
       expect(output).toContain('<ins');
     });
@@ -242,14 +242,14 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render substitution with multi-line old and new text in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{~~old line 1\nold line 2\nold line 3~>new line 1\nnew line 2\nnew line 3~~}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-substitution');
-      expect(output).toContain('scimark-deletion');
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-substitution');
+      expect(output).toContain('manuscript-markdown-deletion');
+      expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('old line 1');
       expect(output).toContain('old line 2');
       expect(output).toContain('old line 3');
@@ -268,12 +268,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render substitution with different line counts in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{~~short~>much\nlonger\nreplacement\ntext~~}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-substitution');
+      expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('short');
       expect(output).toContain('much');
       expect(output).toContain('longer');
@@ -293,12 +293,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render addition with empty line at start in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{++\ntext after empty line++}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('text after empty line');
     });
 
@@ -312,12 +312,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render addition with empty line in middle in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{++first line\n\nthird line++}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('first line');
       expect(output).toContain('third line');
     });
@@ -332,12 +332,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render addition with empty line at end in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{++text before empty line\n++}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('text before empty line');
     });
 
@@ -351,12 +351,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render deletion with multiple empty lines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{--line 1\n\n\nline 4--}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-deletion');
+      expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('line 1');
       expect(output).toContain('line 4');
     });
@@ -371,12 +371,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render substitution with empty lines in old text in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{~~old line 1\n\nold line 3~>new text~~}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-substitution');
+      expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('old line 1');
       expect(output).toContain('old line 3');
       expect(output).toContain('new text');
@@ -392,12 +392,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render substitution with empty lines in new text in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{~~old text~>new line 1\n\nnew line 3~~}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-substitution');
+      expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('old text');
       expect(output).toContain('new line 1');
       expect(output).toContain('new line 3');
@@ -413,12 +413,12 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render substitution with empty lines in both old and new text in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const input = '{~~old 1\n\nold 3~>new 1\n\nnew 3~~}';
       const output = md.render(input);
       
-      expect(output).toContain('scimark-substitution');
+      expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('old 1');
       expect(output).toContain('old 3');
       expect(output).toContain('new 1');
@@ -439,14 +439,14 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render addition pattern with 100+ lines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const lines = Array.from({ length: 120 }, (_, i) => `line ${i + 1}`);
       const text = lines.join('\n');
       const input = `{++${text}++}`;
       const output = md.render(input);
       
-      expect(output).toContain('scimark-addition');
+      expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('line 1');
       expect(output).toContain('line 60');
       expect(output).toContain('line 120');
@@ -464,14 +464,14 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render deletion pattern with 100+ lines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const lines = Array.from({ length: 150 }, (_, i) => `deleted line ${i + 1}`);
       const text = lines.join('\n');
       const input = `{--${text}--}`;
       const output = md.render(input);
       
-      expect(output).toContain('scimark-deletion');
+      expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('deleted line 1');
       expect(output).toContain('deleted line 75');
       expect(output).toContain('deleted line 150');
@@ -489,14 +489,14 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render comment pattern with 100+ lines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const lines = Array.from({ length: 110 }, (_, i) => `comment line ${i + 1}`);
       const text = lines.join('\n');
       const input = `{>>${text}<<}`;
       const output = md.render(input);
       
-      expect(output).toContain('scimark-comment');
+      expect(output).toContain('manuscript-markdown-comment');
       expect(output).toContain('comment line 1');
       expect(output).toContain('comment line 55');
       expect(output).toContain('comment line 110');
@@ -514,14 +514,14 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render highlight pattern with 100+ lines in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const lines = Array.from({ length: 130 }, (_, i) => `highlight line ${i + 1}`);
       const text = lines.join('\n');
       const input = `{==${text}==}`;
       const output = md.render(input);
       
-      expect(output).toContain('scimark-highlight');
+      expect(output).toContain('manuscript-markdown-highlight');
       expect(output).toContain('highlight line 1');
       expect(output).toContain('highlight line 65');
       expect(output).toContain('highlight line 130');
@@ -541,7 +541,7 @@ describe('Edge Case Unit Tests', () => {
 
     it('should render substitution pattern with 100+ lines in both old and new in preview', () => {
       const md = new MarkdownIt();
-      md.use(scimarkPlugin);
+      md.use(manuscriptMarkdownPlugin);
       
       const oldLines = Array.from({ length: 105 }, (_, i) => `old line ${i + 1}`);
       const newLines = Array.from({ length: 115 }, (_, i) => `new line ${i + 1}`);
@@ -550,7 +550,7 @@ describe('Edge Case Unit Tests', () => {
       const input = `{~~${oldText}~>${newText}~~}`;
       const output = md.render(input);
       
-      expect(output).toContain('scimark-substitution');
+      expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('old line 1');
       expect(output).toContain('old line 105');
       expect(output).toContain('new line 1');

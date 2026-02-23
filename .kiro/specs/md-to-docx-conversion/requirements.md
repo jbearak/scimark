@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Add a Markdown-to-DOCX export command to the Scientific Markdown VS Code extension, completing the round-trip workflow: DOCX → Markdown (edit) → DOCX (submit). The converter takes a Markdown file (and optionally a companion `.bib` file) and produces a valid `.docx` archive that opens in Microsoft Word, LibreOffice, and Google Docs. It must handle all formatting the existing DOCX-to-Markdown converter produces: character formatting, headings, lists, hyperlinks, CriticMarkup track changes, comments, Pandoc citations with Zotero metadata reconstruction, LaTeX math, colored highlights, and tables.
+Add a Markdown-to-DOCX export command to the Manuscript Markdown VS Code extension, completing the round-trip workflow: DOCX → Markdown (edit) → DOCX (submit). The converter takes a Markdown file (and optionally a companion `.bib` file) and produces a valid `.docx` archive that opens in Microsoft Word, LibreOffice, and Google Docs. It must handle all formatting the existing DOCX-to-Markdown converter produces: character formatting, headings, lists, hyperlinks, CriticMarkup track changes, comments, Pandoc citations with Zotero metadata reconstruction, LaTeX math, colored highlights, and tables.
 
 An earlier spec (`.kiro/specs/markdown-to-docx-conversion/`) covers basic formatting, headings, lists, and hyperlinks. This spec supersedes it by adding CriticMarkup, citations/BibTeX, math, colored highlights, tables, blockquotes, and the VS Code command integration.
 
@@ -24,7 +24,7 @@ An earlier spec (`.kiro/specs/markdown-to-docx-conversion/`) covers basic format
 
 ### Requirement 1: Markdown Parsing
 
-**User Story:** As a developer, I want the converter to parse Scientific Markdown into a structured representation, so that each element can be mapped to OOXML constructs.
+**User Story:** As a developer, I want the converter to parse Manuscript Markdown into a structured representation, so that each element can be mapped to OOXML constructs.
 
 #### Acceptance Criteria
 
@@ -100,7 +100,7 @@ An earlier spec (`.kiro/specs/markdown-to-docx-conversion/`) covers basic format
 2. WHEN the Markdown contains `{--text--}`, THE Converter SHALL emit a `w:del` revision element containing the deleted text wrapped in `w:delText` elements.
 3. WHEN the Markdown contains `{~~old~>new~~}`, THE Converter SHALL emit a `w:del` element for the old text followed by a `w:ins` element for the new text.
 4. WHEN CriticMarkup includes author attribution (e.g., `{>>author (date): ...<<}`), THE Converter SHALL set the `w:author` and `w:date` attributes on the revision elements.
-5. WHEN no author attribution is present, THE Converter SHALL use the configured `scimark.authorName` setting (falling back to OS username) and the current timestamp.
+5. WHEN no author attribution is present, THE Converter SHALL use the configured `manuscriptMarkdown.authorName` setting (falling back to OS username) and the current timestamp.
 
 ### Requirement 8: CriticMarkup Comments
 

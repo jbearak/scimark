@@ -2,7 +2,7 @@
 
 ## Introduction
 
-CriticMarkup syntax (`{++`, `{--`, `{~~`, `{==`, `{>>`, `<<}`, etc.) and Scientific Markdown extensions (format highlights `==text==`, `==text=={color}`, citations `[@key]`) are being parsed, decorated, and acted upon inside code regions — both inline code (backtick spans) and fenced code blocks (triple-backtick blocks). Code regions are inert zones in Markdown: their content is literal text and no markup syntax should be interpreted within them. This bug affects six subsystems: editor decorations, navigation, the preview renderer, the MD→DOCX converter, the DOCX→MD converter, and the language server (LSP).
+CriticMarkup syntax (`{++`, `{--`, `{~~`, `{==`, `{>>`, `<<}`, etc.) and Manuscript Markdown extensions (format highlights `==text==`, `==text=={color}`, citations `[@key]`) are being parsed, decorated, and acted upon inside code regions — both inline code (backtick spans) and fenced code blocks (triple-backtick blocks). Code regions are inert zones in Markdown: their content is literal text and no markup syntax should be interpreted within them. This bug affects six subsystems: editor decorations, navigation, the preview renderer, the MD→DOCX converter, the DOCX→MD converter, and the language server (LSP).
 
 ## Bug Analysis
 
@@ -68,6 +68,6 @@ CriticMarkup syntax (`{++`, `{--`, `{~~`, `{==`, `{>>`, `<<}`, etc.) and Scienti
 
 3.6 WHEN a citation key appears outside any code region, THEN the language server SHALL CONTINUE TO provide completions, diagnostics, and references as before.
 
-3.7 WHEN fenced code blocks or inline code spans contain no CriticMarkup or Scientific Markdown syntax, THEN the system SHALL CONTINUE TO render them as code with no behavioral change.
+3.7 WHEN fenced code blocks or inline code spans contain no CriticMarkup or Manuscript Markdown syntax, THEN the system SHALL CONTINUE TO render them as code with no behavioral change.
 
 3.8 WHEN the TextMate grammar tokenizes code regions, THEN it SHALL CONTINUE TO exclude CriticMarkup scopes from inline code and fenced code blocks (the existing `injectionSelector` already handles this correctly).

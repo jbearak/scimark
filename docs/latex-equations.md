@@ -1,6 +1,6 @@
 # LaTeX Equations
 
-This is a quick reference for writing LaTeX equations in Scientific Markdown. Equations are converted to Word's native equation format on export and back to LaTeX on import — see [DOCX Converter](converter.md#latex-equations) for converter details.
+This is a quick reference for writing LaTeX equations in Manuscript Markdown. Equations are converted to Word's native equation format on export and back to LaTeX on import — see [DOCX Converter](converter.md#latex-equations) for converter details.
 
 ## Inline and Display Math
 
@@ -373,7 +373,7 @@ a \equiv b \pmod{n}  % parenthetical mod: (mod n)
 
 ## Complete Example
 
-A full Scientific Markdown document with equations:
+A full Manuscript Markdown document with equations:
 
 ```markdown
 ---

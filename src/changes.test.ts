@@ -25,7 +25,7 @@ function findAllPatterns(text: string): Array<{ start: number; end: number; matc
   return matches;
 }
 
-// Generator for multi-line text that avoids Scientific Markdown special characters
+// Generator for multi-line text that avoids Manuscript Markdown special characters
 const multiLineTextGen = fc.array(
   fc.string().filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && !s.includes('<') && !s.includes('=')),
   { minLength: 1, maxLength: 10 }
@@ -39,13 +39,13 @@ const patternTypeGen = fc.constantFrom(
   { name: 'highlight', open: '{==', close: '==}' }
 );
 
-describe('Multi-line Scientific Markdown Pattern Recognition', () => {
+describe('Multi-line Manuscript Markdown Pattern Recognition', () => {
   
-  // Feature: multiline-Scientific Markdown-support, Property 1: Multi-line pattern recognition
+  // Feature: multiline-Manuscript Markdown-support, Property 1: Multi-line pattern recognition
   // Validates: Requirements 1.1, 2.1, 3.1, 4.1, 5.1
   describe('Property 1: Multi-line pattern recognition', () => {
     
-    it('should recognize complete multi-line patterns for all Scientific Markdown types', () => {
+    it('should recognize complete multi-line patterns for all Manuscript Markdown types', () => {
       fc.assert(
         fc.property(
           multiLineTextGen,
@@ -211,7 +211,7 @@ describe('Multi-line Scientific Markdown Pattern Recognition', () => {
     });
   });
 
-  // Feature: multiline-Scientific Markdown-support, Property 2: Multi-line navigation correctness
+  // Feature: multiline-Manuscript Markdown-support, Property 2: Multi-line navigation correctness
   // Validates: Requirements 1.3, 2.3, 3.3, 4.3, 5.3
   describe('Property 2: Multi-line navigation correctness', () => {
     
@@ -228,7 +228,7 @@ describe('Multi-line Scientific Markdown Pattern Recognition', () => {
     function isCompletePattern(text: string, start: number, end: number): boolean {
       const matched = text.substring(start, end);
       
-      // Check if it starts and ends with valid Scientific Markdown markers
+      // Check if it starts and ends with valid Manuscript Markdown markers
       const validPatterns = [
         { open: '{++', close: '++}' },
         { open: '{--', close: '--}' },

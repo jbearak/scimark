@@ -123,7 +123,7 @@ jobs:
               exit 1
               ;;
           esac
-          BINARY="bin/scimark-${PLATFORM}-${ARCH}${EXT}"
+          BINARY="bin/manuscript-markdown-${PLATFORM}-${ARCH}${EXT}"
           if [ ! -f "$BINARY" ]; then
             echo "ERROR: Expected binary not found: $BINARY"
             ls -la bin || true
