@@ -96,7 +96,7 @@ import { expect } from 'bun:test';
 
 /**
  * Generator for a Zotero-linked BibtexEntry (has zotero-key and zotero-uri).
- * Uses short bounded strings to avoid timeouts per AGENTS.md guidance.
+ * Uses short bounded strings to avoid timeouts.
  */
 const zoteroEntryArb = fc.record({
   key: citationKeyArb,

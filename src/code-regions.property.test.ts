@@ -122,7 +122,7 @@ function overlapsCodeRegion(
 }
 
 // ---------------------------------------------------------------------------
-// Generators — bounded per AGENTS.md guidance
+// Generators
 // ---------------------------------------------------------------------------
 
 // Safe content that won't accidentally form CriticMarkup or backticks

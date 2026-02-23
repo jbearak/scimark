@@ -70,7 +70,7 @@ function createCachedScanner() {
 	};
 }
 
-// Generators — bounded to avoid timeouts per AGENTS.md guidance
+// Generators
 const safeTextGen = fc.string({ minLength: 0, maxLength: 40 }).filter(
 	(s: string) => !s.includes('{') && !s.includes('}') && !s.includes('~') &&
 		!s.includes('>') && !s.includes('<') && !s.includes('=')

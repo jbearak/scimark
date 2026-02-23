@@ -6,7 +6,7 @@ import { describe, test, expect } from 'bun:test';
 import * as fc from 'fast-check';
 import { parseMd, type MdRun, type MdToken } from './md-to-docx';
 
-// Short alphanumeric generator per AGENTS.md guidance (short bounded generators)
+// Short alphanumeric generator
 const shortAlphaNum = fc.string({ minLength: 1, maxLength: 8 })
   .filter(s => /^[a-zA-Z0-9]+$/.test(s));
 

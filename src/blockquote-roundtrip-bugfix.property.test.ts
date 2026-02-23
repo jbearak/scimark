@@ -98,7 +98,7 @@ function countBlankLinesBetweenGroups(md: string, groupIdx: number): number {
 const ALERT_GLYPHS = ['※', '◈', '‼', '▲', '⛒'];
 const ALERT_TITLE_WORDS = ['Note', 'Tip', 'Important', 'Warning', 'Caution'];
 
-// Short body text generator per AGENTS.md guidance
+// Short body text generator
 const shortBody = fc.constantFrom(
   'Info here.',
   'A tip.',
@@ -310,7 +310,7 @@ describe('Property 1: Fault Condition — Blockquote Roundtrip Fidelity', () => 
 // Property 2: Preservation — Non-Buggy Blockquote and Non-Blockquote Content Unchanged
 // ============================================================================
 
-// Generators for preservation tests (short bounded per AGENTS.md)
+// Generators for preservation tests
 const plainBodyArb = fc.constantFrom(
   'Hello.',
   'Some text here.',

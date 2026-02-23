@@ -19,7 +19,6 @@ import {
 
 /**
  * Generator for a small Map of BibtexEntry items (2-4 entries) with unique keys.
- * Uses short bounded generators per AGENTS.md guidance.
  */
 const bibEntriesArb = fc
   .uniqueArray(
@@ -132,7 +131,7 @@ describe('Bibliography Filter Bug Condition', () => {
 describe('Bibliography Filter Preservation', () => {
   /**
    * Generator for a small Map of BibtexEntry items (1-3 entries).
-   * Uses short bounded generators per AGENTS.md guidance.
+   * Uses short bounded generators.
    */
   const preservationBibArb = fc
     .uniqueArray(

@@ -12,6 +12,5 @@ LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 ## Cross-cutting learnings
 
 - Template literal corruption: never use `$$` in code touched by tool text-replacement operations — `$` is special in replacement strings and `$$` gets corrupted. Use string concatenation instead.
-- Property tests: use fast-check with short bounded generators to avoid timeouts.
 
 Per-module learnings live as comments in the corresponding source files.

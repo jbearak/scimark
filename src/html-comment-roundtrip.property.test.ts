@@ -18,7 +18,7 @@ function runsContainComment(runs: MdRun[], commentText: string): boolean {
   );
 }
 
-// Short alphanumeric generator per AGENTS.md guidance (short bounded generators)
+// Short alphanumeric generator
 const shortAlphaNum = fc.string({ minLength: 1, maxLength: 10 })
   .filter(s => /^[a-zA-Z0-9]+$/.test(s));
 
