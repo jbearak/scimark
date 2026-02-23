@@ -68,7 +68,7 @@ manuscript-markdown paper.md      # Markdown → DOCX
 ## Known Limitations
 
 - No marking comments as resolved (only delete)
-- Multi-line patterns only render in preview when starting at beginning of line
+- Multi-line patterns only render in the Markdown preview when starting at the beginning of a line (Word import/export and navigation are unaffected)
 
 ## Documentation
 
