@@ -2062,6 +2062,12 @@ const DEFAULT_CODE_BACKGROUND = 'E8E8E8';
 const DEFAULT_CODE_COLOR = '2E2E2E';
 const DEFAULT_CODE_BORDER_SIZE = 48;
 const CODE_BORDER_SPACE = 8;
+const GITHUB_BLOCKQUOTE_BORDER_SIZE = 18;
+const GITHUB_BLOCKQUOTE_BORDER_SPACE = 8;
+const GITHUB_BLOCKQUOTE_BORDER_COLOR = 'D0D7DE';
+const GITHUB_BLOCKQUOTE_INDENT = 240;
+// Single-line spacing in OOXML (240 twips = 12pt)
+const SINGLE_LINE_SPACING = 240;
 // Left/right indent for shading-mode code blocks to prevent margin overflow (~0.22in)
 export const CODE_BLOCK_MARGIN_INDENT = 317;
 
@@ -2451,7 +2457,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     return '<w:style w:type="paragraph" w:styleId="' + styleId + '">\n' +
       '<w:name w:val="' + displayName + '"/>\n' +
       '<w:basedOn w:val="Normal"/>\n' +
-      '<w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="' + borderColor + '"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
+      '<w:pPr><w:spacing w:before="0" w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr><w:ind w:left="' + GITHUB_BLOCKQUOTE_INDENT + '"/></w:pPr>\n' +
       (quoteRpr ? quoteRpr : '') +
       '</w:style>\n';
   }
@@ -2459,9 +2465,9 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
   // CodeBlock pPr: conditional inset vs shading mode
   let codeBlockPPr: string;
   if (isInsetMode) {
-    codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="' + CODE_BLOCK_INSET_TWIPS + '" w:right="' + CODE_BLOCK_INSET_TWIPS + '"/></w:pPr>\n';
+    codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/><w:ind w:left="' + CODE_BLOCK_INSET_TWIPS + '" w:right="' + CODE_BLOCK_INSET_TWIPS + '"/></w:pPr>\n';
   } else {
-    codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/>' +
+    codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/>' +
       '<w:shd w:val="clear" w:color="auto" w:fill="' + codeBg + '"/>' +
       '<w:pBdr>' +
       '<w:top w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
@@ -2530,7 +2536,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:style w:type="paragraph" w:styleId="GitHub">\n' +
     '<w:name w:val="GitHub Blockquote"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="D0D7DE"/></w:pBdr><w:ind w:left="240"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:before="0" w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + GITHUB_BLOCKQUOTE_BORDER_COLOR + '"/></w:pBdr><w:ind w:left="' + GITHUB_BLOCKQUOTE_INDENT + '"/></w:pPr>\n' +
     (quoteRpr ? quoteRpr : '') +
     '</w:style>\n' +
     githubAlertStyle('GitHubNote', 'GitHub Note', '1F6FEB') +
@@ -3293,11 +3299,11 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
     return lines.map((line, i) => {
       let linePPr = pPr;
       if (lines.length === 1) {
-        linePPr = '<w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="' + inset + '" w:after="' + inset + '" w:line="240" w:lineRule="auto"/></w:pPr>';
+        linePPr = '<w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="' + inset + '" w:after="' + inset + '" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/></w:pPr>';
       } else if (i === 0) {
-        linePPr = '<w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="' + inset + '" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>';
+        linePPr = '<w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="' + inset + '" w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/></w:pPr>';
       } else if (i === lines.length - 1) {
-        linePPr = '<w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="0" w:after="' + inset + '" w:line="240" w:lineRule="auto"/></w:pPr>';
+        linePPr = '<w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="0" w:after="' + inset + '" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/></w:pPr>';
       }
       return '<w:p>' + linePPr + generateRun(line, rpr) + '</w:p>';
     }).join('');
@@ -3330,13 +3336,13 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   // inline left border (no pStyle, so the converter ignores them).  The left
   // rule extends symmetrically above/below content regardless of font size.
   if (token.type === 'blockquote' && (token.alertFirst || token.alertLast)) {
-    const borderColor = token.alertType ? ALERT_COLOR_BY_TYPE[token.alertType] : 'D0D7DE';
+    const borderColor = token.alertType ? ALERT_COLOR_BY_TYPE[token.alertType] : GITHUB_BLOCKQUOTE_BORDER_COLOR;
     const spacerBqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
-    const spacerIndentUnit = spacerBqStyle.startsWith('GitHub') ? 240 : 720;
+    const spacerIndentUnit = spacerBqStyle.startsWith('GitHub') ? GITHUB_BLOCKQUOTE_INDENT : 720;
     const spacerLeftIndent = spacerIndentUnit * (token.level || 1);
     const spacerPPr = '<w:pPr>' +
       '<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' +
-      '<w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="' + borderColor + '"/></w:pBdr>' +
+      '<w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr>' +
       '<w:ind w:left="' + spacerLeftIndent + '"/></w:pPr>';
     const spacer = '<w:p>' + spacerPPr + '</w:p>';
     if (token.alertFirst) xml = spacer + xml;
