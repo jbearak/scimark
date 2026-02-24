@@ -1025,7 +1025,7 @@ describe('buildMarkdown', () => {
           
           const result = buildMarkdown(content, new Map());
           const linkMatch = result.match(/\[(.*?)\]\((.*?)\)/);
-          expect(linkMatch).toBeTruthy();
+          expect(linkMatch).not.toBeNull();
           
           const linkText = linkMatch![1];
 

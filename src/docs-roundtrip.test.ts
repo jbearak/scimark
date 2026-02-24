@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { convertMdToDocx } from './md-to-docx';
 import { convertDocx } from './converter';
+import { extractCriticMarkupPatterns } from './test-helpers';
 
 const repoRoot = join(__dirname, '..');
 
@@ -242,6 +243,52 @@ describe('docs round-trip: md -> docx -> md', () => {
         expect(countListItems(roundTrippedMd)).toBeGreaterThanOrEqual(
           Math.ceil(originalListCount * 0.5),
         );
+      }
+
+      // --- CriticMarkup revision preservation ---
+      // Verify that revision CriticMarkup (addition, deletion, substitution)
+      // survives the round-trip. Only check that some revisions exist if the
+      // original had any — exact count may differ because adjacent
+      // deletion+addition can be merged into a substitution.
+      // Strip code blocks and inline code so documentation examples are excluded.
+      const stripCode = (s: string) =>
+        stripFencedCodeBlocks(s).replace(/`[^`]+`/g, '');
+      const revisionTypes = new Set(['addition', 'deletion', 'substitution']);
+      const originalRevisions = extractCriticMarkupPatterns(stripCode(originalMd))
+        .filter(p => revisionTypes.has(p.type));
+      if (originalRevisions.length > 0) {
+        const roundTrippedRevisions = extractCriticMarkupPatterns(stripCode(roundTrippedMd))
+          .filter(p => revisionTypes.has(p.type));
+        expect(roundTrippedRevisions.length).toBeGreaterThan(0);
+      }
+    }, 30_000);
+  }
+});
+
+describe('CriticMarkup round-trip: md -> docx -> md', () => {
+  // Only addition, deletion, and substitution faithfully round-trip as CriticMarkup.
+  // Highlights lose curly braces ({==...==} → ==...==) and standalone comments
+  // are transformed into Word comments with author/timestamp metadata.
+  const revisionCases = [
+    { name: 'addition', md: 'Before {++inserted text++} after.' },
+    { name: 'deletion', md: 'Before {--removed text--} after.' },
+    { name: 'substitution', md: 'Before {~~old phrase~>new phrase~~} after.' },
+    { name: 'mixed revisions', md: '{++added++} and {--deleted--} and {~~was~>now~~}.' },
+  ];
+
+  for (const tc of revisionCases) {
+    it('preserves ' + tc.name + ' CriticMarkup through round-trip', async () => {
+      const { docx, warnings } = await convertMdToDocx(tc.md);
+      expect(warnings).toEqual([]);
+      const rt = await convertDocx(docx);
+
+      const original = extractCriticMarkupPatterns(tc.md);
+      const roundTripped = extractCriticMarkupPatterns(rt.markdown);
+
+      expect(roundTripped.length).toBe(original.length);
+      expect(roundTripped.map(p => p.type)).toEqual(original.map(p => p.type));
+      for (let i = 0; i < original.length; i++) {
+        expect(roundTripped[i].content).toBe(original[i].content);
       }
     }, 30_000);
   }
