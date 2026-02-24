@@ -172,8 +172,9 @@ export type ContentItem =
       commentIds: Set<string>;
       formatting: RunFormatting;
       href?: string;           // hyperlink URL if inside w:hyperlink
+      revision?: { type: 'addition' | 'deletion'; author: string; date: string };
     }
-  | { type: 'citation'; text: string; commentIds: Set<string>; pandocKeys: string[] }
+  | { type: 'citation'; text: string; commentIds: Set<string>; pandocKeys: string[]; revision?: { type: 'addition' | 'deletion'; author: string; date: string } }
   | { type: 'table'; rows: TableRow[] }
   | {
       type: 'para';
@@ -185,10 +186,10 @@ export type ContentItem =
       isCodeBlock?: boolean;   // true if Word "Code Block" paragraph style
       blockquoteGroupIndex?: number; // sequential group index from md→docx gap metadata
     }
-  | { type: 'math'; latex: string; display: boolean; commentIds: Set<string> }
-  | { type: 'footnote_ref'; noteId: string; noteKind: 'footnote' | 'endnote'; commentIds: Set<string> }
+  | { type: 'math'; latex: string; display: boolean; commentIds: Set<string>; revision?: { type: 'addition' | 'deletion'; author: string; date: string } }
+  | { type: 'footnote_ref'; noteId: string; noteKind: 'footnote' | 'endnote'; commentIds: Set<string>; revision?: { type: 'addition' | 'deletion'; author: string; date: string } }
   | { type: 'html_comment'; text: string; commentIds: Set<string> }
-  | { type: 'image'; rId: string; src: string; alt: string; widthPx: number; heightPx: number; commentIds: Set<string> };
+  | { type: 'image'; rId: string; src: string; alt: string; widthPx: number; heightPx: number; commentIds: Set<string>; revision?: { type: 'addition' | 'deletion'; author: string; date: string } };
 export interface FootnoteBody {
   id: string;
   content: ContentItem[];
@@ -1083,6 +1084,7 @@ function parseNoteBody(
     currentFormatting: RunFormatting = DEFAULT_FORMATTING,
     target: ContentItem[] = content,
     inTableCell = false,
+    currentRevision?: { type: 'addition' | 'deletion'; author: string; date: string }
   ): void {
     for (const node of nodes) {
       for (const key of Object.keys(node)) {
@@ -1091,10 +1093,17 @@ function parseNoteBody(
         if (key === selfRefTag && !skippedSelfRef) {
           skippedSelfRef = true;
           continue;
-        }
-
-        // --- Field codes (Zotero citations) ---
-        if (key === 'w:fldChar' && context) {
+        } else if (key === 'w:ins') {
+          const author = getAttr(node, 'author');
+          const date = getAttr(node, 'date');
+          const rev = { type: 'addition' as const, author, date };
+          if (Array.isArray(node[key])) walkNoteBody(node[key], currentFormatting, target, inTableCell, rev);
+        } else if (key === 'w:del') {
+          const author = getAttr(node, 'author');
+          const date = getAttr(node, 'date');
+          const rev = { type: 'deletion' as const, author, date };
+          if (Array.isArray(node[key])) walkNoteBody(node[key], currentFormatting, target, inTableCell, rev);
+        } else if (key === 'w:fldChar' && context) {
           const fldType = getAttr(node, 'fldCharType');
           if (fldType === 'begin') {
             inField = true;
@@ -1117,6 +1126,7 @@ function parseNoteBody(
                 text: citationTextParts.join(''),
                 commentIds: new Set(),
                 pandocKeys,
+                ...(currentRevision ? { revision: currentRevision } : {}),
               });
             }
             inField = false;
@@ -1131,7 +1141,7 @@ function parseNoteBody(
           const rId = node?.[':@']?.['@_r:id'] ?? getAttr(node, 'id');
           const prevHref = currentHref;
           currentHref = context.relationshipMap.get(rId);
-          if (Array.isArray(node[key])) { walkNoteBody(node[key], currentFormatting, target, inTableCell); }
+          if (Array.isArray(node[key])) { walkNoteBody(node[key], currentFormatting, target, inTableCell, currentRevision); }
           currentHref = prevHref;
 
         // --- Tables ---
@@ -1161,7 +1171,7 @@ function parseNoteBody(
                 }
               }
               const cellItems: ContentItem[] = [];
-              walkNoteBody(tcChildren, currentFormatting, cellItems, true);
+              walkNoteBody(tcChildren, currentFormatting, cellItems, true, currentRevision);
               cells.push({ paragraphs: splitCellParagraphs(cellItems), colspan, vMergeType });
             }
             rawRows.push({ isHeader: rowHasHeaderProp(trChildren), cells });
@@ -1182,10 +1192,10 @@ function parseNoteBody(
             try {
               const latex = ommlToLatex(oMathNode['m:oMath']);
               if (latex) {
-                target.push({ type: 'math', latex, display: true, commentIds: new Set() });
+                target.push({ type: 'math', latex, display: true, commentIds: new Set(), ...(currentRevision ? { revision: currentRevision } : {}) });
               }
             } catch {
-              target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true, commentIds: new Set() });
+              target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true, commentIds: new Set(), ...(currentRevision ? { revision: currentRevision } : {}) });
             }
           }
         } else if (key === 'm:oMath' && context) {
@@ -1193,15 +1203,15 @@ function parseNoteBody(
           try {
             const latex = ommlToLatex(mathChildren);
             if (latex) {
-              target.push({ type: 'math', latex, display: false, commentIds: new Set() });
+              target.push({ type: 'math', latex, display: false, commentIds: new Set(), ...(currentRevision ? { revision: currentRevision } : {}) });
             }
           } catch {
-            target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false, commentIds: new Set() });
+            target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false, commentIds: new Set(), ...(currentRevision ? { revision: currentRevision } : {}) });
           }
 
         // --- Basic text elements (always handled) ---
-        } else if (key === 'w:t') {
-          const text = nodeText(node['w:t'] || []);
+        } else if (key === 'w:t' || key === 'w:delText') {
+          const text = nodeText(node[key] || []);
           if (text) {
             if (inCitationField && context) {
               citationTextParts.push(text);
@@ -1211,6 +1221,7 @@ function parseNoteBody(
                 text,
                 commentIds: new Set(),
                 formatting: currentFormatting,
+                ...(currentRevision ? { revision: currentRevision } : {}),
               };
               if (currentHref) {
                 textItem.href = currentHref;
@@ -1226,6 +1237,7 @@ function parseNoteBody(
               text: '\n',
               commentIds: new Set(),
               formatting: currentFormatting,
+              ...(currentRevision ? { revision: currentRevision } : {}),
             });
           }
         } else if (key === 'w:p') {
@@ -1249,7 +1261,7 @@ function parseNoteBody(
           if (needsPara) {
             target.push({ type: 'para' });
           }
-          walkNoteBody(paraChildren, paraFormatting, target, inTableCell);
+          walkNoteBody(paraChildren, paraFormatting, target, inTableCell, currentRevision);
         } else if (key === 'w:r') {
           let runFormatting = currentFormatting;
           const runChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
@@ -1680,7 +1692,8 @@ export async function extractDocumentContent(
     nodes: any[],
     currentFormatting: RunFormatting = DEFAULT_FORMATTING,
     target: ContentItem[] = content,
-    inTableCell = false
+    inTableCell = false,
+    currentRevision?: { type: 'addition' | 'deletion'; author: string; date: string }
   ): void {
     for (const node of nodes) {
       for (const key of Object.keys(node)) {
@@ -1725,6 +1738,7 @@ export async function extractDocumentContent(
                 text: citationTextParts.join(''),
                 commentIds: new Set(activeComments),
                 pandocKeys,
+                ...(currentRevision ? { revision: currentRevision } : {}),
               });
             }
             inField = false;
@@ -1734,6 +1748,16 @@ export async function extractDocumentContent(
           }
         } else if (key === 'w:instrText' && inField) {
           fieldInstrParts.push(nodeText(node['w:instrText'] || []));
+        } else if (key === 'w:ins') {
+          const author = getAttr(node, 'author');
+          const date = getAttr(node, 'date');
+          const rev = { type: 'addition' as const, author, date };
+          if (Array.isArray(node[key])) walk(node[key], currentFormatting, target, inTableCell, rev);
+        } else if (key === 'w:del') {
+          const author = getAttr(node, 'author');
+          const date = getAttr(node, 'date');
+          const rev = { type: 'deletion' as const, author, date };
+          if (Array.isArray(node[key])) walk(node[key], currentFormatting, target, inTableCell, rev);
         } else if (key === 'w:commentRangeStart') {
           const id = getAttr(node, 'id');
           if (!replyIds?.has(id)) activeComments.add(id);
@@ -1743,18 +1767,18 @@ export async function extractDocumentContent(
         } else if (key === 'w:footnoteReference') {
           const noteId = getAttr(node, 'id');
           if (noteId && noteId !== '0' && noteId !== '-1') {
-            target.push({ type: 'footnote_ref', noteId, noteKind: 'footnote', commentIds: new Set(activeComments) });
+            target.push({ type: 'footnote_ref', noteId, noteKind: 'footnote', commentIds: new Set(activeComments), ...(currentRevision ? { revision: currentRevision } : {}) });
           }
         } else if (key === 'w:endnoteReference') {
           const noteId = getAttr(node, 'id');
           if (noteId && noteId !== '0' && noteId !== '-1') {
-            target.push({ type: 'footnote_ref', noteId, noteKind: 'endnote', commentIds: new Set(activeComments) });
+            target.push({ type: 'footnote_ref', noteId, noteKind: 'endnote', commentIds: new Set(activeComments), ...(currentRevision ? { revision: currentRevision } : {}) });
           }
         } else if (key === 'w:hyperlink') {
           const rId = node?.[':@']?.['@_r:id'] ?? getAttr(node, 'id');
           const prevHref = currentHref;
           currentHref = relationshipMap.get(rId);
-          if (Array.isArray(node[key])) { walk(node[key], currentFormatting, target, inTableCell); }
+          if (Array.isArray(node[key])) { walk(node[key], currentFormatting, target, inTableCell, currentRevision); }
           currentHref = prevHref;
         } else if (key === 'w:tbl' && !inTableCell) {
           const tblChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
@@ -1783,7 +1807,7 @@ export async function extractDocumentContent(
                 }
               }
               const cellItems: ContentItem[] = [];
-              walk(tcChildren, currentFormatting, cellItems, true);
+              walk(tcChildren, currentFormatting, cellItems, true, currentRevision);
               cells.push({ paragraphs: splitCellParagraphs(cellItems), colspan, vMergeType });
             }
             rawRows.push({ isHeader: rowHasHeaderProp(trChildren), cells });
@@ -1812,11 +1836,13 @@ export async function extractDocumentContent(
           // LaTeX OMML hidden runs and other vanish runs without the prefix fall through.
           const hasVanish = rPrChildren?.some((c: any) => c['w:vanish'] !== undefined) ?? false;
           if (hasVanish) {
-            // Collect text from w:t elements in this run
+            // Collect text from w:t/w:delText elements in this run
             let runText = '';
             for (const child of runChildren) {
               if (child['w:t'] !== undefined) {
                 runText += nodeText(child['w:t'] || []);
+              } else if (child['w:delText'] !== undefined) {
+                runText += nodeText(child['w:delText'] || []);
               }
             }
             if (runText.startsWith('\u200B') && runText.substring(1).trimStart().startsWith('<!--')) {
@@ -1844,7 +1870,7 @@ export async function extractDocumentContent(
             }
           }
 
-          walk(runChildren, runFormatting, target, inTableCell);
+          walk(runChildren, runFormatting, target, inTableCell, currentRevision);
         } else if (key === 'w:br') {
           // Line break within a run (Shift+Enter in Word).
           // Only emit for default/textWrapping breaks; skip page/column breaks.
@@ -1856,11 +1882,12 @@ export async function extractDocumentContent(
                 text: '\n',
                 commentIds: new Set(activeComments),
                 formatting: currentFormatting,
+                ...(currentRevision ? { revision: currentRevision } : {}),
               });
             }
           }
-        } else if (key === 'w:t') {
-          const text = nodeText(node['w:t'] || []);
+        } else if (key === 'w:t' || key === 'w:delText') {
+          const text = nodeText(node[key] || []);
           if (text) {
             if (inBibliographyField) {
               // Skip text inside ZOTERO_BIBL field
@@ -1871,7 +1898,8 @@ export async function extractDocumentContent(
                 type: 'text', 
                 text, 
                 commentIds: new Set(activeComments),
-                formatting: currentFormatting
+                formatting: currentFormatting,
+                ...(currentRevision ? { revision: currentRevision } : {}),
               };
               if (currentHref) {
                 textItem.href = currentHref;
@@ -1962,7 +1990,7 @@ export async function extractDocumentContent(
             if (isCodeBlock) paraItem.isCodeBlock = true;
             target.push(paraItem);
           }
-          walk(paraChildren, paraFormatting, target, inTableCell);
+          walk(paraChildren, paraFormatting, target, inTableCell, currentRevision);
         } else if (key === 'm:oMathPara') {
           // Display equation — extract m:oMath children from within
           const mathParaChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
@@ -1971,10 +1999,10 @@ export async function extractDocumentContent(
             try {
               const latex = ommlToLatex(oMathNode['m:oMath']);
               if (latex) {
-                target.push({ type: 'math', latex, display: true, commentIds: new Set(activeComments) });
+                target.push({ type: 'math', latex, display: true, commentIds: new Set(activeComments), ...(currentRevision ? { revision: currentRevision } : {}) });
               }
             } catch {
-              target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true, commentIds: new Set(activeComments) });
+              target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: true, commentIds: new Set(activeComments), ...(currentRevision ? { revision: currentRevision } : {}) });
             }
           }
         } else if (key === 'm:oMath') {
@@ -1983,10 +2011,10 @@ export async function extractDocumentContent(
           try {
             const latex = ommlToLatex(mathChildren);
             if (latex) {
-              target.push({ type: 'math', latex, display: false, commentIds: new Set(activeComments) });
+              target.push({ type: 'math', latex, display: false, commentIds: new Set(activeComments), ...(currentRevision ? { revision: currentRevision } : {}) });
             }
           } catch {
-            target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false, commentIds: new Set(activeComments) });
+            target.push({ type: 'math', latex: '\\text{[EQUATION ERROR]}', display: false, commentIds: new Set(activeComments), ...(currentRevision ? { revision: currentRevision } : {}) });
           }
         } else if (key === 'w:drawing') {
           // Image extraction from <w:drawing> containing <wp:inline> or <wp:anchor>
@@ -2030,6 +2058,7 @@ export async function extractDocumentContent(
             target.push({
               type: 'image', rId: blipRId, src, alt,
               widthPx, heightPx, commentIds: new Set(activeComments),
+              ...(currentRevision ? { revision: currentRevision } : {}),
             });
             if (!extractedImageFilenames.has(outputFilename)) {
               extractedImageFilenames.add(outputFilename);
@@ -2050,12 +2079,30 @@ export async function extractDocumentContent(
 // Markdown generation
 
 function formattingEquals(a: RunFormatting, b: RunFormatting): boolean {
-  return a.bold === b.bold && a.italic === b.italic && a.underline === b.underline &&
-         a.strikethrough === b.strikethrough && a.highlight === b.highlight &&
-         a.highlightColor === b.highlightColor &&
-         a.superscript === b.superscript && a.subscript === b.subscript &&
-         a.code === b.code;
+  return a.bold === b.bold &&
+    a.italic === b.italic &&
+    a.underline === b.underline &&
+    a.strikethrough === b.strikethrough &&
+    a.highlight === b.highlight &&
+    a.highlightColor === b.highlightColor &&
+    a.superscript === b.superscript &&
+    a.subscript === b.subscript &&
+    a.code === b.code;
 }
+
+function revisionsEqual(a: { type: 'addition' | 'deletion'; author: string; date: string } | undefined, b: { type: 'addition' | 'deletion'; author: string; date: string } | undefined): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.type === b.type && a.author === b.author && a.date === b.date;
+}
+
+function wrapWithRevision(text: string, rev?: { type: 'addition' | 'deletion'; author: string; date: string }): string {
+  if (!rev) return text;
+  if (rev.type === 'addition') return `{++${text}++}`;
+  if (rev.type === 'deletion') return `{--${text}--}`;
+  return text;
+}
+
 
 function commentSetsEqual(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false;
@@ -2084,7 +2131,8 @@ function mergeConsecutiveRuns(content: ContentItem[]): ContentItem[] {
       if (next.type !== 'text' ||
           !formattingEquals(item.formatting, next.formatting) ||
           item.href !== next.href ||
-          !commentSetsEqual(item.commentIds, next.commentIds)) {
+          !commentSetsEqual(item.commentIds, next.commentIds) ||
+          !revisionsEqual(item.revision, next.revision)) {
         break;
       }
       mergedText += next.text;
@@ -2097,6 +2145,7 @@ function mergeConsecutiveRuns(content: ContentItem[]): ContentItem[] {
       commentIds: item.commentIds,
       formatting: item.formatting,
       href: item.href,
+      ...(item.revision ? { revision: item.revision } : {}),
     });
     i = j;
   }
@@ -2247,19 +2296,63 @@ function renderInlineRange(
     const item = segment[i];
     if (i >= segmentEnd) break;
 
+    // Detect substitution: a deletion followed immediately by an addition
+    // with identical author and date.
+    if ((item.type === 'text' || item.type === 'citation' || item.type === 'math' || item.type === 'footnote_ref' || item.type === 'image') && item.revision?.type === 'deletion') {
+      const next = segment[i + 1];
+      if (next && next.type === item.type && (next.type === 'text' || next.type === 'citation' || next.type === 'math' || next.type === 'footnote_ref' || next.type === 'image') &&
+          next.revision?.type === 'addition' &&
+          next.revision.author === item.revision.author &&
+          next.revision.date === item.revision.date) {
+        
+        let oldText = '';
+        if (item.type === 'text') {
+          oldText = wrapWithFormatting(item.text, item.formatting);
+          if (item.href) oldText = `[${oldText}](${formatHrefForMarkdown(item.href)})`;
+        } else if (item.type === 'citation') {
+          oldText = item.pandocKeys.length > 0
+            ? (out.endsWith(' ') ? '' : ' ') + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
+            : item.text;
+        } else if (item.type === 'math') {
+          oldText = item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+        }
+
+        let newText = '';
+        if (next.type === 'text') {
+          newText = wrapWithFormatting(next.text, next.formatting);
+          if (next.href) newText = `[${newText}](${formatHrefForMarkdown(next.href)})`;
+        } else if (next.type === 'citation') {
+          newText = next.pandocKeys.length > 0
+            ? (oldText.endsWith(' ') ? '' : ' ') + '[' + next.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
+            : next.text;
+        } else if (next.type === 'math') {
+          newText = next.display ? '$$' + '\n' + next.latex + '\n' + '$$' : '$' + next.latex + '$';
+        }
+
+        if (oldText && newText) {
+          out += `{~~${oldText}~>${newText}~~}`;
+          i += 2;
+          continue;
+        }
+      }
+    }
+
     if (item.type === 'citation') {
+      let citeText = '';
       if (item.pandocKeys.length > 0) {
         const citeSep = out.endsWith(' ') ? '' : ' ';
-        out += citeSep + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']';
+        citeText = citeSep + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']';
       } else {
-        out += item.text;
+        citeText = item.text;
       }
+      out += wrapWithRevision(citeText, item.revision);
       i++;
       continue;
     }
 
     if (item.type === 'math') {
-      out += item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+      const mathText = item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+      out += wrapWithRevision(mathText, item.revision);
       i++;
       continue;
     }
@@ -2267,28 +2360,30 @@ function renderInlineRange(
     if (item.type === 'footnote_ref') {
       const noteKey = item.noteKind + ':' + item.noteId;
       const label = renderOpts?.noteLabels?.get(noteKey) ?? item.noteId;
-      out += `[^${label}]`;
+      out += wrapWithRevision(`[^${label}]`, item.revision);
       i++;
       continue;
     }
 
     if (item.type === 'image') {
       const syntax = renderOpts?.imageFormatMapping?.get(item.rId) || 'md';
+      let imgText = '';
       if (syntax === 'html') {
-        out += '<img src="' + escapeHtmlAttr(item.src) + '" alt="' + escapeHtmlAttr(item.alt) + '"';
-        if (item.widthPx > 0) out += ' width="' + item.widthPx + '"';
-        if (item.heightPx > 0) out += ' height="' + item.heightPx + '"';
-        out += '>';
+        imgText = '<img src="' + escapeHtmlAttr(item.src) + '" alt="' + escapeHtmlAttr(item.alt) + '"';
+        if (item.widthPx > 0) imgText += ' width="' + item.widthPx + '"';
+        if (item.heightPx > 0) imgText += ' height="' + item.heightPx + '"';
+        imgText += '>';
       } else {
         const safeAlt = item.alt.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
-        out += '![' + safeAlt + '](' + formatHrefForMarkdown(item.src) + ')';
+        imgText = '![' + safeAlt + '](' + formatHrefForMarkdown(item.src) + ')';
         if (item.widthPx > 0 || item.heightPx > 0) {
           const parts: string[] = [];
           if (item.widthPx > 0) parts.push('width=' + item.widthPx);
           if (item.heightPx > 0) parts.push('height=' + item.heightPx);
-          out += '{' + parts.join(' ') + '}';
+          imgText += '{' + parts.join(' ') + '}';
         }
       }
+      out += wrapWithRevision(imgText, item.revision);
       if (item.commentIds.size > 0) {
         for (const cid of [...item.commentIds].sort()) {
           const c = comments.get(cid);
@@ -2329,7 +2424,11 @@ function renderInlineRange(
         if (seg.type !== 'text' || !commentSetsEqual(seg.commentIds, commentSet)) {
           break;
         }
-        let segText = wrapWithFormatting(seg.text, seg.formatting);
+        // Suppress yellow highlights here because the outer {==...==} will provide it.
+        // Colored highlights are still wrapped.
+        const isYellow = seg.formatting.highlight && (!seg.formatting.highlightColor || resolveMarkdownColor(seg.formatting.highlightColor) === 'yellow');
+        const formatting = isYellow ? { ...seg.formatting, highlight: false } : seg.formatting;
+        let segText = wrapWithFormatting(seg.text, formatting);
         if (seg.href) {
           segText = `[${segText}](${formatHrefForMarkdown(seg.href)})`;
         }
@@ -2352,7 +2451,8 @@ function renderInlineRange(
     if (item.href) {
       formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
     }
-    out += formattedText;
+    const revision = (item as any).revision;
+    out += wrapWithRevision(formattedText, revision);
     i++;
   }
   return { text: out, nextIndex: i, deferredComments: [] };
@@ -2393,6 +2493,47 @@ function renderInlineRangeWithIds(
     const item = segment[i];
     if (i >= segmentEnd) break;
 
+    // Detect substitution: a deletion followed immediately by an addition
+    // with identical author and date.
+    if ((item.type === 'text' || item.type === 'citation' || item.type === 'math' || item.type === 'footnote_ref' || item.type === 'image') && item.revision?.type === 'deletion') {
+      const next = segment[i + 1];
+      if (next && next.type === item.type && (next.type === 'text' || next.type === 'citation' || next.type === 'math' || next.type === 'footnote_ref' || next.type === 'image') &&
+          next.revision?.type === 'addition' &&
+          next.revision.author === item.revision.author &&
+          next.revision.date === item.revision.date) {
+        
+        let oldText = '';
+        if (item.type === 'text') {
+          oldText = wrapWithFormatting(item.text, item.formatting);
+          if (item.href) oldText = `[${oldText}](${formatHrefForMarkdown(item.href)})`;
+        } else if (item.type === 'citation') {
+          oldText = item.pandocKeys.length > 0
+            ? (out.endsWith(' ') ? '' : ' ') + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
+            : item.text;
+        } else if (item.type === 'math') {
+          oldText = item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+        }
+
+        let newText = '';
+        if (next.type === 'text') {
+          newText = wrapWithFormatting(next.text, next.formatting);
+          if (next.href) newText = `[${newText}](${formatHrefForMarkdown(next.href)})`;
+        } else if (next.type === 'citation') {
+          newText = next.pandocKeys.length > 0
+            ? (oldText.endsWith(' ') ? '' : ' ') + '[' + next.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
+            : next.text;
+        } else if (next.type === 'math') {
+          newText = next.display ? '$$' + '\n' + next.latex + '\n' + '$$' : '$' + next.latex + '$';
+        }
+
+        if (oldText && newText) {
+          out += `{~~${oldText}~>${newText}~~}`;
+          i += 2;
+          continue;
+        }
+      }
+    }
+
     if (item.type === 'citation') {
       const currentIds = item.commentIds;
       for (const cid of [...prevCommentIds].sort()) {
@@ -2408,12 +2549,14 @@ function renderInlineRangeWithIds(
       }
       prevCommentIds = new Set(currentIds);
 
+      let citeText = '';
       if (item.pandocKeys.length > 0) {
         const citeSep = out.endsWith(' ') ? '' : ' ';
-        out += citeSep + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']';
+        citeText = citeSep + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']';
       } else {
-        out += item.text;
+        citeText = item.text;
       }
+      out += wrapWithRevision(citeText, item.revision);
       i++;
       continue;
     }
@@ -2433,7 +2576,8 @@ function renderInlineRangeWithIds(
       }
       prevCommentIds = new Set(currentIds);
 
-      out += item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+      const mathText = item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+      out += wrapWithRevision(mathText, item.revision);
       i++;
       continue;
     }
@@ -2454,7 +2598,7 @@ function renderInlineRangeWithIds(
       prevCommentIds = new Set(currentIds);
       const noteKey = item.noteKind + ':' + item.noteId;
       const label = noteLabels?.get(noteKey) ?? item.noteId;
-      out += `[^${label}]`;
+      out += wrapWithRevision(`[^${label}]`, item.revision);
       i++;
       continue;
     }
@@ -2475,21 +2619,23 @@ function renderInlineRangeWithIds(
       }
       prevCommentIds = new Set(currentIds);
       const syntax = imageFormatMapping?.get(item.rId) || 'md';
+      let imgText = '';
       if (syntax === 'html') {
-        out += '<img src="' + escapeHtmlAttr(item.src) + '" alt="' + escapeHtmlAttr(item.alt) + '"';
-        if (item.widthPx > 0) out += ' width="' + item.widthPx + '"';
-        if (item.heightPx > 0) out += ' height="' + item.heightPx + '"';
-        out += '>';
+        imgText = '<img src="' + escapeHtmlAttr(item.src) + '" alt="' + escapeHtmlAttr(item.alt) + '"';
+        if (item.widthPx > 0) imgText += ' width="' + item.widthPx + '"';
+        if (item.heightPx > 0) imgText += ' height="' + item.heightPx + '"';
+        imgText += '>';
       } else {
         const safeAlt = item.alt.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
-        out += '![' + safeAlt + '](' + formatHrefForMarkdown(item.src) + ')';
+        imgText = '![' + safeAlt + '](' + formatHrefForMarkdown(item.src) + ')';
         if (item.widthPx > 0 || item.heightPx > 0) {
           const parts: string[] = [];
           if (item.widthPx > 0) parts.push('width=' + item.widthPx);
           if (item.heightPx > 0) parts.push('height=' + item.heightPx);
-          out += '{' + parts.join(' ') + '}';
+          imgText += '{' + parts.join(' ') + '}';
         }
       }
+      out += wrapWithRevision(imgText, item.revision);
       i++;
       continue;
     }
@@ -2540,7 +2686,8 @@ function renderInlineRangeWithIds(
     if (item.href) {
       formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
     }
-    out += formattedText;
+    const revision = (item as any).revision;
+    out += wrapWithRevision(formattedText, revision);
     i++;
   }
 

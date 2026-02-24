@@ -3573,11 +3573,7 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
       }
 
       xml += '<w:tc>' + tcPr + '<w:p>';
-      // Apply header bold by augmenting runs before rendering
-      const cellRuns = row.header
-        ? cell.runs.map(r => r.type === 'text' && !r.bold ? { ...r, bold: true } : r)
-        : cell.runs;
-      xml += generateRuns(cellRuns, state, options, bibEntries, citeprocEngine);
+      xml += generateRuns(cell.runs, state, options, bibEntries, citeprocEngine);
       xml += '</w:p></w:tc>';
       gridCol += cs;
     }
