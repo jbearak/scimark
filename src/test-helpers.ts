@@ -52,7 +52,12 @@ export const SIMPLE_CRITIC_TYPES = CRITIC_TYPES.filter(t => t.name !== 'substitu
 
 /** Build a CriticMarkup pattern string from a type and content. */
 export function buildCriticPattern(type: CriticType, content: string, newContent?: string): string {
-  if (type.separator && newContent !== undefined) {
+  if (type.separator) {
+    if (newContent === undefined) {
+      throw new Error(
+        'buildCriticPattern: newContent is required when CriticType.separator is set (type: ' + type.name + ')'
+      );
+    }
     return type.open + content + type.separator + newContent + type.close;
   }
   return type.open + content + type.close;
