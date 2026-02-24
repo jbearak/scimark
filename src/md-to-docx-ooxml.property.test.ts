@@ -13,20 +13,20 @@ describe('OOXML Generation Properties', () => {
       const zip = await JSZip.loadAsync(result.docx);
       
       // Required files
-      expect(zip.file('[Content_Types].xml')).toBeTruthy();
-      expect(zip.file('_rels/.rels')).toBeTruthy();
-      expect(zip.file('word/document.xml')).toBeTruthy();
-      expect(zip.file('word/styles.xml')).toBeTruthy();
+      expect(zip.file('[Content_Types].xml')).not.toBeNull();
+      expect(zip.file('_rels/.rels')).not.toBeNull();
+      expect(zip.file('word/document.xml')).not.toBeNull();
+      expect(zip.file('word/styles.xml')).not.toBeNull();
       
       // Conditional files
       const hasLists = /^- /m.test(markdown) || /^\d+\. /m.test(markdown);
       const hasLinks = markdown.includes('[') && markdown.includes('](');
       
       if (hasLists) {
-        expect(zip.file('word/numbering.xml')).toBeTruthy();
+        expect(zip.file('word/numbering.xml')).not.toBeNull();
       }
       if (hasLinks) {
-        expect(zip.file('word/_rels/document.xml.rels')).toBeTruthy();
+        expect(zip.file('word/_rels/document.xml.rels')).not.toBeNull();
       }
     }), { numRuns: 100 });
   });

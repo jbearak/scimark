@@ -983,8 +983,8 @@ describe('parseHtmlCellRuns via parseMd', () => {
     const table = tokens.find(t => t.type === 'table');
     const runs = table?.rows?.[0].cells[0].runs;
 
-    expect(runs?.find(r => r.text === '2' && (r as any).subscript)).toBeTruthy();
-    expect(runs?.find(r => r.text === '2' && (r as any).superscript)).toBeTruthy();
+    expect(runs?.find(r => r.text === '2' && (r as any).subscript)).toBeDefined();
+    expect(runs?.find(r => r.text === '2' && (r as any).superscript)).toBeDefined();
   });
 });
 

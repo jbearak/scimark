@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'bun:test';
 import * as formatting from './formatting';
-import MarkdownIt from 'markdown-it';
-import { manuscriptMarkdownPlugin } from './preview/manuscript-markdown-plugin';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -361,81 +359,5 @@ describe('Syntax grammar invariants', () => {
     const commentWithIdRule = grammar?.repository?.comment_with_id;
     expect(commentWithIdRule).toBeDefined();
     expect(commentWithIdRule.contentName).toMatch(/^meta\.comment/);
-  });
-});
-
-// Integration tests for markdown-it plugin registration (Requirements 7.1)
-describe('Markdown Preview Integration', () => {
-  describe('Plugin registration', () => {
-    it('should register Manuscript Markdown plugin with markdown-it', () => {
-      const md = new MarkdownIt();
-      
-      // Apply the plugin (simulating what extendMarkdownIt does)
-      const extendedMd = md.use(manuscriptMarkdownPlugin);
-      
-      expect(extendedMd).toBeDefined();
-      
-      // Test that Manuscript Markdown is processed
-      const html = extendedMd.render('{++addition++}');
-      expect(html).toContain('manuscript-markdown-addition');
-      expect(html).toContain('<ins');
-    });
-
-    it('should process all Manuscript Markdown types through the plugin', () => {
-      const md = new MarkdownIt();
-      const extendedMd = md.use(manuscriptMarkdownPlugin);
-      
-      // Test addition
-      const additionHtml = extendedMd.render('{++added text++}');
-      expect(additionHtml).toContain('manuscript-markdown-addition');
-      
-      // Test deletion
-      const deletionHtml = extendedMd.render('{--deleted text--}');
-      expect(deletionHtml).toContain('manuscript-markdown-deletion');
-      
-      // Test substitution
-      const substitutionHtml = extendedMd.render('{~~old~>new~~}');
-      expect(substitutionHtml).toContain('manuscript-markdown-substitution');
-      
-      // Test comment
-      const commentHtml = extendedMd.render('{>>comment text<<}');
-      expect(commentHtml).toContain('manuscript-markdown-comment');
-      
-      // Test highlight
-      const highlightHtml = extendedMd.render('{==highlighted text==}');
-      expect(highlightHtml).toContain('manuscript-markdown-highlight');
-    });
-  });
-
-  describe('Stylesheet declaration', () => {
-    it('should declare preview stylesheet in package.json', () => {
-      const packageJsonPath = path.join(__dirname, '..', 'package.json');
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-      
-      expect(packageJson.contributes).toBeDefined();
-      expect(packageJson.contributes['markdown.previewStyles']).toBeDefined();
-      expect(Array.isArray(packageJson.contributes['markdown.previewStyles'])).toBe(true);
-      expect(packageJson.contributes['markdown.previewStyles']).toContain('./media/manuscript-markdown.css');
-    });
-
-    it('should declare markdown.markdownItPlugins in package.json', () => {
-      const packageJsonPath = path.join(__dirname, '..', 'package.json');
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-      
-      expect(packageJson.contributes).toBeDefined();
-      expect(packageJson.contributes['markdown.markdownItPlugins']).toBe(true);
-    });
-
-    it('should have CSS file at declared path', () => {
-      const cssPath = path.join(__dirname, '..', 'media', 'manuscript-markdown.css');
-      expect(fs.existsSync(cssPath)).toBe(true);
-      
-      const cssContent = fs.readFileSync(cssPath, 'utf-8');
-      expect(cssContent).toContain('.manuscript-markdown-addition');
-      expect(cssContent).toContain('.manuscript-markdown-deletion');
-      expect(cssContent).toContain('.manuscript-markdown-substitution');
-      expect(cssContent).toContain('.manuscript-markdown-comment');
-      expect(cssContent).toContain('.manuscript-markdown-highlight');
-    });
   });
 });

@@ -1,35 +1,14 @@
 import { describe, it, expect } from 'bun:test';
 import * as fc from 'fast-check';
-import MarkdownIt from 'markdown-it';
-import { manuscriptMarkdownPlugin } from './manuscript-markdown-plugin';
 import { VALID_COLOR_IDS, setDefaultHighlightColor, getDefaultHighlightColor } from '../highlight-colors';
-
-// Helper function to escape HTML entities like markdown-it does
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function stripHtmlTags(str: string): string {
-  return str.replace(/<[^>]+>/g, '');
-}
-
-// Helper to filter out strings with Markdown or HTML special characters that would be transformed
-const hasNoSpecialSyntax = (s: string) => {
-  // Exclude Markdown special characters that trigger inline formatting
-  // and HTML special characters that cause escaping mismatches
-  return !/[\\`*_\[\]&<>"']/.test(s);
-};
+import { escapeHtml, stripHtmlTags, hasNoSpecialSyntax, renderWithPlugin, SIMPLE_CRITIC_TYPES } from '../test-helpers';
+import * as fs from 'fs';
+import * as path from 'path';
 
 describe('Manuscript Markdown Plugin Property Tests', () => {
   describe('GFM alerts', () => {
     it('renders NOTE alert with title row and strips marker text', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const html = md.render('> [!NOTE]\n> Useful information.');
+      const html = renderWithPlugin('> [!NOTE]\n> Useful information.');
       expect(html).toContain('markdown-alert markdown-alert-note');
       expect(html).toContain('markdown-alert-title');
       expect(html).toContain('octicon markdown-alert-icon');
@@ -39,9 +18,7 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
     });
 
     it('renders all alert variants with per-type classes and title case labels', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const html = md.render(
+      const html = renderWithPlugin(
         '> [!TIP]\n> tip text\n\n' +
         '> [!IMPORTANT]\n> important text\n\n' +
         '> [!WARNING]\n> warning text\n\n' +
@@ -58,62 +35,42 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
     });
 
     it('keeps non-alert blockquotes unchanged', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const html = md.render('> regular quote');
+      const html = renderWithPlugin('> regular quote');
       expect(html).toContain('<blockquote>');
       expect(html).not.toContain('markdown-alert');
     });
 
     it('splits merged blockquote with multiple alert markers into separate alerts', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      // Without blank lines, markdown-it merges these into one blockquote
       const src = '> [!NOTE]\n> A note.\n> [!WARNING]\n> A warning.\n> [!TIP]\n> A tip.';
-      const html = md.render(src);
+      const html = renderWithPlugin(src);
       expect(html).toContain('markdown-alert-note');
       expect(html).toContain('markdown-alert-warning');
       expect(html).toContain('markdown-alert-tip');
-      // Each alert should have its own title row
       expect(html).toContain('Note</p>');
       expect(html).toContain('Warning</p>');
       expect(html).toContain('Tip</p>');
-      // Marker text should be stripped
       expect(html).not.toContain('[!NOTE]');
       expect(html).not.toContain('[!WARNING]');
       expect(html).not.toContain('[!TIP]');
     });
 
     it('preserves plain blockquote content before first alert marker in merged blockquote', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const src = '> Plain text.\n> [!NOTE]\n> A note.';
-      const html = md.render(src);
+      const html = renderWithPlugin('> Plain text.\n> [!NOTE]\n> A note.');
       expect(html).toContain('Plain text.');
       expect(html).toContain('markdown-alert-note');
     });
   });
 
-  // Feature: markdown-preview-highlighting, Property 1: Manuscript Markdown pattern transformation
-  // Validates: Requirements 1.1, 2.1, 3.1, 4.1, 5.1
+  // Property 1: Manuscript Markdown pattern transformation (genuine property-based tests)
   describe('Property 1: Manuscript Markdown pattern transformation', () => {
-
     it('should transform addition patterns into HTML with correct CSS class', () => {
       fc.assert(
         fc.property(
           fc.string({ minLength: 1, maxLength: 100 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)),
           (text) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = `{++${text}++}`;
-            const output = md.render(input);
-            
-            // Should contain the CSS class
+            const output = renderWithPlugin('{++' + text + '++}');
             expect(output).toContain('manuscript-markdown-addition');
-            // Should contain the text content (HTML-escaped)
             expect(output).toContain(escapeHtml(text));
-            // Should use ins tag
             expect(output).toContain('<ins');
           }
         ),
@@ -126,17 +83,9 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
         fc.property(
           fc.string({ minLength: 1, maxLength: 100 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)),
           (text) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = `{--${text}--}`;
-            const output = md.render(input);
-            
-            // Should contain the CSS class
+            const output = renderWithPlugin('{--' + text + '--}');
             expect(output).toContain('manuscript-markdown-deletion');
-            // Should contain the text content (HTML-escaped)
             expect(output).toContain(escapeHtml(text));
-            // Should use del tag
             expect(output).toContain('<del');
           }
         ),
@@ -149,17 +98,9 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
         fc.property(
           fc.string({ minLength: 1, maxLength: 100 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('<') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (text) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = `{>>${text}<<}`;
-            const output = md.render(input);
-            
-            // Should contain the CSS class
+            const output = renderWithPlugin('{>>' + text + '<<}');
             expect(output).toContain('manuscript-markdown-comment');
-            // Should contain the text content (HTML-escaped)
             expect(output).toContain(escapeHtml(text));
-            // Should use span tag
             expect(output).toContain('<span');
           }
         ),
@@ -172,17 +113,9 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
         fc.property(
           fc.string({ minLength: 1, maxLength: 100 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)),
           (text) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = `{==${text}==}`;
-            const output = md.render(input);
-            
-            // Should contain the CSS class
+            const output = renderWithPlugin('{==' + text + '==}');
             expect(output).toContain('manuscript-markdown-highlight');
-            // Should contain the text content (HTML-escaped)
             expect(output).toContain(escapeHtml(text));
-            // Should use mark tag
             expect(output).toContain('<mark');
           }
         ),
@@ -196,19 +129,11 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (oldText, newText) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = `{~~${oldText}~>${newText}~~}`;
-            const output = md.render(input);
-            
-            // Should contain both deletion and addition CSS classes
+            const output = renderWithPlugin('{~~' + oldText + '~>' + newText + '~~}');
             expect(output).toContain('manuscript-markdown-deletion');
             expect(output).toContain('manuscript-markdown-addition');
-            // Should contain both text contents (HTML-escaped); strip tags to allow linkified content
             expect(stripHtmlTags(output)).toContain(escapeHtml(oldText));
             expect(stripHtmlTags(output)).toContain(escapeHtml(newText));
-            // Should use both del and ins tags
             expect(output).toContain('<del');
             expect(output).toContain('<ins');
           }
@@ -218,111 +143,44 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
     });
   });
 
-  // Feature: markdown-preview-highlighting, Property 2: Multiple instance consistency
-  // Validates: Requirements 1.2, 2.2, 3.2, 4.2, 5.2
+  // Property 2: Multiple instance consistency — parameterized over CriticMarkup types
   describe('Property 2: Multiple instance consistency', () => {
-    it('should render multiple additions with consistent HTML structure', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)), { minLength: 2, maxLength: 5 }),
-          (texts) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = texts.map(t => `{++${t}++}`).join(' ');
-            const output = md.render(input);
-            
-            // Count occurrences of the CSS class
-            const classCount = (output.match(/manuscript-markdown-addition/g) || []).length;
-            expect(classCount).toBe(texts.length);
-            
-            // All texts should be present (HTML-escaped); strip tags to allow linkified content
-            texts.forEach(text => {
-              expect(stripHtmlTags(output)).toContain(escapeHtml(text));
-            });
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
+    for (const type of SIMPLE_CRITIC_TYPES) {
+      const charFilter = (s: string) => {
+        if (s.includes('{') || s.includes('}')) return false;
+        if (type.name === 'comment' && (s.includes('<') || s.includes('>'))) return false;
+        if (!hasNoSpecialSyntax(s)) return false;
+        // Comments with only whitespace are silently removed by the plugin
+        if (type.name === 'comment' && s.trim().length === 0) return false;
+        // Exclude chars that trigger block-level parsing when they appear in
+        // the joined string (e.g. # at start → heading, ( ) → link matching)
+        if (s.includes('#') || s.includes('(') || s.includes(')')) return false;
+        return true;
+      };
 
-    it('should render multiple deletions with consistent HTML structure', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)), { minLength: 2, maxLength: 5 }),
-          (texts) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = texts.map(t => `{--${t}--}`).join(' ');
-            const output = md.render(input);
-            
-            // Count occurrences of the CSS class
-            const classCount = (output.match(/manuscript-markdown-deletion/g) || []).length;
-            expect(classCount).toBe(texts.length);
-            
-            // All texts should be present (HTML-escaped); strip tags to allow linkified content
-            texts.forEach(text => {
-              const trimmed = escapeHtml(text.trim());
-              if (trimmed.length > 0) {
-                expect(stripHtmlTags(output)).toContain(trimmed);
-              }
-            });
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should render multiple comments with consistent HTML structure', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('<') && !s.includes('>') && hasNoSpecialSyntax(s)), { minLength: 2, maxLength: 5 }),
-          (texts) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = texts.map(t => `{>>${t}<<}`).join(' ');
-            const output = md.render(input);
-            
-            // Count occurrences of the CSS class
-            const classCount = (output.match(/manuscript-markdown-comment/g) || []).length;
-            expect(classCount).toBe(texts.length);
-            
-            // All texts should be present (HTML-escaped)
-            texts.forEach(text => {
-              expect(output).toContain(escapeHtml(text));
-            });
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should render multiple highlights with consistent HTML structure', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)), { minLength: 2, maxLength: 5 }),
-          (texts) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = texts.map(t => `{==${t}==}`).join(' ');
-            const output = md.render(input);
-            
-            // Count occurrences of the CSS class
-            const classCount = (output.match(/manuscript-markdown-highlight/g) || []).length;
-            expect(classCount).toBe(texts.length);
-            
-            // All texts should be present (HTML-escaped)
-            texts.forEach(text => {
-              expect(output).toContain(escapeHtml(text));
-            });
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
+      it('should render multiple ' + type.name + 's with consistent HTML structure', () => {
+        fc.assert(
+          fc.property(
+            fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(charFilter), { minLength: 2, maxLength: 5 }),
+            (texts) => {
+              const input = texts.map(t => type.open + t + type.close).join(' ');
+              const output = renderWithPlugin(input);
+              const classCount = (output.match(new RegExp(type.cssClass, 'g')) || []).length;
+              expect(classCount).toBe(texts.length);
+              texts.forEach(text => {
+                const trimmed = escapeHtml(text.trim());
+                if (trimmed.length > 0) {
+                  // Comments store text in data-comment attrs; others use visible content
+                  const searchTarget = (type.name === 'comment' || type.name === 'highlight') ? output : stripHtmlTags(output);
+                  expect(searchTarget).toContain(trimmed);
+                }
+              });
+            }
+          ),
+          { numRuns: 100 }
+        );
+      });
+    }
 
     it('should render multiple substitutions with consistent HTML structure', () => {
       fc.assert(
@@ -335,28 +193,17 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
             { minLength: 2, maxLength: 5 }
           ),
           (pairs) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = pairs.map(([old, newText]) => `{~~${old}~>${newText}~~}`).join(' ');
-            const output = md.render(input);
-            
-            // Each substitution should have both deletion and addition classes
+            const input = pairs.map(([old, newText]) => '{~~' + old + '~>' + newText + '~~}').join(' ');
+            const output = renderWithPlugin(input);
             const deletionCount = (output.match(/manuscript-markdown-deletion/g) || []).length;
             const additionCount = (output.match(/manuscript-markdown-addition/g) || []).length;
             expect(deletionCount).toBe(pairs.length);
             expect(additionCount).toBe(pairs.length);
-            
-            // All texts should be present (HTML-escaped)
             pairs.forEach(([old, newText]) => {
               const oldTrimmed = escapeHtml(old.trim());
               const newTrimmed = escapeHtml(newText.trim());
-              if (oldTrimmed.length > 0) {
-                expect(stripHtmlTags(output)).toContain(oldTrimmed);
-              }
-              if (newTrimmed.length > 0) {
-                expect(stripHtmlTags(output)).toContain(newTrimmed);
-              }
+              if (oldTrimmed.length > 0) expect(stripHtmlTags(output)).toContain(oldTrimmed);
+              if (newTrimmed.length > 0) expect(stripHtmlTags(output)).toContain(newTrimmed);
             });
           }
         ),
@@ -365,22 +212,16 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
     });
   });
 
-  // Feature: markdown-preview-highlighting, Property 6: List structure preservation
-  // Validates: Requirements 8.2
+  // Property 6: List structure preservation (unique list-specific logic, kept as-is)
   describe('Property 6: List structure preservation', () => {
-    // Helper to generate valid list item content (no block-level Markdown that would break list structure)
     const validListItemContent = fc.stringMatching(/^[a-zA-Z0-9 ]+$/).filter(s => {
       if (!s || s.trim().length === 0) return false;
-      // Ensure minimum length after trim
       if (s.trim().length < 1) return false;
-      // Exclude strings that start with 4+ spaces (would create code blocks)
       if (s.match(/^    /)) return false;
-      // Exclude strings that are only spaces
       if (s.trim().length === 0) return false;
       return true;
     });
 
-    // Arbitrary for Manuscript Markdown pattern types
     const manuscriptMarkdownPattern = fc.constantFrom(
       { type: 'addition', open: '{++', close: '++}', cssClass: 'manuscript-markdown-addition' },
       { type: 'deletion', open: '{--', close: '--}', cssClass: 'manuscript-markdown-deletion' },
@@ -388,8 +229,6 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
       { type: 'highlight', open: '{==', close: '==}', cssClass: 'manuscript-markdown-highlight' }
     );
 
-    // Comments excluded: when adjacent to another CriticMarkup element, comments associate
-    // via data-comment rather than rendering with their own CSS class
     const nonCommentPattern = fc.constantFrom(
       { type: 'addition', open: '{++', close: '++}', cssClass: 'manuscript-markdown-addition' },
       { type: 'deletion', open: '{--', close: '--}', cssClass: 'manuscript-markdown-deletion' },
@@ -404,36 +243,20 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
             { minLength: 2, maxLength: 5 }
           ),
           (items) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            // Generate unordered list with Manuscript Markdown in each item
-            const input = items.map(([prefix, pattern, content]) => 
-              `- ${prefix} ${pattern.open}${content}${pattern.close}`
+            const input = items.map(([prefix, pattern, content]) =>
+              '- ' + prefix + ' ' + pattern.open + content + pattern.close
             ).join('\n');
-            
-            const output = md.render(input);
-            
-            // Should contain unordered list structure
+            const output = renderWithPlugin(input);
             expect(output).toContain('<ul>');
             expect(output).toContain('</ul>');
-            
-            // Should have correct number of list items
             const liCount = (output.match(/<li>/g) || []).length;
             expect(liCount).toBe(items.length);
-            
-            // Each item should have its Manuscript Markdown styling applied
             items.forEach(([prefix, pattern, content]) => {
               expect(output).toContain(pattern.cssClass);
-              // Check for content (trimmed, as markdown-it normalizes whitespace)
               const trimmedContent = content.trim();
               const trimmedPrefix = prefix.trim();
-              if (trimmedContent.length > 0) {
-                expect(output).toContain(escapeHtml(trimmedContent));
-              }
-              if (trimmedPrefix.length > 0) {
-                expect(output).toContain(escapeHtml(trimmedPrefix));
-              }
+              if (trimmedContent.length > 0) expect(output).toContain(escapeHtml(trimmedContent));
+              if (trimmedPrefix.length > 0) expect(output).toContain(escapeHtml(trimmedPrefix));
             });
           }
         ),
@@ -449,36 +272,20 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
             { minLength: 2, maxLength: 5 }
           ),
           (items) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            // Generate ordered list with Manuscript Markdown in each item
-            const input = items.map(([prefix, pattern, content], idx) => 
-              `${idx + 1}. ${prefix} ${pattern.open}${content}${pattern.close}`
+            const input = items.map(([prefix, pattern, content], idx) =>
+              (idx + 1) + '. ' + prefix + ' ' + pattern.open + content + pattern.close
             ).join('\n');
-            
-            const output = md.render(input);
-            
-            // Should contain ordered list structure
+            const output = renderWithPlugin(input);
             expect(output).toContain('<ol>');
             expect(output).toContain('</ol>');
-            
-            // Should have correct number of list items
             const liCount = (output.match(/<li>/g) || []).length;
             expect(liCount).toBe(items.length);
-            
-            // Each item should have its Manuscript Markdown styling applied
             items.forEach(([prefix, pattern, content]) => {
               expect(output).toContain(pattern.cssClass);
-              // Check for content (trimmed, as markdown-it normalizes whitespace)
               const trimmedContent = content.trim();
               const trimmedPrefix = prefix.trim();
-              if (trimmedContent.length > 0) {
-                expect(output).toContain(escapeHtml(trimmedContent));
-              }
-              if (trimmedPrefix.length > 0) {
-                expect(output).toContain(escapeHtml(trimmedPrefix));
-              }
+              if (trimmedContent.length > 0) expect(output).toContain(escapeHtml(trimmedContent));
+              if (trimmedPrefix.length > 0) expect(output).toContain(escapeHtml(trimmedPrefix));
             });
           }
         ),
@@ -500,41 +307,23 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
             { minLength: 2, maxLength: 4 }
           ),
           (items) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            // Generate list with multiple Manuscript Markdown patterns per item
-            const input = items.map(([text1, pattern1, text2, pattern2, text3]) => 
-              `- ${text1} ${pattern1.open}${text2}${pattern1.close} ${pattern2.open}${text3}${pattern2.close}`
+            const input = items.map(([text1, pattern1, text2, pattern2, text3]) =>
+              '- ' + text1 + ' ' + pattern1.open + text2 + pattern1.close + ' ' + pattern2.open + text3 + pattern2.close
             ).join('\n');
-            
-            const output = md.render(input);
-            
-            // Should contain list structure
+            const output = renderWithPlugin(input);
             expect(output).toContain('<ul>');
             expect(output).toContain('</ul>');
-            
-            // Should have correct number of list items
             const liCount = (output.match(/<li>/g) || []).length;
             expect(liCount).toBe(items.length);
-            
-            // Each item should have both Manuscript Markdown patterns applied
             items.forEach(([text1, pattern1, text2, pattern2, text3]) => {
               expect(output).toContain(pattern1.cssClass);
               expect(output).toContain(pattern2.cssClass);
-              // Check for content (trimmed, as markdown-it normalizes whitespace)
               const trimmed1 = text1.trim();
               const trimmed2 = text2.trim();
               const trimmed3 = text3.trim();
-              if (trimmed1.length > 0) {
-                expect(output).toContain(escapeHtml(trimmed1));
-              }
-              if (trimmed2.length > 0) {
-                expect(output).toContain(escapeHtml(trimmed2));
-              }
-              if (trimmed3.length > 0) {
-                expect(output).toContain(escapeHtml(trimmed3));
-              }
+              if (trimmed1.length > 0) expect(output).toContain(escapeHtml(trimmed1));
+              if (trimmed2.length > 0) expect(output).toContain(escapeHtml(trimmed2));
+              if (trimmed3.length > 0) expect(output).toContain(escapeHtml(trimmed3));
             });
           }
         ),
@@ -554,40 +343,22 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
             { minLength: 2, maxLength: 5 }
           ),
           (items) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            // Generate list with substitution patterns
-            const input = items.map(([prefix, oldText, newText]) => 
-              `- ${prefix} {~~${oldText}~>${newText}~~}`
+            const input = items.map(([prefix, oldText, newText]) =>
+              '- ' + prefix + ' {~~' + oldText + '~>' + newText + '~~}'
             ).join('\n');
-            
-            const output = md.render(input);
-            
-            // Should contain list structure
+            const output = renderWithPlugin(input);
             expect(output).toContain('<ul>');
             expect(output).toContain('</ul>');
-            
-            // Should have correct number of list items
             const liCount = (output.match(/<li>/g) || []).length;
             expect(liCount).toBe(items.length);
-            
-            // Each item should have substitution styling (both deletion and addition)
             items.forEach(([prefix, oldText, newText]) => {
               expect(output).toContain('manuscript-markdown-substitution');
-              // Check for content (trimmed, as markdown-it normalizes whitespace)
               const trimmedPrefix = prefix.trim();
               const trimmedOld = oldText.trim();
               const trimmedNew = newText.trim();
-              if (trimmedPrefix.length > 0) {
-                expect(output).toContain(escapeHtml(trimmedPrefix));
-              }
-              if (trimmedOld.length > 0) {
-                expect(output).toContain(escapeHtml(trimmedOld));
-              }
-              if (trimmedNew.length > 0) {
-                expect(output).toContain(escapeHtml(trimmedNew));
-              }
+              if (trimmedPrefix.length > 0) expect(output).toContain(escapeHtml(trimmedPrefix));
+              if (trimmedOld.length > 0) expect(output).toContain(escapeHtml(trimmedOld));
+              if (trimmedNew.length > 0) expect(output).toContain(escapeHtml(trimmedNew));
             });
           }
         ),
@@ -596,165 +367,55 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
     });
   });
 
-  // Feature: markdown-preview-highlighting, Property 3: Multiline content preservation
-  // Validates: Requirements 1.3, 2.3, 3.3, 4.3, 5.3
+  // Property 3: Multiline content preservation — parameterized
   describe('Property 3: Multiline content preservation', () => {
-    // Helper to filter out strings that would trigger block-level Markdown parsing or inline formatting
-    // Block-level elements (headings, lists, code blocks, etc.) are parsed before inline elements,
-    // which would break up the Manuscript Markdown pattern
     const isValidMultilineContent = (s: string) => {
       if (!s || s.trim().length === 0) return false;
-      // Exclude strings with Markdown special characters
       if (!hasNoSpecialSyntax(s)) return false;
-      // Exclude strings that start with Markdown block syntax
       const trimmed = s.trim();
-      if (trimmed.startsWith('#')) return false;  // Headings
-      if (trimmed.startsWith('>')) return false;  // Blockquotes
-      if (trimmed.startsWith('-') || trimmed.startsWith('+')) return false;  // Lists (note: * is already excluded by hasNoSpecialSyntax)
-      if (trimmed.match(/^\d+\./)) return false;  // Ordered lists
-      // Exclude strings that are just special characters that could trigger setext headings
+      if (trimmed.startsWith('#')) return false;
+      if (trimmed.startsWith('>')) return false;
+      if (trimmed.startsWith('-') || trimmed.startsWith('+')) return false;
+      if (trimmed.match(/^\d+\./)) return false;
       if (trimmed.match(/^[=\-]+$/)) return false;
       return true;
     };
 
-    it('should preserve line breaks in addition patterns', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && isValidMultilineContent(s)), { minLength: 2, maxLength: 4 }),
-          (lines) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const text = lines.join('\n');
-            const input = `{++${text}++}`;
-            const output = md.render(input);
-            
-            // Should contain the CSS class
-            expect(output).toContain('manuscript-markdown-addition');
-            // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
-            lines.forEach(line => {
-              const trimmed = line.trim();
-              if (trimmed.length > 0) {
-                expect(output).toContain(escapeHtml(trimmed));
-              }
-            });
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
+    for (const type of SIMPLE_CRITIC_TYPES) {
+      const charFilter = (s: string) => !s.includes('{') && !s.includes('}') &&
+        (type.name !== 'comment' ? true : !s.includes('<') && !s.includes('>')) &&
+        isValidMultilineContent(s);
 
-    it('should preserve line breaks in deletion patterns', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && isValidMultilineContent(s)), { minLength: 2, maxLength: 4 }),
-          (lines) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const text = lines.join('\n');
-            const input = `{--${text}--}`;
-            const output = md.render(input);
-            
-            // Should contain the CSS class
-            expect(output).toContain('manuscript-markdown-deletion');
-            // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
-            lines.forEach(line => {
-              const trimmed = line.trim();
-              if (trimmed.length > 0) {
-                expect(output).toContain(escapeHtml(trimmed));
-              }
-            });
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should preserve line breaks in comment patterns', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('<') && !s.includes('>') && isValidMultilineContent(s)), { minLength: 2, maxLength: 4 }),
-          (lines) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const text = lines.join('\n');
-            const input = `{>>${text}<<}`;
-            const output = md.render(input);
-            
-            // Should contain the CSS class
-            expect(output).toContain('manuscript-markdown-comment');
-            // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
-            lines.forEach(line => {
-              const trimmed = line.trim();
-              if (trimmed.length > 0) {
-                expect(output).toContain(escapeHtml(trimmed));
-              }
-            });
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should preserve line breaks in highlight patterns', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && isValidMultilineContent(s)), { minLength: 2, maxLength: 4 }),
-          (lines) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const text = lines.join('\n');
-            const input = `{==${text}==}`;
-            const output = md.render(input);
-            
-            // Should contain the CSS class
-            expect(output).toContain('manuscript-markdown-highlight');
-            // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
-            lines.forEach(line => {
-              const trimmed = line.trim();
-              if (trimmed.length > 0) {
-                expect(output).toContain(escapeHtml(trimmed));
-              }
-            });
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
+      it('should preserve line breaks in ' + type.name + ' patterns', () => {
+        fc.assert(
+          fc.property(
+            fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(charFilter), { minLength: 2, maxLength: 4 }),
+            (lines) => {
+              const text = lines.join('\n');
+              const output = renderWithPlugin(type.open + text + type.close);
+              expect(output).toContain(type.cssClass);
+              lines.forEach(line => {
+                const trimmed = line.trim();
+                if (trimmed.length > 0) expect(output).toContain(escapeHtml(trimmed));
+              });
+            }
+          ),
+          { numRuns: 100 }
+        );
+      });
+    }
 
     it('should preserve line breaks in substitution patterns', () => {
       fc.assert(
         fc.property(
-          fc.array(fc.string({ minLength: 1, maxLength: 30 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && isValidMultilineContent(s)), { minLength: 2, maxLength: 3 }),
-          fc.array(fc.string({ minLength: 1, maxLength: 30 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && isValidMultilineContent(s)), { minLength: 2, maxLength: 3 }),
+          fc.array(fc.string({ minLength: 1, maxLength: 30 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s) && s.trim().length > 0), { minLength: 2, maxLength: 3 }),
+          fc.array(fc.string({ minLength: 1, maxLength: 30 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s) && s.trim().length > 0), { minLength: 2, maxLength: 3 }),
           (oldLines, newLines) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const oldText = oldLines.join('\n');
-            const newText = newLines.join('\n');
-            const input = `{~~${oldText}~>${newText}~~}`;
-            const output = md.render(input);
-            
-            // Should contain both CSS classes
+            const output = renderWithPlugin('{~~' + oldLines.join('\n') + '~>' + newLines.join('\n') + '~~}');
             expect(output).toContain('manuscript-markdown-deletion');
             expect(output).toContain('manuscript-markdown-addition');
-            // Should preserve all line content (HTML-escaped, trimmed for Markdown whitespace normalization)
-            oldLines.forEach(line => {
-              const trimmed = line.trim();
-              if (trimmed.length > 0) {
-                expect(output).toContain(escapeHtml(trimmed));
-              }
-            });
-            newLines.forEach(line => {
-              const trimmed = line.trim();
-              if (trimmed.length > 0) {
-                expect(output).toContain(escapeHtml(trimmed));
-              }
-            });
+            oldLines.forEach(line => { const t = line.trim(); if (t.length > 0) expect(output).toContain(escapeHtml(t)); });
+            newLines.forEach(line => { const t = line.trim(); if (t.length > 0) expect(output).toContain(escapeHtml(t)); });
           }
         ),
         { numRuns: 100 }
@@ -762,8 +423,7 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
     });
   });
 
-  // Feature: markdown-preview-highlighting, Property 5: Substitution dual rendering
-  // Validates: Requirements 3.1
+  // Property 5: Substitution dual rendering
   describe('Property 5: Substitution dual rendering', () => {
     it('should render substitution with both old text (deletion styling) and new text (addition styling)', () => {
       fc.assert(
@@ -771,26 +431,14 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (oldText, newText) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            const input = `{~~${oldText}~>${newText}~~}`;
-            const output = md.render(input);
-            
-            // Should contain wrapper span with substitution class
+            const output = renderWithPlugin('{~~' + oldText + '~>' + newText + '~~}');
             expect(output).toContain('manuscript-markdown-substitution');
-            
-            // Should contain old text with deletion styling
             expect(output).toContain('manuscript-markdown-deletion');
             expect(output).toContain('<del');
             expect(output).toContain(escapeHtml(oldText));
-            
-            // Should contain new text with addition styling
             expect(output).toContain('manuscript-markdown-addition');
             expect(output).toContain('<ins');
             expect(output).toContain(escapeHtml(newText));
-            
-            // Verify the order: deletion should come before addition in the output
             const delIndex = output.indexOf('<del');
             const insIndex = output.indexOf('<ins');
             expect(delIndex).toBeLessThan(insIndex);
@@ -806,22 +454,13 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 20 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           fc.string({ minLength: 30, maxLength: 80 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (shortText, longText) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            // Test short -> long
-            const input1 = `{~~${shortText}~>${longText}~~}`;
-            const output1 = md.render(input1);
-            
+            const output1 = renderWithPlugin('{~~' + shortText + '~>' + longText + '~~}');
             expect(output1).toContain(escapeHtml(shortText));
             expect(output1).toContain(escapeHtml(longText));
             expect(output1).toContain('manuscript-markdown-deletion');
             expect(output1).toContain('manuscript-markdown-addition');
-            
-            // Test long -> short
-            const input2 = `{~~${longText}~>${shortText}~~}`;
-            const output2 = md.render(input2);
-            
+
+            const output2 = renderWithPlugin('{~~' + longText + '~>' + shortText + '~~}');
             expect(output2).toContain(escapeHtml(longText));
             expect(output2).toContain(escapeHtml(shortText));
             expect(output2).toContain('manuscript-markdown-deletion');
@@ -837,17 +476,9 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
         fc.property(
           fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('{') && !s.includes('}') && !s.includes('~') && !s.includes('>') && hasNoSpecialSyntax(s)),
           (text) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-            
-            // Empty old text (effectively an addition)
-            const input1 = `{~~${text}~>~~}`;
-            const output1 = md.render(input1);
+            const output1 = renderWithPlugin('{~~' + text + '~>~~}');
             expect(output1).toContain('manuscript-markdown-substitution');
-            
-            // Empty new text (effectively a deletion)
-            const input2 = `{~~~>${text}~~}`;
-            const output2 = md.render(input2);
+            const output2 = renderWithPlugin('{~~~>' + text + '~~}');
             expect(output2).toContain('manuscript-markdown-substitution');
           }
         ),
@@ -859,16 +490,12 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
 
 describe('GFM behavior in preview plugin', () => {
   it('renders bare URLs as links', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('See https://example.com now.');
+    const output = renderWithPlugin('See https://example.com now.');
     expect(output).toContain('<a href="https://example.com">https://example.com</a>');
   });
 
   it('renders task list items with disabled checkbox inputs', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('- [x] done\n- [ ] todo');
+    const output = renderWithPlugin('- [x] done\n- [ ] todo');
     expect(output).toContain('class="task-list-item"');
     expect(output).toContain('class="task-list-item-checkbox"');
     expect(output).toContain('type="checkbox"');
@@ -878,9 +505,7 @@ describe('GFM behavior in preview plugin', () => {
   });
 
   it('escapes GFM-disallowed raw HTML tags', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('<script>alert(1)</script>');
+    const output = renderWithPlugin('<script>alert(1)</script>');
     expect(output).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(output).not.toContain('<script>alert(1)</script>');
   });
@@ -888,20 +513,14 @@ describe('GFM behavior in preview plugin', () => {
 
 describe('Preview color suffix parsing edge cases', () => {
   it('should not consume malformed suffix content with spaces', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-
-    const output = md.render('==hello=={see note} world');
+    const output = renderWithPlugin('==hello=={see note} world');
     expect(output).toContain('<mark');
     expect(output).toContain('hello');
     expect(output).toContain('{see note} world');
   });
 
   it('should consume valid unknown color suffix but fall back styling', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-
-    const output = md.render('==hello=={unknowncolor} world');
+    const output = renderWithPlugin('==hello=={unknowncolor} world');
     expect(output).toContain('manuscript-markdown-format-highlight');
     expect(output).toContain('<mark');
     expect(output).toContain('hello');
@@ -910,280 +529,126 @@ describe('Preview color suffix parsing edge cases', () => {
   });
 });
 
-// Edge case unit tests
-// Validates: Requirements 8.3, 8.4
+// Edge case unit tests — parameterized where possible
 describe('Edge Cases', () => {
-  
+
+  // Unclosed patterns — parameterized
   describe('Unclosed patterns', () => {
-    it('should treat unclosed addition pattern as literal text', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{++unclosed text';
-      const output = md.render(input);
-      
-      // Should not contain Manuscript Markdown CSS class
-      expect(output).not.toContain('manuscript-markdown-addition');
-      // Should contain the literal text
-      expect(output).toContain('{++unclosed text');
-    });
+    const unclosedCases = [
+      { name: 'addition', input: '{++unclosed text', cssClass: 'manuscript-markdown-addition', literal: '{++unclosed text' },
+      { name: 'deletion', input: '{--unclosed text', cssClass: 'manuscript-markdown-deletion', literal: '{--unclosed text' },
+      { name: 'substitution', input: '{~~old~>new', cssClass: 'manuscript-markdown-substitution', literal: '{~~old~&gt;new' },
+      { name: 'comment', input: '{>>unclosed comment', cssClass: 'manuscript-markdown-comment', literal: '{&gt;&gt;unclosed comment' },
+      { name: 'highlight', input: '{==unclosed text', cssClass: 'manuscript-markdown-highlight', literal: '{==unclosed text' },
+    ];
 
-    it('should treat unclosed deletion pattern as literal text', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{--unclosed text';
-      const output = md.render(input);
-      
-      // Should not contain Manuscript Markdown CSS class
-      expect(output).not.toContain('manuscript-markdown-deletion');
-      // Should contain the literal text
-      expect(output).toContain('{--unclosed text');
-    });
-
-    it('should treat unclosed substitution pattern as literal text', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{~~old~>new';
-      const output = md.render(input);
-      
-      // Should not contain Manuscript Markdown CSS class
-      expect(output).not.toContain('manuscript-markdown-substitution');
-      // Should contain the literal text
-      expect(output).toContain('{~~old~&gt;new');
-    });
-
-    it('should treat unclosed comment pattern as literal text', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{>>unclosed comment';
-      const output = md.render(input);
-      
-      // Should not contain Manuscript Markdown CSS class
-      expect(output).not.toContain('manuscript-markdown-comment');
-      // Should contain the literal text (with HTML escaping)
-      expect(output).toContain('{&gt;&gt;unclosed comment');
-    });
-
-    it('should treat unclosed highlight pattern as literal text', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{==unclosed text';
-      const output = md.render(input);
-      
-      // Should not contain Manuscript Markdown CSS class
-      expect(output).not.toContain('manuscript-markdown-highlight');
-      // Should contain the literal text
-      expect(output).toContain('{==unclosed text');
-    });
+    for (const tc of unclosedCases) {
+      it('should treat unclosed ' + tc.name + ' pattern as literal text', () => {
+        const output = renderWithPlugin(tc.input);
+        expect(output).not.toContain(tc.cssClass);
+        expect(output).toContain(tc.literal);
+      });
+    }
   });
 
+  // Empty patterns — parameterized
   describe('Empty patterns', () => {
-    it('should render empty addition pattern as empty styled element', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{++++}';
-      const output = md.render(input);
-      
-      // Should contain the CSS class
-      expect(output).toContain('manuscript-markdown-addition');
-      // Should contain the ins tag
-      expect(output).toContain('<ins');
-      expect(output).toContain('</ins>');
-    });
+    const emptyCases = [
+      { name: 'addition', input: '{++++}', cssClass: 'manuscript-markdown-addition', tag: 'ins' },
+      { name: 'deletion', input: '{----}', cssClass: 'manuscript-markdown-deletion', tag: 'del' },
+      { name: 'substitution', input: '{~~~>~~}', cssClass: 'manuscript-markdown-substitution', tags: ['del', 'ins'] },
+      { name: 'highlight', input: '{====}', cssClass: 'manuscript-markdown-highlight', tag: 'mark' },
+    ];
 
-    it('should render empty deletion pattern as empty styled element', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{----}';
-      const output = md.render(input);
-      
-      // Should contain the CSS class
-      expect(output).toContain('manuscript-markdown-deletion');
-      // Should contain the del tag
-      expect(output).toContain('<del');
-      expect(output).toContain('</del>');
-    });
-
-    it('should render empty substitution pattern as empty styled element', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{~~~>~~}';
-      const output = md.render(input);
-      
-      // Should contain the CSS class
-      expect(output).toContain('manuscript-markdown-substitution');
-      // Should contain both del and ins tags
-      expect(output).toContain('<del');
-      expect(output).toContain('<ins');
-    });
+    for (const tc of emptyCases) {
+      it('should render empty ' + tc.name + ' pattern as empty styled element', () => {
+        const output = renderWithPlugin(tc.input);
+        expect(output).toContain(tc.cssClass);
+        if (tc.tags) {
+          for (const tag of tc.tags) expect(output).toContain('<' + tag);
+        } else {
+          expect(output).toContain('<' + tc.tag);
+          expect(output).toContain('</' + tc.tag + '>');
+        }
+      });
+    }
 
     it('should remove empty comment pattern silently', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-
-      const input = '{>><<}';
-      const output = md.render(input);
-
-      // Empty comment should be removed entirely — no indicator, no comment span
+      const output = renderWithPlugin('{>><<}');
       expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
       expect(output).toBe('<p></p>\n');
-    });
-
-    it('should render empty highlight pattern as empty styled element', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{====}';
-      const output = md.render(input);
-      
-      // Should contain the CSS class
-      expect(output).toContain('manuscript-markdown-highlight');
-      // Should contain the mark tag
-      expect(output).toContain('<mark');
-      expect(output).toContain('</mark>');
     });
   });
 
   describe('Manuscript Markdown in code blocks', () => {
     it('should not process Manuscript Markdown in fenced code blocks', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '```\n{++addition++}\n{--deletion--}\n```';
-      const output = md.render(input);
-      
-      // Should not contain Manuscript Markdown CSS classes
+      const output = renderWithPlugin('```\n{++addition++}\n{--deletion--}\n```');
       expect(output).not.toContain('manuscript-markdown-addition');
       expect(output).not.toContain('manuscript-markdown-deletion');
-      // Should contain the literal text in a code block
       expect(output).toContain('<code>');
       expect(output).toContain('{++addition++}');
       expect(output).toContain('{--deletion--}');
     });
 
     it('should not process Manuscript Markdown in indented code blocks', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '    {++addition++}\n    {--deletion--}';
-      const output = md.render(input);
-      
-      // Should not contain Manuscript Markdown CSS classes
+      const output = renderWithPlugin('    {++addition++}\n    {--deletion--}');
       expect(output).not.toContain('manuscript-markdown-addition');
       expect(output).not.toContain('manuscript-markdown-deletion');
-      // Should contain the literal text in a code block
       expect(output).toContain('<code>');
     });
   });
 
   describe('Manuscript Markdown in inline code', () => {
     it('should not process Manuscript Markdown in inline code', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = 'This is `{++addition++}` in inline code';
-      const output = md.render(input);
-      
-      // Should not contain Manuscript Markdown CSS class
+      const output = renderWithPlugin('This is `{++addition++}` in inline code');
       expect(output).not.toContain('manuscript-markdown-addition');
-      // Should contain the literal text in inline code
       expect(output).toContain('<code>');
       expect(output).toContain('{++addition++}');
     });
 
     it('should not process multiple Manuscript Markdown patterns in inline code', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = 'Code: `{++add++} {--del--} {==highlight==}`';
-      const output = md.render(input);
-      
-      // Should not contain any Manuscript Markdown CSS classes
+      const output = renderWithPlugin('Code: `{++add++} {--del--} {==highlight==}`');
       expect(output).not.toContain('manuscript-markdown-addition');
       expect(output).not.toContain('manuscript-markdown-deletion');
       expect(output).not.toContain('manuscript-markdown-highlight');
-      // Should contain the literal text in inline code
       expect(output).toContain('<code>');
     });
   });
 
   describe('Nested same-type patterns', () => {
     it('should process first complete addition pattern when nested', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      // When patterns are nested, the parser finds the first closing marker
-      // So {++outer {++inner++} text++} matches from first {++ to first ++}
-      // This results in: {++outer {++inner++} being processed, leaving " text++}" as literal
-      const input = '{++outer {++inner++} text++}';
-      const output = md.render(input);
-      
-      // Should contain the CSS class
+      const output = renderWithPlugin('{++outer {++inner++} text++}');
       expect(output).toContain('manuscript-markdown-addition');
-      // Should contain "outer" and "{++inner" (the content before first ++})
       expect(output).toContain('outer');
       expect(output).toContain('{++inner');
     });
 
     it('should process first complete deletion pattern when nested', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{--outer {--inner--} text--}';
-      const output = md.render(input);
-      
-      // Should contain the CSS class
+      const output = renderWithPlugin('{--outer {--inner--} text--}');
       expect(output).toContain('manuscript-markdown-deletion');
-      // Should contain "outer" and "{--inner" (the content before first --})
       expect(output).toContain('outer');
       expect(output).toContain('{--inner');
     });
 
     it('should process first complete highlight pattern when nested', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = '{==outer {==inner==} text==}';
-      const output = md.render(input);
-      
-      // Should contain the CSS class
+      const output = renderWithPlugin('{==outer {==inner==} text==}');
       expect(output).toContain('manuscript-markdown-highlight');
-      // Should contain "outer" and "{==inner" (the content before first ==})
       expect(output).toContain('outer');
       expect(output).toContain('{==inner');
     });
   });
 
-  // Validates: Requirements 8.2
   describe('Manuscript Markdown in Markdown lists', () => {
     it('should process Manuscript Markdown in unordered list items', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = `- Item with {++addition++}
-- Item with {--deletion--}
-- Item with {==highlight==}`;
-      const output = md.render(input);
-      
-      // Should contain list structure
+      const input = '- Item with {++addition++}\n- Item with {--deletion--}\n- Item with {==highlight==}';
+      const output = renderWithPlugin(input);
       expect(output).toContain('<ul>');
       expect(output).toContain('<li>');
       expect(output).toContain('</ul>');
-      
-      // Should contain Manuscript Markdown styling
       expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('manuscript-markdown-highlight');
-      
-      // Should contain the text content
       expect(output).toContain('Item with');
       expect(output).toContain('addition');
       expect(output).toContain('deletion');
@@ -1191,48 +656,27 @@ describe('Edge Cases', () => {
     });
 
     it('should process Manuscript Markdown in ordered list items', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = `1. First item with {++addition++}
-2. Second item with {--deletion--}
-3. Third item with {>>comment<<}`;
-      const output = md.render(input);
-      
-      // Should contain list structure
+      const input = '1. First item with {++addition++}\n2. Second item with {--deletion--}\n3. Third item with {>>comment<<}';
+      const output = renderWithPlugin(input);
       expect(output).toContain('<ol>');
       expect(output).toContain('<li>');
       expect(output).toContain('</ol>');
-      
-      // Should contain Manuscript Markdown styling
       expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('manuscript-markdown-comment');
-      
-      // Should contain the text content
       expect(output).toContain('First item');
       expect(output).toContain('Second item');
       expect(output).toContain('Third item');
     });
 
     it('should process Manuscript Markdown substitution in list items', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = `- Item with {~~old text~>new text~~}
-- Another item with {~~before~>after~~}`;
-      const output = md.render(input);
-      
-      // Should contain list structure
+      const input = '- Item with {~~old text~>new text~~}\n- Another item with {~~before~>after~~}';
+      const output = renderWithPlugin(input);
       expect(output).toContain('<ul>');
       expect(output).toContain('<li>');
-      
-      // Should contain substitution styling
       expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('manuscript-markdown-addition');
-      
-      // Should contain both old and new text
       expect(output).toContain('old text');
       expect(output).toContain('new text');
       expect(output).toContain('before');
@@ -1240,48 +684,26 @@ describe('Edge Cases', () => {
     });
 
     it('should process multiple Manuscript Markdown patterns in a single list item', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = `- Item with {++addition++} and {--deletion--} and {==highlight==}`;
-      const output = md.render(input);
-      
-      // Should contain list structure
+      const output = renderWithPlugin('- Item with {++addition++} and {--deletion--} and {==highlight==}');
       expect(output).toContain('<ul>');
       expect(output).toContain('<li>');
-      
-      // Should contain all Manuscript Markdown styling
       expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('manuscript-markdown-highlight');
-      
-      // Should contain the text content
       expect(output).toContain('addition');
       expect(output).toContain('deletion');
       expect(output).toContain('highlight');
     });
 
     it('should preserve nested list structure with Manuscript Markdown', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      
-      const input = `- Parent item {++added++}
-  - Nested item {--deleted--}
-  - Another nested {==highlighted==}
-- Another parent {>>comment<<}`;
-      const output = md.render(input);
-      
-      // Should contain nested list structure
+      const input = '- Parent item {++added++}\n  - Nested item {--deleted--}\n  - Another nested {==highlighted==}\n- Another parent {>>comment<<}';
+      const output = renderWithPlugin(input);
       expect(output).toContain('<ul>');
       expect(output).toContain('<li>');
-      
-      // Should contain all Manuscript Markdown styling
       expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('manuscript-markdown-highlight');
       expect(output).toContain('manuscript-markdown-comment');
-      
-      // Should contain the text content
       expect(output).toContain('Parent item');
       expect(output).toContain('Nested item');
       expect(output).toContain('Another nested');
@@ -1290,204 +712,66 @@ describe('Edge Cases', () => {
   });
 });
 
-// Feature: multiline-Manuscript Markdown-support, Property 4: Empty line preservation
-// Validates: Requirements 6.1, 6.2, 6.3, 6.4
+// Property 4: Empty line preservation — parameterized
 describe('Property 4: Empty line preservation', () => {
-  // Generator for text that can contain empty lines
   const multilineTextWithEmptyLines = fc.array(
     fc.oneof(
-      fc.string({ minLength: 1, maxLength: 50 }).filter(s => 
-        !s.includes('{') && !s.includes('}') && 
-        !s.includes('\n') && // Individual lines shouldn't have newlines
+      fc.string({ minLength: 1, maxLength: 50 }).filter(s =>
+        !s.includes('{') && !s.includes('}') &&
+        !s.includes('\n') &&
         hasNoSpecialSyntax(s) &&
-        s.trim().length > 0 // Non-empty when trimmed
+        s.trim().length > 0
       ),
-      fc.constant('') // Empty line
+      fc.constant('')
     ),
     { minLength: 3, maxLength: 6 }
-  ).filter(lines => {
-    // Ensure at least one empty line exists
-    const hasEmptyLine = lines.some(line => line === '');
-    // Ensure at least one non-empty line exists
-    const hasNonEmptyLine = lines.some(line => line.trim().length > 0);
-    return hasEmptyLine && hasNonEmptyLine;
-  });
+  ).filter(lines => lines.some(line => line === '') && lines.some(line => line.trim().length > 0));
 
-  it('should recognize addition patterns containing empty lines as single patterns', () => {
-    fc.assert(
-      fc.property(
-        multilineTextWithEmptyLines,
-        (lines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
+  for (const type of SIMPLE_CRITIC_TYPES) {
+    const arb = type.name === 'comment'
+      ? multilineTextWithEmptyLines.filter(lines => lines.every(line => !line.includes('<') && !line.includes('>')))
+      : multilineTextWithEmptyLines;
+
+    it('should recognize ' + type.name + ' patterns containing empty lines as single patterns', () => {
+      fc.assert(
+        fc.property(arb, (lines) => {
           const text = lines.join('\n');
-          const input = `{++${text}++}`;
-          const output = md.render(input);
-          
-          // Should contain the CSS class
-          expect(output).toContain('manuscript-markdown-addition');
-          // Should use ins tag
-          expect(output).toContain('<ins');
-          
-          // Should preserve non-empty line content
+          const output = renderWithPlugin(type.open + text + type.close);
+          expect(output).toContain(type.cssClass);
+          expect(output).toContain('<' + type.tag);
           lines.forEach(line => {
             const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
+            if (trimmed.length > 0) expect(output).toContain(escapeHtml(trimmed));
           });
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
-
-  it('should recognize deletion patterns containing empty lines as single patterns', () => {
-    fc.assert(
-      fc.property(
-        multilineTextWithEmptyLines,
-        (lines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
-          const text = lines.join('\n');
-          const input = `{--${text}--}`;
-          const output = md.render(input);
-          
-          // Should contain the CSS class
-          expect(output).toContain('manuscript-markdown-deletion');
-          // Should use del tag
-          expect(output).toContain('<del');
-          
-          // Should preserve non-empty line content
-          lines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
-
-  it('should recognize comment patterns containing empty lines as single patterns', () => {
-    fc.assert(
-      fc.property(
-        multilineTextWithEmptyLines.filter(lines => 
-          lines.every(line => !line.includes('<') && !line.includes('>'))
-        ),
-        (lines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
-          const text = lines.join('\n');
-          const input = `{>>${text}<<}`;
-          const output = md.render(input);
-          
-          // Should contain the CSS class
-          expect(output).toContain('manuscript-markdown-comment');
-          // Should use span tag
-          expect(output).toContain('<span');
-          
-          // Should preserve non-empty line content
-          lines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
-
-  it('should recognize highlight patterns containing empty lines as single patterns', () => {
-    fc.assert(
-      fc.property(
-        multilineTextWithEmptyLines,
-        (lines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
-          const text = lines.join('\n');
-          const input = `{==${text}==}`;
-          const output = md.render(input);
-          
-          // Should contain the CSS class
-          expect(output).toContain('manuscript-markdown-highlight');
-          // Should use mark tag
-          expect(output).toContain('<mark');
-          
-          // Should preserve non-empty line content
-          lines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
+        }),
+        { numRuns: 100 }
+      );
+    });
+  }
 
   it('should recognize substitution patterns with empty lines in both old and new text', () => {
+    const filtered = multilineTextWithEmptyLines.filter(lines =>
+      lines.every(line => !line.includes('~') && !line.includes('>'))
+    );
     fc.assert(
-      fc.property(
-        multilineTextWithEmptyLines.filter(lines => 
-          lines.every(line => !line.includes('~') && !line.includes('>'))
-        ),
-        multilineTextWithEmptyLines.filter(lines => 
-          lines.every(line => !line.includes('~') && !line.includes('>'))
-        ),
-        (oldLines, newLines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
-          const oldText = oldLines.join('\n');
-          const newText = newLines.join('\n');
-          const input = `{~~${oldText}~>${newText}~~}`;
-          const output = md.render(input);
-          
-          // Should contain substitution CSS class
-          expect(output).toContain('manuscript-markdown-substitution');
-          // Should contain both deletion and addition classes
-          expect(output).toContain('manuscript-markdown-deletion');
-          expect(output).toContain('manuscript-markdown-addition');
-          
-          // Should preserve non-empty line content from old text
-          oldLines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-          
-          // Should preserve non-empty line content from new text
-          newLines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-        }
-      ),
+      fc.property(filtered, filtered, (oldLines, newLines) => {
+        const output = renderWithPlugin('{~~' + oldLines.join('\n') + '~>' + newLines.join('\n') + '~~}');
+        expect(output).toContain('manuscript-markdown-substitution');
+        expect(output).toContain('manuscript-markdown-deletion');
+        expect(output).toContain('manuscript-markdown-addition');
+        oldLines.forEach(line => { const t = line.trim(); if (t.length > 0) expect(output).toContain(escapeHtml(t)); });
+        newLines.forEach(line => { const t = line.trim(); if (t.length > 0) expect(output).toContain(escapeHtml(t)); });
+      }),
       { numRuns: 100 }
     );
   });
 });
 
-// Feature: multiline-Manuscript Markdown-support, Property 3: Multi-line preview rendering
-// Validates: Requirements 1.4, 2.4, 3.4, 4.4, 5.4, 6.2
+// Property 3 (multiline-Manuscript Markdown-support): Multi-line preview rendering — parameterized
 describe('Property 3: Multi-line preview rendering (multiline-Manuscript Markdown-support)', () => {
-  // Generator for multi-line text (without empty lines for this property)
   const multilineText = fc.array(
-    fc.string({ minLength: 1, maxLength: 50 }).filter(s => 
-      !s.includes('{') && !s.includes('}') && 
+    fc.string({ minLength: 1, maxLength: 50 }).filter(s =>
+      !s.includes('{') && !s.includes('}') &&
       !s.includes('\n') &&
       hasNoSpecialSyntax(s) &&
       s.trim().length > 0
@@ -1495,243 +779,53 @@ describe('Property 3: Multi-line preview rendering (multiline-Manuscript Markdow
     { minLength: 2, maxLength: 5 }
   );
 
-  it('should render multi-line addition patterns with correct HTML structure', () => {
-    fc.assert(
-      fc.property(
-        multilineText,
-        (lines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
-          const text = lines.join('\n');
-          const input = `{++${text}++}`;
-          const output = md.render(input);
-          
-          // Should contain the CSS class
-          expect(output).toContain('manuscript-markdown-addition');
-          // Should use ins tag
-          expect(output).toContain('<ins');
-          expect(output).toContain('</ins>');
-          
-          // Should preserve all line content
-          lines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
+  for (const type of SIMPLE_CRITIC_TYPES) {
+    const arb = type.name === 'comment'
+      ? multilineText.filter(lines => lines.every(line => !line.includes('<') && !line.includes('>')))
+      : multilineText;
 
-  it('should render multi-line deletion patterns with correct HTML structure', () => {
-    fc.assert(
-      fc.property(
-        multilineText,
-        (lines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
+    it('should render multi-line ' + type.name + ' patterns with correct HTML structure', () => {
+      fc.assert(
+        fc.property(arb, (lines) => {
           const text = lines.join('\n');
-          const input = `{--${text}--}`;
-          const output = md.render(input);
-          
-          // Should contain the CSS class
-          expect(output).toContain('manuscript-markdown-deletion');
-          // Should use del tag
-          expect(output).toContain('<del');
-          expect(output).toContain('</del>');
-          
-          // Should preserve all line content
+          const output = renderWithPlugin(type.open + text + type.close);
+          expect(output).toContain(type.cssClass);
+          expect(output).toContain('<' + type.tag);
+          expect(output).toContain('</' + type.tag + '>');
           lines.forEach(line => {
             const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
+            if (trimmed.length > 0) expect(output).toContain(escapeHtml(trimmed));
           });
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
-
-  it('should render multi-line comment patterns with correct HTML structure', () => {
-    fc.assert(
-      fc.property(
-        multilineText.filter(lines => 
-          lines.every(line => !line.includes('<') && !line.includes('>'))
-        ),
-        (lines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
-          const text = lines.join('\n');
-          const input = `{>>${text}<<}`;
-          const output = md.render(input);
-          
-          // Should contain the CSS class
-          expect(output).toContain('manuscript-markdown-comment');
-          // Should use span tag
-          expect(output).toContain('<span');
-          expect(output).toContain('</span>');
-          
-          // Should preserve all line content
-          lines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
-
-  it('should render multi-line highlight patterns with correct HTML structure', () => {
-    fc.assert(
-      fc.property(
-        multilineText,
-        (lines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
-          const text = lines.join('\n');
-          const input = `{==${text}==}`;
-          const output = md.render(input);
-          
-          // Should contain the CSS class
-          expect(output).toContain('manuscript-markdown-highlight');
-          // Should use mark tag
-          expect(output).toContain('<mark');
-          expect(output).toContain('</mark>');
-          
-          // Should preserve all line content
-          lines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
+        }),
+        { numRuns: 100 }
+      );
+    });
+  }
 
   it('should render multi-line substitution patterns with correct HTML structure', () => {
+    const filteredLines = multilineText.filter(lines =>
+      lines.every(line => !line.includes('~') && !line.includes('>'))
+    );
     fc.assert(
-      fc.property(
-        multilineText.filter(lines => 
-          lines.every(line => !line.includes('~') && !line.includes('>'))
-        ),
-        multilineText.filter(lines => 
-          lines.every(line => !line.includes('~') && !line.includes('>'))
-        ),
-        (oldLines, newLines) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
-          const oldText = oldLines.join('\n');
-          const newText = newLines.join('\n');
-          const input = `{~~${oldText}~>${newText}~~}`;
-          const output = md.render(input);
-          
-          // Should contain substitution wrapper
-          expect(output).toContain('manuscript-markdown-substitution');
-          // Should contain both deletion and addition classes
-          expect(output).toContain('manuscript-markdown-deletion');
-          expect(output).toContain('manuscript-markdown-addition');
-          // Should use both del and ins tags
-          expect(output).toContain('<del');
-          expect(output).toContain('<ins');
-          
-          // Should preserve all old text content
-          oldLines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-          
-          // Should preserve all new text content
-          newLines.forEach(line => {
-            const trimmed = line.trim();
-            if (trimmed.length > 0) {
-              expect(output).toContain(escapeHtml(trimmed));
-            }
-          });
-        }
-      ),
+      fc.property(filteredLines, filteredLines, (oldLines, newLines) => {
+        const output = renderWithPlugin('{~~' + oldLines.join('\n') + '~>' + newLines.join('\n') + '~~}');
+        expect(output).toContain('manuscript-markdown-substitution');
+        expect(output).toContain('manuscript-markdown-deletion');
+        expect(output).toContain('manuscript-markdown-addition');
+        expect(output).toContain('<del');
+        expect(output).toContain('<ins');
+        oldLines.forEach(line => { const t = line.trim(); if (t.length > 0) expect(output).toContain(escapeHtml(t)); });
+        newLines.forEach(line => { const t = line.trim(); if (t.length > 0) expect(output).toContain(escapeHtml(t)); });
+      }),
       { numRuns: 100 }
     );
   });
 });
 
-// NOTE: Mid-line multi-line pattern tests removed due to limitations in markdown-it and TextMate
-// Multi-line patterns that start mid-line are not fully supported in preview or syntax highlighting
-// They work for navigation only
-
-// Feature: multiline-Manuscript Markdown-support, Property 5: Mid-line multi-line pattern recognition (PARTIAL)
-// Validates: Requirements 1.1, 1.3, 1.4, 2.1, 2.3, 2.4, 3.1, 3.3, 3.4, 4.1, 4.3, 4.4, 5.1, 5.3, 5.4
-// LIMITATION: Only navigation is tested here, preview/syntax highlighting not supported
-describe('Property 5: Mid-line multi-line pattern recognition (navigation only)', () => {
-  // Generator for text that can appear before/after patterns
-  // Must exclude markdown block-level syntax markers
-  const plainText = fc.string({ minLength: 1, maxLength: 30 }).filter(s => {
-    if (!s || s.trim().length === 0) return false;
-    if (!hasNoSpecialSyntax(s)) return false;
-    // Exclude Manuscript Markdown markers
-    if (s.includes('{') || s.includes('}')) return false;
-    // Exclude newlines
-    if (s.includes('\n')) return false;
-    // Exclude markdown block-level markers
-    const trimmed = s.trim();
-    if (trimmed.startsWith('#')) return false;  // Headings
-    if (trimmed.startsWith('>')) return false;  // Blockquotes
-    if (trimmed.startsWith('-') || trimmed.startsWith('+')) return false;  // Lists
-    if (trimmed.match(/^\d+\./)) return false;  // Ordered lists
-    // Exclude strings that could trigger setext headings
-    if (trimmed.match(/^[=\-]+$/)) return false;
-    return true;
-  });
-
-  // Generator for multi-line text (without empty lines for simplicity)
-  const multilineText = fc.array(
-    fc.string({ minLength: 1, maxLength: 50 }).filter(s => 
-      !s.includes('{') && !s.includes('}') && 
-      !s.includes('\n') &&
-      hasNoSpecialSyntax(s) &&
-      s.trim().length > 0
-    ),
-    { minLength: 2, maxLength: 4 }
-  );
-
-  // Pattern type generator
-  const patternTypeGen = fc.constantFrom(
-    { name: 'addition', open: '{++', close: '++}', cssClass: 'manuscript-markdown-addition', tag: 'ins' },
-    { name: 'deletion', open: '{--', close: '--}', cssClass: 'manuscript-markdown-deletion', tag: 'del' },
-    { name: 'comment', open: '{>>', close: '<<}', cssClass: 'manuscript-markdown-comment', tag: 'span' },
-    { name: 'highlight', open: '{==', close: '==}', cssClass: 'manuscript-markdown-highlight', tag: 'mark' }
-  );
-
-  // Note: Property tests removed - mid-line multi-line patterns are not supported in preview
-  // The navigation module (changes.ts) handles these correctly, but markdown-it and TextMate do not
-});
-
-// Unit tests documenting mid-line multi-line pattern limitations
+// Mid-line limitations
 describe('Mid-line multi-line pattern limitations', () => {
-  
   it('should handle single-line patterns mid-line correctly', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    
-    const input = `Text {++add++} and {--del--} patterns`;
-    const output = md.render(input);
-    
-    // Single-line patterns work fine mid-line
+    const output = renderWithPlugin('Text {++add++} and {--del--} patterns');
     expect(output).toContain('manuscript-markdown-addition');
     expect(output).toContain('manuscript-markdown-deletion');
     expect(output).toContain('Text');
@@ -1742,43 +836,22 @@ describe('Mid-line multi-line pattern limitations', () => {
   });
 
   it('should document that mid-line multi-line patterns are not fully supported', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    
-    // This pattern starts mid-line and spans multiple lines
-    // It will NOT be properly handled by the block-level rule
-    const input = `Text before {++multi
-line
-addition++}`;
-    const output = md.render(input);
-    
-    // The pattern will be split by markdown-it's paragraph parser
-    // This is a known limitation - only patterns starting at line beginning
-    // are handled for multi-line content
+    const input = 'Text before {++multi\nline\naddition++}';
+    const output = renderWithPlugin(input);
     expect(output).toContain('Text before');
-    // Content may or may not be properly styled due to the limitation
   });
 });
 
-// Feature: docx-formatting-conversion, Property 10: Preview ==highlight== rendering
-// Validates: Requirements 9.1, 9.2
+// Property 10: Preview ==highlight== rendering
 describe('Property 10: Preview ==highlight== rendering', () => {
   it('should transform ==highlight== patterns into HTML with correct CSS class', () => {
     fc.assert(
       fc.property(
         fc.string({ minLength: 1, maxLength: 50 }).filter(s => !s.includes('=') && !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)),
         (text) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          
-          const input = `==${text}==`;
-          const output = md.render(input);
-          
-          // Should contain the CSS class
+          const output = renderWithPlugin('==' + text + '==');
           expect(output).toContain('manuscript-markdown-format-highlight');
-          // Should contain the text content (HTML-escaped)
           expect(output).toContain(escapeHtml(text));
-          // Should use mark tag
           expect(output).toContain('<mark');
         }
       ),
@@ -1787,7 +860,7 @@ describe('Property 10: Preview ==highlight== rendering', () => {
   });
 });
 
-// Feature: highlight-colors, Property 2: Preview renders colored highlights with correct color class
+// Highlight color properties
 describe('Property 2: Preview renders colored highlights with correct color class', () => {
   const colorIdGen = fc.constantFrom(...VALID_COLOR_IDS as string[]);
   const safeText = fc.string({ minLength: 1, maxLength: 50 }).filter(
@@ -1797,9 +870,7 @@ describe('Property 2: Preview renders colored highlights with correct color clas
   it('should render ==text=={color} with manuscript-markdown-highlight-{color} class', () => {
     fc.assert(
       fc.property(safeText, colorIdGen, (text: string, color: string) => {
-        const md = new MarkdownIt();
-        md.use(manuscriptMarkdownPlugin);
-        const output = md.render('==' + text + '=={' + color + '}');
+        const output = renderWithPlugin('==' + text + '=={' + color + '}');
         expect(output).toContain('manuscript-markdown-highlight-' + color);
         expect(output).toContain('<mark');
         expect(output).toContain(escapeHtml(text));
@@ -1809,7 +880,6 @@ describe('Property 2: Preview renders colored highlights with correct color clas
   });
 });
 
-// Feature: highlight-colors, Property 3: Preview renders default format highlights with yellow/amber
 describe('Property 3: Preview renders default highlights with yellow/amber', () => {
   const safeText = fc.string({ minLength: 1, maxLength: 50 }).filter(
     (s: string) => !s.includes('=') && !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)
@@ -1821,9 +891,7 @@ describe('Property 3: Preview renders default highlights with yellow/amber', () 
       setDefaultHighlightColor('yellow');
       fc.assert(
         fc.property(safeText, (text: string) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          const output = md.render('==' + text + '==');
+          const output = renderWithPlugin('==' + text + '==');
           expect(output).toContain('manuscript-markdown-format-highlight');
           expect(output).toContain('<mark');
           expect(output).toContain(escapeHtml(text));
@@ -1836,7 +904,6 @@ describe('Property 3: Preview renders default highlights with yellow/amber', () 
   });
 });
 
-// Feature: highlight-colors, Property 4: Preview renders CriticMarkup highlights with Comment_Gray
 describe('Property 4: Preview renders CriticMarkup highlights with Comment_Gray', () => {
   const safeText = fc.string({ minLength: 1, maxLength: 50 }).filter(
     (s: string) => !s.includes('{') && !s.includes('}') && !s.includes('=') && hasNoSpecialSyntax(s)
@@ -1845,9 +912,7 @@ describe('Property 4: Preview renders CriticMarkup highlights with Comment_Gray'
   it('should render {==text==} with manuscript-markdown-highlight class (not format-highlight)', () => {
     fc.assert(
       fc.property(safeText, (text: string) => {
-        const md = new MarkdownIt();
-        md.use(manuscriptMarkdownPlugin);
-        const output = md.render('{==' + text + '==}');
+        const output = renderWithPlugin('{==' + text + '==}');
         expect(output).toContain('class="manuscript-markdown-highlight"');
         expect(output).not.toContain('manuscript-markdown-format-highlight');
         expect(output).toContain('<mark');
@@ -1857,13 +922,11 @@ describe('Property 4: Preview renders CriticMarkup highlights with Comment_Gray'
   });
 });
 
-// Feature: highlight-colors, Property 5: Preview falls back to configured default for unrecognized colors
 describe('Property 5: Preview falls back for unrecognized colors', () => {
   const safeText = fc.string({ minLength: 1, maxLength: 50 }).filter(
     (s: string) => !s.includes('=') && !s.includes('{') && !s.includes('}') && hasNoSpecialSyntax(s)
   );
   const defaultColorGen = fc.constantFrom(...VALID_COLOR_IDS as string[]);
-  // Generate strings that are NOT valid color IDs while still matching parser color-id shape
   const invalidColorGen = fc.stringMatching(/^[a-z][a-z0-9-]{1,9}$/).filter(
     (s: string) => !(VALID_COLOR_IDS as string[]).includes(s)
   );
@@ -1874,9 +937,7 @@ describe('Property 5: Preview falls back for unrecognized colors', () => {
       fc.assert(
         fc.property(safeText, invalidColorGen, defaultColorGen, (text: string, badColor: string, defaultColor: string) => {
           setDefaultHighlightColor(defaultColor);
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          const output = md.render('==' + text + '=={' + badColor + '}');
+          const output = renderWithPlugin('==' + text + '=={' + badColor + '}');
           expect(output).toContain('manuscript-markdown-format-highlight');
           if (defaultColor !== 'yellow') {
             expect(output).toContain('manuscript-markdown-highlight-' + defaultColor);
@@ -1896,9 +957,7 @@ describe('Property 5: Preview falls back for unrecognized colors', () => {
       setDefaultHighlightColor('not-a-color');
       fc.assert(
         fc.property(safeText, invalidColorGen, (text: string, badColor: string) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-          const output = md.render('==' + text + '=={' + badColor + '}');
+          const output = renderWithPlugin('==' + text + '=={' + badColor + '}');
           expect(output).toContain('manuscript-markdown-format-highlight');
           expect(output).not.toContain('manuscript-markdown-highlight-not-a-color');
         }),
@@ -1910,81 +969,31 @@ describe('Property 5: Preview falls back for unrecognized colors', () => {
   });
 });
 
-// Feature: code-region-inert-zones, Task 8.1: Verify preview plugin handles code regions correctly
-// Confirms markdown-it's built-in backtick rule consumes inline code content before custom rules fire,
-// and fenced code blocks are handled at block level with content never passed to inline rules.
-// No code changes needed — markdown-it's architecture provides sufficient protection.
+// Code region inertness — parameterized
 describe('Code region inertness in preview', () => {
-  it('renders inline code with CriticMarkup addition as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('`{++added++}`');
-    expect(output).toContain('<code>{++added++}</code>');
-    expect(output).not.toContain('<ins');
-    expect(output).not.toContain('manuscript-markdown-addition');
-  });
+  const inlineCodeCases = [
+    { name: 'CriticMarkup addition', input: '`{++added++}`', literal: '<code>{++added++}</code>', notContain: ['<ins', 'manuscript-markdown-addition'] },
+    { name: 'CriticMarkup deletion', input: '`{--deleted--}`', literal: '<code>{--deleted--}</code>', notContain: ['<del', 'manuscript-markdown-deletion'] },
+    { name: 'CriticMarkup substitution', input: '`{~~old~>new~~}`', literal: '<code>{~~old~&gt;new~~}</code>', notContain: ['manuscript-markdown-substitution'] },
+    { name: 'CriticMarkup comment', input: '`{>>comment<<}`', literal: '<code>{&gt;&gt;comment&lt;&lt;}</code>', notContain: ['manuscript-markdown-comment'] },
+    { name: 'CriticMarkup highlight', input: '`{==highlighted==}`', literal: '<code>{==highlighted==}</code>', notContain: ['manuscript-markdown-highlight'] },
+    { name: 'format highlight', input: '`==highlighted==`', literal: '<code>==highlighted==</code>', notContain: ['<mark', 'manuscript-markdown-format-highlight'] },
+    { name: 'colored highlight', input: '`==text=={red}`', literal: '<code>==text=={red}</code>', notContain: ['<mark'] },
+    { name: 'citation', input: '`[@smith2020]`', literal: '<code>[@smith2020]</code>', notContain: [] },
+  ];
 
-  it('renders inline code with CriticMarkup deletion as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('`{--deleted--}`');
-    expect(output).toContain('<code>{--deleted--}</code>');
-    expect(output).not.toContain('<del');
-    expect(output).not.toContain('manuscript-markdown-deletion');
-  });
-
-  it('renders inline code with CriticMarkup substitution as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('`{~~old~>new~~}`');
-    expect(output).toContain('<code>{~~old~&gt;new~~}</code>');
-    expect(output).not.toContain('manuscript-markdown-substitution');
-  });
-
-  it('renders inline code with CriticMarkup comment as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('`{>>comment<<}`');
-    expect(output).toContain('<code>{&gt;&gt;comment&lt;&lt;}</code>');
-    expect(output).not.toContain('manuscript-markdown-comment');
-  });
-
-  it('renders inline code with CriticMarkup highlight as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('`{==highlighted==}`');
-    expect(output).toContain('<code>{==highlighted==}</code>');
-    expect(output).not.toContain('manuscript-markdown-highlight');
-  });
-
-  it('renders inline code with format highlight as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('`==highlighted==`');
-    expect(output).toContain('<code>==highlighted==</code>');
-    expect(output).not.toContain('<mark');
-    expect(output).not.toContain('manuscript-markdown-format-highlight');
-  });
-
-  it('renders inline code with colored highlight as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('`==text=={red}`');
-    expect(output).toContain('<code>==text=={red}</code>');
-    expect(output).not.toContain('<mark');
-  });
-
-  it('renders inline code with citation as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('`[@smith2020]`');
-    expect(output).toContain('<code>[@smith2020]</code>');
-  });
+  for (const tc of inlineCodeCases) {
+    it('renders inline code with ' + tc.name + ' as literal text', () => {
+      const output = renderWithPlugin(tc.input);
+      expect(output).toContain(tc.literal);
+      for (const nc of tc.notContain) {
+        expect(output).not.toContain(nc);
+      }
+    });
+  }
 
   it('renders fenced code block with CriticMarkup as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('```\n{++added++}\n{--deleted--}\n{==highlighted==}\n==format==\n```');
+    const output = renderWithPlugin('```\n{++added++}\n{--deleted--}\n{==highlighted==}\n==format==\n```');
     expect(output).toContain('<code>');
     expect(output).toContain('{++added++}');
     expect(output).toContain('{--deleted--}');
@@ -1997,61 +1006,45 @@ describe('Code region inertness in preview', () => {
   });
 
   it('renders fenced code block with language tag as literal text', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('```markdown\n{++added++}\n```');
+    const output = renderWithPlugin('```markdown\n{++added++}\n```');
     expect(output).toContain('{++added++}');
     expect(output).not.toContain('<ins');
     expect(output).not.toContain('manuscript-markdown');
   });
 
   it('still processes CriticMarkup outside inline code', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    const output = md.render('Before `code` {++after++}');
-    // The inline code should be literal
+    const output = renderWithPlugin('Before `code` {++after++}');
     expect(output).toContain('<code>code</code>');
-    // The CriticMarkup outside code should be processed
     expect(output).toContain('manuscript-markdown-addition');
     expect(output).toContain('<ins');
   });
 
   it('still processes CriticMarkup surrounding a code span', () => {
-    const md = new MarkdownIt();
-    md.use(manuscriptMarkdownPlugin);
-    // CriticMarkup delimiters are outside the code span — should be treated as live markup
-    const output = md.render('{==`code`==}');
+    const output = renderWithPlugin('{==`code`==}');
     expect(output).toContain('<code>code</code>');
     expect(output).toContain('manuscript-markdown-highlight');
   });
 });
 
-// Feature: hide-comments-in-md-preview — Comment association and tooltip data-comment attributes
+// Comment association tests (unique logic, kept as-is)
 describe('Comment association in preview', () => {
 
   describe('Standalone comments', () => {
     it('should render standalone comment as indicator with data-comment', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{>>note<<}');
+      const output = renderWithPlugin('{>>note<<}');
       expect(output).toContain('manuscript-markdown-comment-indicator');
       expect(output).toContain('data-comment="note"');
-      // Should NOT contain visible comment text as rendered content
       expect(output).not.toMatch(/>note</);
     });
 
     it('should render standalone comment with special chars escaped in data-comment', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{>>a "quote" & <tag><<}');
+      const output = renderWithPlugin('{>>a "quote" & <tag><<}');
       expect(output).toContain('manuscript-markdown-comment-indicator');
       expect(output).toContain('data-comment="a &quot;quote&quot; &amp; &lt;tag&gt;"');
     });
 
     it('should render multiple standalone comments as separate indicators', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{>>first<<} {>>second<<}');
+      const output = renderWithPlugin('{>>first<<} {>>second<<}');
       const indicatorCount = (output.match(/manuscript-markdown-comment-indicator/g) || []).length;
       expect(indicatorCount).toBe(2);
       expect(output).toContain('data-comment="first"');
@@ -2061,59 +1054,44 @@ describe('Comment association in preview', () => {
 
   describe('Adjacent comment association', () => {
     it('should associate comment with preceding highlight via data-comment', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{==text==}{>>comment<<}');
+      const output = renderWithPlugin('{==text==}{>>comment<<}');
       expect(output).toContain('manuscript-markdown-highlight');
       expect(output).toContain('data-comment="comment"');
-      // Should NOT contain a separate comment indicator
       expect(output).not.toContain('manuscript-markdown-comment-indicator');
-      // Comment text should not appear as visible rendered content
       expect(output).not.toMatch(/>comment</);
     });
 
     it('should associate comment with preceding addition via data-comment', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{++added++}{>>why<<}');
+      const output = renderWithPlugin('{++added++}{>>why<<}');
       expect(output).toContain('manuscript-markdown-addition');
       expect(output).toContain('data-comment="why"');
       expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
 
     it('should associate comment with preceding deletion via data-comment', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{--removed--}{>>reason<<}');
+      const output = renderWithPlugin('{--removed--}{>>reason<<}');
       expect(output).toContain('manuscript-markdown-deletion');
       expect(output).toContain('data-comment="reason"');
       expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
 
     it('should associate comment with preceding substitution via data-comment', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{~~old~>new~~}{>>reason<<}');
+      const output = renderWithPlugin('{~~old~>new~~}{>>reason<<}');
       expect(output).toContain('manuscript-markdown-substitution');
       expect(output).toContain('data-comment="reason"');
       expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
 
     it('should associate comment with preceding format highlight via data-comment', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('==text=={>>note<<}');
+      const output = renderWithPlugin('==text=={>>note<<}');
       expect(output).toContain('manuscript-markdown-format-highlight');
       expect(output).toContain('data-comment="note"');
       expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
 
     it('should concatenate multiple sequential comments with newline separator', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{==text==}{>>first<<}{>>second<<}');
+      const output = renderWithPlugin('{==text==}{>>first<<}{>>second<<}');
       expect(output).toContain('manuscript-markdown-highlight');
-      // Both comments should be on the same element, joined by newline
       expect(output).toContain('data-comment="first\nsecond"');
       expect(output).not.toContain('manuscript-markdown-comment-indicator');
     });
@@ -2121,27 +1099,20 @@ describe('Comment association in preview', () => {
 
   describe('ID-based comment ranges', () => {
     it('should create comment range span with data-comment for ID-based comments', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{#1}text{/1}{#1>>comment<<}');
+      const output = renderWithPlugin('{#1}text{/1}{#1>>comment<<}');
       expect(output).toContain('manuscript-markdown-comment-range');
       expect(output).toContain('data-comment="comment"');
       expect(output).toContain('>text</span>');
     });
 
     it('should leave range markers without matching comment as empty renders', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{#1}text{/1}');
-      // No matching comment — range markers render as empty string
+      const output = renderWithPlugin('{#1}text{/1}');
       expect(output).not.toContain('manuscript-markdown-comment-range');
       expect(output).toContain('text');
     });
 
     it('should handle multiple ID-based ranges independently', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('{#a}alpha{/a}{#b}beta{/b}{#a>>note-a<<}{#b>>note-b<<}');
+      const output = renderWithPlugin('{#a}alpha{/a}{#b}beta{/b}{#a>>note-a<<}{#b>>note-b<<}');
       expect(output).toContain('data-comment="note-a"');
       expect(output).toContain('data-comment="note-b"');
     });
@@ -2149,18 +1120,14 @@ describe('Comment association in preview', () => {
 
   describe('Empty and edge cases', () => {
     it('should remove empty comment silently with no indicator', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('text{>><<}more');
+      const output = renderWithPlugin('text{>><<}more');
       expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
       expect(output).toContain('textmore');
     });
 
     it('should not affect text surrounding associated comments', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('before {==text==}{>>note<<} after');
+      const output = renderWithPlugin('before {==text==}{>>note<<} after');
       expect(output).toContain('before');
       expect(output).toContain('after');
       expect(output).toContain('text');
@@ -2168,9 +1135,7 @@ describe('Comment association in preview', () => {
     });
 
     it('should handle comment after highlight in a list item', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-      const output = md.render('- Item {==text==}{>>note<<}');
+      const output = renderWithPlugin('- Item {==text==}{>>note<<}');
       expect(output).toContain('<ul>');
       expect(output).toContain('manuscript-markdown-highlight');
       expect(output).toContain('data-comment="note"');
@@ -2179,11 +1144,8 @@ describe('Comment association in preview', () => {
   });
 });
 
-// Bugfix spec: comment-whitespace
-// Property 1: Fault Condition — Whitespace-Separated Comment Association
-// **Validates: Requirements 1.1, 1.2, 1.3, 2.1, 2.2, 2.3**
+// Whitespace-separated comment association
 describe('Property 1: Whitespace-Separated Comment Association (Bug Condition Exploration)', () => {
-  // CriticMarkup element definitions: syntax wrappers and the HTML tag they produce
   const elementTypes = [
     { name: 'highlight',        open: '{==', close: '==}', tag: 'mark' },
     { name: 'addition',         open: '{++', close: '++}', tag: 'ins'  },
@@ -2192,59 +1154,29 @@ describe('Property 1: Whitespace-Separated Comment Association (Bug Condition Ex
     { name: 'format highlight', open: '==',  close: '==',  tag: 'mark' },
   ];
 
-  // Generator: pick a random element type
   const elementTypeArb = fc.constantFrom(...elementTypes);
-
-  // Generator: whitespace string (spaces/tabs, 1-5 chars)
-  const whitespaceArb = fc.array(
-    fc.constantFrom(' ', '\t'),
-    { minLength: 1, maxLength: 5 }
-  ).map(arr => arr.join(''));
-
-  // Generator: comment text — short, safe, non-empty alphanumeric
-  const commentTextArb = fc.string({ minLength: 1, maxLength: 10 }).filter(
-    s => /^[a-zA-Z0-9 ]+$/.test(s) && s.trim().length > 0
-  );
+  const whitespaceArb = fc.array(fc.constantFrom(' ', '\t'), { minLength: 1, maxLength: 5 }).map(arr => arr.join(''));
+  const commentTextArb = fc.string({ minLength: 1, maxLength: 10 }).filter(s => /^[a-zA-Z0-9 ]+$/.test(s) && s.trim().length > 0);
 
   it('should associate comment with preceding CriticMarkup element when separated by whitespace', () => {
     fc.assert(
-      fc.property(
-        elementTypeArb,
-        whitespaceArb,
-        commentTextArb,
-        (elemType, ws, commentText) => {
-          const md = new MarkdownIt();
-          md.use(manuscriptMarkdownPlugin);
-
-          // Build input: element + whitespace + comment
-          // For substitution, use {~~old~>new~~} form
-          let input: string;
-          if (elemType.name === 'substitution') {
-            input = elemType.open + 'old~>new' + elemType.close + ws + '{>>' + commentText + '<<}';
-          } else {
-            input = elemType.open + 'text' + elemType.close + ws + '{>>' + commentText + '<<}';
-          }
-
-          const output = md.render(input);
-
-          // Expected: data-comment attribute appears on the element's open tag
-          expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
-          // Expected: comment should NOT render as a standalone indicator
-          expect(output).not.toContain('manuscript-markdown-comment-indicator');
+      fc.property(elementTypeArb, whitespaceArb, commentTextArb, (elemType, ws, commentText) => {
+        let input: string;
+        if (elemType.name === 'substitution') {
+          input = elemType.open + 'old~>new' + elemType.close + ws + '{>>' + commentText + '<<}';
+        } else {
+          input = elemType.open + 'text' + elemType.close + ws + '{>>' + commentText + '<<}';
         }
-      ),
+        const output = renderWithPlugin(input);
+        expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+        expect(output).not.toContain('manuscript-markdown-comment-indicator');
+      }),
       { numRuns: 50 }
     );
   });
 });
 
-
-// Bugfix spec: comment-whitespace
-// Property 2: Preservation — Non-Whitespace-Separated Behavior
-// **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6**
 describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () => {
-
-  // CriticMarkup element definitions reused across sub-properties
   const elementTypes = [
     { name: 'highlight',        open: '{==', close: '==}', tag: 'mark',  cssClass: 'manuscript-markdown-highlight' },
     { name: 'addition',         open: '{++', close: '++}', tag: 'ins',   cssClass: 'manuscript-markdown-addition' },
@@ -2254,133 +1186,68 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
   ];
 
   const elementTypeArb = fc.constantFrom(...elementTypes);
+  const commentTextArb = fc.stringMatching(/^[a-zA-Z0-9]+$/).filter(s => s.length >= 1 && s.length <= 10);
+  const nonWsSeparatorArb = fc.stringMatching(/^[a-zA-Z0-9]+$/).filter(s => s.length >= 1 && s.length <= 10);
 
-  // Generator: safe comment text — short alphanumeric, non-empty
-  const commentTextArb = fc.stringMatching(/^[a-zA-Z0-9]+$/).filter(
-    s => s.length >= 1 && s.length <= 10
-  );
-
-  // Generator: non-whitespace separator text (letters/digits only, no CriticMarkup chars)
-  const nonWsSeparatorArb = fc.stringMatching(/^[a-zA-Z0-9]+$/).filter(
-    s => s.length >= 1 && s.length <= 10
-  );
-
-  // Helper: build element input string
   function buildElementInput(elemType: typeof elementTypes[number]): string {
-    if (elemType.name === 'substitution') {
-      return elemType.open + 'old~>new' + elemType.close;
-    }
+    if (elemType.name === 'substitution') return elemType.open + 'old~>new' + elemType.close;
     return elemType.open + 'text' + elemType.close;
   }
 
-  // --- Sub-property: Direct adjacency association (Req 3.1) ---
-  // Observed: {==text==}{>>comment<<} → data-comment="comment" on <mark>, no standalone indicator
   describe('Direct adjacency association', () => {
     it('should set data-comment on element tag when comment is directly adjacent', () => {
       fc.assert(
-        fc.property(
-          elementTypeArb,
-          commentTextArb,
-          (elemType, commentText) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-
-            const input = buildElementInput(elemType) + '{>>' + commentText + '<<}';
-            const output = md.render(input);
-
-            // Observed: data-comment attribute is set on the element
-            expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
-            // Observed: no standalone indicator
-            expect(output).not.toContain('manuscript-markdown-comment-indicator');
-            // Observed: element CSS class is present
-            expect(output).toContain(elemType.cssClass);
-          }
-        ),
+        fc.property(elementTypeArb, commentTextArb, (elemType, commentText) => {
+          const output = renderWithPlugin(buildElementInput(elemType) + '{>>' + commentText + '<<}');
+          expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+          expect(output).not.toContain('manuscript-markdown-comment-indicator');
+          expect(output).toContain(elemType.cssClass);
+        }),
         { numRuns: 50 }
       );
     });
   });
 
-  // --- Sub-property: Non-whitespace separation renders standalone indicator (Req 3.2) ---
-  // Observed: {==text==}some text{>>comment<<} → comment as standalone indicator
   describe('Non-whitespace separation renders standalone indicator', () => {
     it('should render comment as standalone indicator when non-whitespace text separates it from element', () => {
       fc.assert(
-        fc.property(
-          elementTypeArb,
-          nonWsSeparatorArb,
-          commentTextArb,
-          (elemType, separator, commentText) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-
-            const input = buildElementInput(elemType) + separator + '{>>' + commentText + '<<}';
-            const output = md.render(input);
-
-            // Observed: comment renders as standalone indicator
-            expect(output).toContain('manuscript-markdown-comment-indicator');
-            expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
-          }
-        ),
+        fc.property(elementTypeArb, nonWsSeparatorArb, commentTextArb, (elemType, separator, commentText) => {
+          const output = renderWithPlugin(buildElementInput(elemType) + separator + '{>>' + commentText + '<<}');
+          expect(output).toContain('manuscript-markdown-comment-indicator');
+          expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+        }),
         { numRuns: 50 }
       );
     });
   });
 
-  // --- Sub-property: Standalone comment with no preceding element (Req 3.3) ---
-  // Observed: {>>standalone<<} → <span class="manuscript-markdown-comment-indicator" data-comment="standalone">
   describe('Standalone comment with no preceding element', () => {
     it('should render comment as indicator when no CriticMarkup element precedes it', () => {
       fc.assert(
-        fc.property(
-          commentTextArb,
-          (commentText) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-
-            const input = '{>>' + commentText + '<<}';
-            const output = md.render(input);
-
-            // Observed: renders as standalone indicator
-            expect(output).toContain('manuscript-markdown-comment-indicator');
-            expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
-          }
-        ),
+        fc.property(commentTextArb, (commentText) => {
+          const output = renderWithPlugin('{>>' + commentText + '<<}');
+          expect(output).toContain('manuscript-markdown-comment-indicator');
+          expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+        }),
         { numRuns: 50 }
       );
     });
 
     it('should render comment as indicator when preceded only by plain text', () => {
       fc.assert(
-        fc.property(
-          nonWsSeparatorArb,
-          commentTextArb,
-          (plainText, commentText) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-
-            const input = plainText + ' {>>' + commentText + '<<}';
-            const output = md.render(input);
-
-            // Observed: renders as standalone indicator (plain text is not a CriticMarkup element)
-            expect(output).toContain('manuscript-markdown-comment-indicator');
-            expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
-          }
-        ),
+        fc.property(nonWsSeparatorArb, commentTextArb, (plainText, commentText) => {
+          const output = renderWithPlugin(plainText + ' {>>' + commentText + '<<}');
+          expect(output).toContain('manuscript-markdown-comment-indicator');
+          expect(output).toContain('data-comment="' + escapeHtml(commentText) + '"');
+        }),
         { numRuns: 50 }
       );
     });
   });
 
-  // --- Sub-property: Empty comment removal (Req 3.5) ---
-  // Observed: {>><<} → removed silently, no comment markup at all
   describe('Empty comment removal', () => {
     it('should silently remove empty comments', () => {
-      const md = new MarkdownIt();
-      md.use(manuscriptMarkdownPlugin);
-
-      const output = md.render('{>><<}');
-      // Observed: no comment indicator, no data-comment attribute
+      const output = renderWithPlugin('{>><<}');
       expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
       expect(output).toBe('<p></p>\n');
@@ -2388,53 +1255,59 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
 
     it('should silently remove empty comment adjacent to element without affecting element', () => {
       fc.assert(
-        fc.property(
-          elementTypeArb,
-          (elemType) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-
-            const input = buildElementInput(elemType) + '{>><<}';
-            const output = md.render(input);
-
-            // Observed: element renders normally, no comment association
-            expect(output).toContain(elemType.cssClass);
-            expect(output).not.toContain('data-comment');
-            expect(output).not.toContain('manuscript-markdown-comment-indicator');
-          }
-        ),
+        fc.property(elementTypeArb, (elemType) => {
+          const output = renderWithPlugin(buildElementInput(elemType) + '{>><<}');
+          expect(output).toContain(elemType.cssClass);
+          expect(output).not.toContain('data-comment');
+          expect(output).not.toContain('manuscript-markdown-comment-indicator');
+        }),
         { numRuns: 50 }
       );
     });
   });
 
-  // --- Sub-property: Multiple comment concatenation (Req 3.6) ---
-  // Observed: {==text==}{>>a<<}{>>b<<} → data-comment="a\nb" on element
   describe('Multiple comment concatenation', () => {
     it('should concatenate multiple adjacent comments with newline in data-comment', () => {
       fc.assert(
-        fc.property(
-          elementTypeArb,
-          commentTextArb,
-          commentTextArb,
-          (elemType, commentA, commentB) => {
-            const md = new MarkdownIt();
-            md.use(manuscriptMarkdownPlugin);
-
-            const input = buildElementInput(elemType) + '{>>' + commentA + '<<}{>>' + commentB + '<<}';
-            const output = md.render(input);
-
-            // Observed: both comments concatenated with newline on the element
-            const expectedAttr = 'data-comment="' + escapeHtml(commentA) + '\n' + escapeHtml(commentB) + '"';
-            expect(output).toContain(expectedAttr);
-            // Observed: no standalone indicator
-            expect(output).not.toContain('manuscript-markdown-comment-indicator');
-            // Observed: element CSS class present
-            expect(output).toContain(elemType.cssClass);
-          }
-        ),
+        fc.property(elementTypeArb, commentTextArb, commentTextArb, (elemType, commentA, commentB) => {
+          const output = renderWithPlugin(buildElementInput(elemType) + '{>>' + commentA + '<<}{>>' + commentB + '<<}');
+          const expectedAttr = 'data-comment="' + escapeHtml(commentA) + '\n' + escapeHtml(commentB) + '"';
+          expect(output).toContain(expectedAttr);
+          expect(output).not.toContain('manuscript-markdown-comment-indicator');
+          expect(output).toContain(elemType.cssClass);
+        }),
         { numRuns: 50 }
       );
     });
+  });
+});
+
+// Stylesheet declaration tests (moved from extension.test.ts)
+describe('Stylesheet declaration', () => {
+  it('should declare preview stylesheet in package.json', () => {
+    const packageJsonPath = path.join(__dirname, '..', '..', 'package.json');
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    expect(packageJson.contributes).toBeDefined();
+    expect(packageJson.contributes['markdown.previewStyles']).toBeDefined();
+    expect(Array.isArray(packageJson.contributes['markdown.previewStyles'])).toBe(true);
+    expect(packageJson.contributes['markdown.previewStyles']).toContain('./media/manuscript-markdown.css');
+  });
+
+  it('should declare markdown.markdownItPlugins in package.json', () => {
+    const packageJsonPath = path.join(__dirname, '..', '..', 'package.json');
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    expect(packageJson.contributes).toBeDefined();
+    expect(packageJson.contributes['markdown.markdownItPlugins']).toBe(true);
+  });
+
+  it('should have CSS file at declared path', () => {
+    const cssPath = path.join(__dirname, '..', '..', 'media', 'manuscript-markdown.css');
+    expect(fs.existsSync(cssPath)).toBe(true);
+    const cssContent = fs.readFileSync(cssPath, 'utf-8');
+    expect(cssContent).toContain('.manuscript-markdown-addition');
+    expect(cssContent).toContain('.manuscript-markdown-deletion');
+    expect(cssContent).toContain('.manuscript-markdown-substitution');
+    expect(cssContent).toContain('.manuscript-markdown-comment');
+    expect(cssContent).toContain('.manuscript-markdown-highlight');
   });
 });

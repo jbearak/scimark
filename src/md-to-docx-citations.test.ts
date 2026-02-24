@@ -38,7 +38,7 @@ describe('generateCitation', () => {
 
     // Extract JSON from the field code to verify structure
     const csl = extractCsl(result.xml);
-    expect(csl).toBeTruthy();
+    expect(csl).toBeDefined();
 
     // Defect 1: citationID is a random alphanumeric string
     expect(csl.citationID).toMatch(/^[a-z0-9]{8}$/);
@@ -517,7 +517,7 @@ describe('htmlToOoxmlRuns', () => {
     expect(result).toContain('<w:smallCaps/>');
     // "AFTER" must still have smallCaps
     const afterMatch = result.match(/<w:r>(<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">AFTER<\/w:t><\/w:r>/);
-    expect(afterMatch).toBeTruthy();
+    expect(afterMatch).not.toBeNull();
     expect(afterMatch![0]).toContain('<w:smallCaps/>');
   });
 
@@ -526,7 +526,7 @@ describe('htmlToOoxmlRuns', () => {
     const result = htmlToOoxmlRuns(html);
     // "normal" should NOT have smallCaps
     const normalMatch = result.match(/<w:r>(<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">normal<\/w:t><\/w:r>/);
-    expect(normalMatch).toBeTruthy();
+    expect(normalMatch).not.toBeNull();
     expect(normalMatch![0]).not.toContain('<w:smallCaps/>');
   });
 
@@ -568,7 +568,7 @@ describe('per-item suppress-author', () => {
     };
     const result = generateCitation(run, entries, undefined, usedIds, itemIdMap);
     const csl = extractCsl(result.xml);
-    expect(csl).toBeTruthy();
+    expect(csl).toBeDefined();
     expect(csl.citationItems[0]['suppress-author']).toBe(true);
     expect(csl.citationItems[1]['suppress-author']).toBeUndefined();
   });
@@ -584,7 +584,7 @@ describe('per-item suppress-author', () => {
     };
     const result = generateCitation(run, entries, undefined, usedIds, itemIdMap);
     const csl = extractCsl(result.xml);
-    expect(csl).toBeTruthy();
+    expect(csl).toBeDefined();
     expect(csl.citationItems[0]['suppress-author']).toBeUndefined();
     expect(csl.citationItems[1]['suppress-author']).toBe(true);
   });
@@ -599,7 +599,7 @@ describe('per-item suppress-author', () => {
     };
     const result = generateCitation(run, entries, undefined, usedIds, itemIdMap);
     const csl = extractCsl(result.xml);
-    expect(csl).toBeTruthy();
+    expect(csl).toBeDefined();
     expect(csl.citationItems[0]['suppress-author']).toBeUndefined();
     expect(csl.citationItems[1]['suppress-author']).toBeUndefined();
   });
@@ -643,7 +643,7 @@ describe('parseMd per-item suppress-author', () => {
   it('[-@smith; @jones] produces suppressAuthorKeys with smith only', () => {
     const tokens = parseMd('[-@smith2020; @doe2021]');
     const run = findCitationRun(tokens);
-    expect(run).toBeTruthy();
+    expect(run).toBeDefined();
     expect(run!.keys).toEqual(['smith2020', 'doe2021']);
     expect(run!.suppressAuthorKeys).toEqual(new Set(['smith2020']));
   });
@@ -651,7 +651,7 @@ describe('parseMd per-item suppress-author', () => {
   it('[@smith; -@jones] produces suppressAuthorKeys with jones only', () => {
     const tokens = parseMd('[@smith2020; -@doe2021]');
     const run = findCitationRun(tokens);
-    expect(run).toBeTruthy();
+    expect(run).toBeDefined();
     expect(run!.keys).toEqual(['smith2020', 'doe2021']);
     expect(run!.suppressAuthorKeys).toEqual(new Set(['doe2021']));
   });
@@ -659,7 +659,7 @@ describe('parseMd per-item suppress-author', () => {
   it('[@smith; @jones] produces no suppressAuthorKeys', () => {
     const tokens = parseMd('[@smith2020; @doe2021]');
     const run = findCitationRun(tokens);
-    expect(run).toBeTruthy();
+    expect(run).toBeDefined();
     expect(run!.keys).toEqual(['smith2020', 'doe2021']);
     expect(run!.suppressAuthorKeys).toBeUndefined();
   });
@@ -667,7 +667,7 @@ describe('parseMd per-item suppress-author', () => {
   it('[-@smith] single suppress still works', () => {
     const tokens = parseMd('[-@smith2020]');
     const run = findCitationRun(tokens);
-    expect(run).toBeTruthy();
+    expect(run).toBeDefined();
     expect(run!.keys).toEqual(['smith2020']);
     expect(run!.suppressAuthorKeys).toEqual(new Set(['smith2020']));
   });
@@ -675,7 +675,7 @@ describe('parseMd per-item suppress-author', () => {
   it('[@smith] single normal has no suppressAuthorKeys', () => {
     const tokens = parseMd('[@smith2020]');
     const run = findCitationRun(tokens);
-    expect(run).toBeTruthy();
+    expect(run).toBeDefined();
     expect(run!.keys).toEqual(['smith2020']);
     expect(run!.suppressAuthorKeys).toBeUndefined();
   });
@@ -683,7 +683,7 @@ describe('parseMd per-item suppress-author', () => {
   it('[-@smith; -@jones] all suppressed', () => {
     const tokens = parseMd('[-@smith2020; -@doe2021]');
     const run = findCitationRun(tokens);
-    expect(run).toBeTruthy();
+    expect(run).toBeDefined();
     expect(run!.keys).toEqual(['smith2020', 'doe2021']);
     expect(run!.suppressAuthorKeys).toEqual(new Set(['smith2020', 'doe2021']));
   });
