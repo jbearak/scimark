@@ -65,7 +65,7 @@ const OBSERVED_BASELINES: Array<{ input: string; output: string }> = [
       '<m:nary><m:naryPr><m:chr m:val="\u2211"/></m:naryPr>' +
       '<m:sub><m:r><m:t>i</m:t></m:r><m:r><m:t>=</m:t></m:r><m:r><m:t>0</m:t></m:r></m:sub>' +
       '<m:sup><m:r><m:t>n</m:t></m:r></m:sup>' +
-      '<m:e><m:sSub><m:e><m:r><m:t> x</m:t></m:r></m:e>' +
+      '<m:e><m:sSub><m:e><m:r><m:t>x</m:t></m:r></m:e>' +
       '<m:sub><m:r><m:t>i</m:t></m:r></m:sub></m:sSub></m:e></m:nary>',
   },
   {

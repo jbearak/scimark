@@ -654,11 +654,11 @@ function verifyStructuralFidelity(tree: any[], latex: string): true | string {
   if (types.has('fraction') && !latex.includes('\\frac{')) {
     return 'fraction: expected \\frac{ in output';
   }
-  if (types.has('superscript') && !latex.includes('^{')) {
-    return 'superscript: expected ^{ in output';
+  if (types.has('superscript') && !latex.includes('^')) {
+    return 'superscript: expected ^ in output';
   }
-  if (types.has('subscript') && !latex.includes('_{')) {
-    return 'subscript: expected _{ in output';
+  if (types.has('subscript') && !latex.includes('_')) {
+    return 'subscript: expected _ in output';
   }
   if (types.has('radical') && !latex.includes('\\sqrt')) {
     return 'radical: expected \\sqrt in output';
@@ -779,16 +779,16 @@ describe('Unit tests: OMML construct translation', () => {
     });
   });
 
-  // --- Superscript (m:sSup → {base}^{sup}) --- Req 3.2
+  // --- Superscript (m:sSup → base^sup) --- Req 3.2
   describe('Superscript (m:sSup)', () => {
-    it('translates m:sSup to {base}^{sup}', () => {
+    it('translates m:sSup to base^sup', () => {
       const node = {
         'm:sSup': [
           { 'm:e': [makeRun('x')] },
           { 'm:sup': [makeRun('2')] },
         ],
       };
-      expect(ommlToLatex([node])).toBe('{x}^{2}');
+      expect(ommlToLatex([node])).toBe('x^2');
     });
     it('emits fallback when m:sSup is missing exponent child', () => {
       const node = {
@@ -800,16 +800,16 @@ describe('Unit tests: OMML construct translation', () => {
     });
   });
 
-  // --- Subscript (m:sSub → {base}_{sub}) --- Req 3.3
+  // --- Subscript (m:sSub → base_sub) --- Req 3.3
   describe('Subscript (m:sSub)', () => {
-    it('translates m:sSub to {base}_{sub}', () => {
+    it('translates m:sSub to base_sub', () => {
       const node = {
         'm:sSub': [
           { 'm:e': [makeRun('x')] },
           { 'm:sub': [makeRun('i')] },
         ],
       };
-      expect(ommlToLatex([node])).toBe('{x}_{i}');
+      expect(ommlToLatex([node])).toBe('x_i');
     });
     it('emits fallback when m:sSub is missing subscript child', () => {
       const node = {
@@ -821,9 +821,9 @@ describe('Unit tests: OMML construct translation', () => {
     });
   });
 
-  // --- Sub-superscript (m:sSubSup → {base}_{sub}^{sup}) --- Req 3.4
+  // --- Sub-superscript (m:sSubSup → base_sub^sup) --- Req 3.4
   describe('Sub-superscript (m:sSubSup)', () => {
-    it('translates m:sSubSup to {base}_{sub}^{sup}', () => {
+    it('translates m:sSubSup to base_sub^sup', () => {
       const node = {
         'm:sSubSup': [
           { 'm:e': [makeRun('x')] },
@@ -831,7 +831,7 @@ describe('Unit tests: OMML construct translation', () => {
           { 'm:sup': [makeRun('2')] },
         ],
       };
-      expect(ommlToLatex([node])).toBe('{x}_{i}^{2}');
+      expect(ommlToLatex([node])).toBe('x_i^2');
     });
     it('emits fallback when m:sSubSup is missing required children', () => {
       const node = {
@@ -880,8 +880,8 @@ describe('Unit tests: OMML construct translation', () => {
       };
       const result = ommlToLatex([node]);
       expect(result).toContain('\\sum');
-      expect(result).toContain('_{\\mathrm{i=0}}');
-      expect(result).toContain('^{n}');
+      expect(result).toContain('_\\mathrm{i=0}');
+      expect(result).toContain('^n');
       expect(result).toContain('i');
     });
   });
@@ -981,6 +981,22 @@ describe('Unit tests: OMML construct translation', () => {
         ],
       };
       expect(ommlToLatex([node])).toBe('\\operatorname{myFunc}{x}');
+    });
+  });
+
+  // --- Calligraphic (m:scr="script" → \mathcal{}) ---
+  describe('Calligraphic (m:scr="script")', () => {
+    it('translates m:r with m:scr="script" to \\mathcal{}', () => {
+      const node = {
+        'm:r': [
+          { 'm:rPr': [
+            { 'm:scr': [{}], ':@': { '@_m:val': 'script' } },
+            { 'm:sty': [{}], ':@': { '@_m:val': 'p' } },
+          ]},
+          { 'm:t': [{ '#text': 'A' }] },
+        ],
+      };
+      expect(ommlToLatex([node])).toBe('\\mathcal{A}');
     });
   });
 
