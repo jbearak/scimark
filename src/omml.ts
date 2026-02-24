@@ -314,8 +314,9 @@ function fallbackPlaceholder(tag: string, children: any[]): string {
 function translateRun(children: any[]): string {
   if (!Array.isArray(children)) return '';
 
-  // Check m:rPr for m:sty style
+  // Check m:rPr for m:sty style and m:scr script
   let style = '';
+  let script = '';
   for (const child of children) {
     if (child['m:rPr']) {
       const rPr = child['m:rPr'];
@@ -323,6 +324,9 @@ function translateRun(children: any[]): string {
         for (const prop of rPr) {
           if (prop['m:sty']) {
             style = getOmmlAttr(prop, 'val');
+          }
+          if (prop['m:scr']) {
+            script = getOmmlAttr(prop, 'val');
           }
         }
       }
@@ -352,8 +356,11 @@ function translateRun(children: any[]): string {
   }
 
   const mapped = unicodeToLatex(text);
+  if (script === 'script') {
+    return '\\mathcal{' + mapped + '}';
+  }
   if (style === 'p' || isMultiLetter(mapped)) {
-    return `\\mathrm{${mapped}}`;
+    return '\\mathrm{' + mapped + '}';
   }
   return mapped;
 }
@@ -380,6 +387,20 @@ function translateFraction(children: any[]): string {
 }
 
 /**
+ * Wrap a script argument in braces only when needed.
+ * Single ASCII characters and single-character LaTeX commands pass through bare;
+ * multi-char or complex arguments get braces.
+ */
+function scriptArg(latex: string): string {
+  if (latex.length === 1) return latex;
+  // Single LaTeX command like \alpha
+  if (/^\\[a-zA-Z]+$/.test(latex)) return latex;
+  // Single LaTeX command with one braced argument like \mathcal{A}
+  if (/^\\[a-zA-Z]+\{[^{}]*\}$/.test(latex)) return latex;
+  return '{' + latex + '}';
+}
+
+/**
  * Translate an m:sSup (superscript) element to LaTeX.
  * Extracts m:e (base) and m:sup, emits {base}^{sup}.
  * Falls back to placeholder if required children are missing.
@@ -392,7 +413,7 @@ function translateSuperscript(children: any[]): string {
   }
   const baseLatex = ommlToLatex(base);
   const supLatex = ommlToLatex(sup);
-  return `{${baseLatex}}^{${supLatex}}`;
+  return scriptArg(baseLatex) + '^' + scriptArg(supLatex);
 }
 
 /**
@@ -408,7 +429,7 @@ function translateSubscript(children: any[]): string {
   }
   const baseLatex = ommlToLatex(base);
   const subLatex = ommlToLatex(sub);
-  return `{${baseLatex}}_{${subLatex}}`;
+  return scriptArg(baseLatex) + '_' + scriptArg(subLatex);
 }
 
 /**
@@ -426,7 +447,7 @@ function translateSubSup(children: any[]): string {
   const baseLatex = ommlToLatex(base);
   const subLatex = ommlToLatex(sub);
   const supLatex = ommlToLatex(sup);
-  return `{${baseLatex}}_{${subLatex}}^{${supLatex}}`;
+  return scriptArg(baseLatex) + '_' + scriptArg(subLatex) + '^' + scriptArg(supLatex);
 }
 
 /**
@@ -479,11 +500,13 @@ function translateNary(children: any[]): string {
   const op = NARY_MAP.get(chr) || chr;
   const limits = limLoc === 'undOvr' ? '\\limits' : '';
 
-  const sub = subHide ? '' : `_{${ommlToLatex(findChild(children, 'm:sub'))}}`;
-  const sup = supHide ? '' : `^{${ommlToLatex(findChild(children, 'm:sup'))}}`;
+  const subLatex = ommlToLatex(findChild(children, 'm:sub'));
+  const supLatex = ommlToLatex(findChild(children, 'm:sup'));
+  const sub = subHide ? '' : '_' + scriptArg(subLatex);
+  const sup = supHide ? '' : '^' + scriptArg(supLatex);
   const body = ommlToLatex(findChild(children, 'm:e'));
 
-  return `${op}${limits}${sub}${sup}{${body}}`;
+  return op + limits + sub + sup + scriptArg(body);
 }
 
 

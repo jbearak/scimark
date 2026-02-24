@@ -104,12 +104,15 @@ describe('LaTeX-to-OMML round-trip property tests', () => {
     );
     
     const simpleSqrt = simpleAtom.map(x => '\\sqrt{' + x + '}');
-    
+
+    const simpleMathcal = fc.constantFrom('A', 'B', 'L', 'O').map(x => '\\mathcal{' + x + '}');
+
     const simpleExpression = fc.oneof(
       simpleAtom,
       simpleFraction,
       simpleScript,
-      simpleSqrt
+      simpleSqrt,
+      simpleMathcal
     );
 
     fc.assert(
