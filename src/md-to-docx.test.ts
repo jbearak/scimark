@@ -627,7 +627,7 @@ describe('generateTable', () => {
 
     const result = generateTable(token, makeState());
 
-    expect(result).not.toContain('<w:b/>');
+    expect(result).toContain('<w:b/>');
   });
 
   it('emits tblLook firstRow when table has header rows', () => {

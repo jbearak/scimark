@@ -2424,11 +2424,11 @@ function renderInlineRange(
         if (seg.type !== 'text' || !commentSetsEqual(seg.commentIds, commentSet)) {
           break;
         }
-        // Suppress yellow highlights here because the outer {==...==} will provide it.
-        // Colored highlights are still wrapped.
-        const isYellow = seg.formatting.highlight && (!seg.formatting.highlightColor || resolveMarkdownColor(seg.formatting.highlightColor) === 'yellow');
-        const formatting = isYellow ? { ...seg.formatting, highlight: false } : seg.formatting;
-        let segText = wrapWithFormatting(seg.text, formatting);
+        // IMPORTANT: Do NOT suppress highlights here. The outer {==...==} is CriticMarkup
+        // comment syntax, while ==text== is color-highlight syntax. They are semantically
+        // distinct: Word text that is both highlighted AND commented needs both layers,
+        // producing {====text====} (highlight nested inside comment delimiters).
+        let segText = wrapWithFormatting(seg.text, seg.formatting);
         if (seg.href) {
           segText = `[${segText}](${formatHrefForMarkdown(seg.href)})`;
         }

@@ -3573,7 +3573,12 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
       }
 
       xml += '<w:tc>' + tcPr + '<w:p>';
-      xml += generateRuns(cell.runs, state, options, bibEntries, citeprocEngine);
+      // Auto-bold header cells to match Word's default table header styling.
+      // Word applies bold to header rows via table styles; we reproduce that here.
+      const cellRuns = row.header
+        ? cell.runs.map(r => r.type === 'text' && !r.bold ? { ...r, bold: true } : r)
+        : cell.runs;
+      xml += generateRuns(cellRuns, state, options, bibEntries, citeprocEngine);
       xml += '</w:p></w:tc>';
       gridCol += cs;
     }

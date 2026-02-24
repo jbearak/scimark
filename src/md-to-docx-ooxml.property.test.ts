@@ -177,8 +177,8 @@ describe('OOXML Generation Properties', () => {
         const cellMatches = firstRowMatch[0].match(/<w:tc>/g);
         expect(cellMatches?.length).toBe(headers.length);
         
-        // Header should NOT be bold by default
-        expect(firstRowMatch[0]).not.toContain('<w:b/>');
+        // Header should be bold
+        expect(firstRowMatch[0]).toContain('<w:b/>');
       }
     }), { numRuns: 100 });
   });
