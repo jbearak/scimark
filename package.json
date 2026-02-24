@@ -277,11 +277,6 @@
           "group": "navigation@3"
         },
         {
-          "command": "manuscript-markdown.exportToWord",
-          "when": "activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor'",
-          "group": "navigation@3"
-        },
-        {
           "submenu": "docx.actions",
           "when": "resourceExtname == .docx && !isInDiffEditor",
           "group": "navigation@1"
