@@ -105,7 +105,7 @@
     var marker = document.querySelector('[data-manuscript-color-scheme]');
     var scheme = marker ? marker.dataset.manuscriptColorScheme : '';
     // Skip DOM work if scheme hasn't changed and elements already have correct classes
-    if (scheme === lastScheme && lastScheme !== '') return;
+    if (scheme === lastScheme) return;
     lastScheme = scheme;
     var alerts = document.querySelectorAll('.markdown-alert');
     for (var i = 0; i < alerts.length; i++) {

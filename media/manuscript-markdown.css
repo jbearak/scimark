@@ -133,7 +133,11 @@ body.vscode-dark blockquote:not(.markdown-alert) {
   border-left-color: #6e7681;
   background: rgba(110, 118, 129, 0.1);
 }
-blockquote.color-scheme-guttmacher-blockquote {
+body blockquote.color-scheme-guttmacher-blockquote {
+  border-left-color: #868789;
+  background: rgba(134, 135, 137, 0.1);
+}
+body.vscode-dark blockquote.color-scheme-guttmacher-blockquote {
   border-left-color: #868789;
   background: rgba(134, 135, 137, 0.1);
 }
