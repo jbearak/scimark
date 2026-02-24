@@ -945,6 +945,18 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
   md.core.ruler.after('manuscript_markdown_associate_comments', 'manuscript_markdown_task_list', taskListRule);
   md.core.ruler.after('manuscript_markdown_task_list', 'manuscript_markdown_alert_blockquote', alertBlockquoteRule);
 
+  // Inject a hidden marker element so the preview script can apply the color scheme
+  // class to alert elements (needed because VS Code's built-in GFM alert renderer
+  // overrides our blockquote_open renderer and doesn't include our color class).
+  md.core.ruler.push('manuscript_color_scheme_marker', (state: any) => {
+    const scheme = state.env.colorScheme;
+    if (scheme && scheme !== 'github') {
+      const token = new state.Token('html_block', '', 0);
+      token.content = '<span class="manuscript-colors-' + scheme + '" style="display:none"></span>\n';
+      state.tokens.unshift(token);
+    }
+  });
+
   // Register renderers for each Manuscript Markdown token type
   for (const pattern of patterns) {
     md.renderer.rules[`manuscript_markdown_${pattern.name}_open`] = (tokens, idx) => {

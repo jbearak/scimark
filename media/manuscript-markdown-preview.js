@@ -95,4 +95,25 @@
     }
     tooltip.style.display = 'none';
   });
+
+  // Color scheme support for alert callouts.
+  // VS Code's built-in GFM alert renderer overrides our blockquote_open renderer,
+  // so the markdown-it plugin injects a hidden marker element instead.  We read
+  // that marker here and add the color-scheme class to all .markdown-alert elements.
+  function applyColorScheme() {
+    var alerts = document.querySelectorAll('.markdown-alert');
+    var scheme = document.querySelector('.manuscript-colors-guttmacher') ? 'guttmacher' : 'github';
+    for (var i = 0; i < alerts.length; i++) {
+      if (scheme === 'guttmacher') {
+        alerts[i].classList.add('color-scheme-guttmacher');
+      } else {
+        alerts[i].classList.remove('color-scheme-guttmacher');
+      }
+    }
+  }
+
+  // Run once on load, then watch for DOM changes (preview refreshes).
+  applyColorScheme();
+  var observer = new MutationObserver(applyColorScheme);
+  observer.observe(document.body, { childList: true, subtree: true });
 })();
