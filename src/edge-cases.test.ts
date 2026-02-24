@@ -20,13 +20,6 @@ const contentVariants = [
   { label: 'whitespace only', content: '   \n   ' },
 ];
 
-// For simple types, also test patterns at various empty-line positions
-const emptyLineVariants = [
-  { label: 'empty line at start', content: '\ntext after empty line' },
-  { label: 'empty line in middle', content: 'first line\n\nthird line' },
-  { label: 'empty line at end', content: 'text before empty line\n' },
-  { label: 'multiple empty lines', content: 'line 1\n\n\nline 4' },
-];
 
 describe('Edge Case Unit Tests', () => {
 
@@ -105,21 +98,27 @@ describe('Edge Case Unit Tests', () => {
   });
 
   describe('Patterns with empty lines at various positions', () => {
-    for (const variant of emptyLineVariants) {
-      const input = buildCriticPattern(
-        SIMPLE_CRITIC_TYPES.find(t => t.name === (variant.label.includes('multiple') ? 'deletion' : 'addition'))!,
-        variant.content,
-      );
+    const emptyLineCases = [
+      { label: 'addition: empty line at start', type: SIMPLE_CRITIC_TYPES.find(t => t.name === 'addition')!, content: '\ntext after empty line' },
+      { label: 'addition: empty line in middle', type: SIMPLE_CRITIC_TYPES.find(t => t.name === 'addition')!, content: 'first line\n\nthird line' },
+      { label: 'addition: empty line at end', type: SIMPLE_CRITIC_TYPES.find(t => t.name === 'addition')!, content: 'text before empty line\n' },
+      { label: 'deletion: multiple empty lines', type: SIMPLE_CRITIC_TYPES.find(t => t.name === 'deletion')!, content: 'line 1\n\n\nline 4' },
+    ];
 
-      it(variant.label + ' is recognized by regex', () => {
+    for (const tc of emptyLineCases) {
+      const input = buildCriticPattern(tc.type, tc.content);
+
+      it(tc.label + ' is recognized by regex', () => {
         const matches = findAllPatterns(input);
         expect(matches.length).toBe(1);
         expect(matches[0].matched).toBe(input);
       });
 
-      it(variant.label + ' renders in preview', () => {
+      it(tc.label + ' renders in preview', () => {
         const output = renderWithPlugin(input);
-        const nonEmpty = variant.content.split('\n').filter(l => l.trim().length > 0);
+        expect(output).toContain(tc.type.cssClass);
+        expect(output).toContain('<' + tc.type.tag);
+        const nonEmpty = tc.content.split('\n').filter(l => l.trim().length > 0);
         for (const line of nonEmpty) {
           expect(output).toContain(line.trim());
         }
