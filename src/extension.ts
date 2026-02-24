@@ -408,6 +408,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.workspace.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration('manuscriptMarkdown.colors')) {
 				syncDefaultColorScheme();
+				vscode.commands.executeCommand('markdown.preview.refresh');
 			}
 		})
 	);

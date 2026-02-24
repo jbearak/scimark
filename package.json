@@ -700,6 +700,10 @@
             "github",
             "guttmacher"
           ],
+          "enumItemLabels": [
+            "GitHub",
+            "Guttmacher"
+          ],
           "default": "github",
           "description": "Color scheme for alert callouts in preview and DOCX export"
         },
