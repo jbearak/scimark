@@ -311,7 +311,7 @@ test('--colors rejects invalid values', () => {
   expect(() => parseArgs(['node', 'cli.js', 'file.md', '--colors', 'rainbow'])).toThrow('Invalid color scheme');
 });
 
-test('colors defaults to github', () => {
+test('colors defaults to guttmacher', () => {
   const opts = parseArgs(['node', 'cli.js', 'file.md']);
-  expect(opts.colors).toBe('github');
+  expect(opts.colors).toBe('guttmacher');
 });

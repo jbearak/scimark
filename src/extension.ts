@@ -402,7 +402,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Read and sync default color scheme setting
 	function getConfiguredColorScheme(): ColorScheme {
 		const cfg = vscode.workspace.getConfiguration('manuscriptMarkdown');
-		return normalizeColorScheme(cfg.get<string>('colors', 'github') ?? 'github') ?? 'github';
+		return normalizeColorScheme(cfg.get<string>('colors') ?? '') ?? 'guttmacher';
 	}
 	setDefaultColorScheme(getConfiguredColorScheme());
 	context.subscriptions.push(
@@ -1021,7 +1021,7 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 	const sourceDir = path.dirname(input.basePath);
 	const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
 	const blockquoteStyle = config.get<'Quote' | 'IntenseQuote' | 'GitHub'>('blockquoteStyle', 'GitHub');
-	const colors = config.get<'github' | 'guttmacher'>('colors', 'github');
+	const colors = normalizeColorScheme(config.get<string>('colors') ?? '') ?? 'guttmacher';
 	const result = await convertMdToDocx(input.markdown, {
 		bibtex: input.bibtex,
 		authorName: authorName ?? undefined,

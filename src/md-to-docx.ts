@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'fs';
 import { isAbsolute, join, resolve, basename } from 'path';
 import { parseBibtex, BibtexEntry } from './bibtex-parser';
 import { parseFrontmatter, Frontmatter, noteTypeToNumber, type ColorScheme } from './frontmatter';
-import { alertColorsByScheme } from './alert-colors';
+import { alertColorsByScheme, getDefaultColorScheme } from './alert-colors';
 import { ZoteroBiblData, zoteroStyleFullId } from './converter';
 import { isGfmDisallowedRawHtml, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from './gfm';
 import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDimensions, computeMissingDimension, IMAGE_WARNINGS } from './image-utils';
@@ -2485,7 +2485,7 @@ export function applyAlertColorsToTemplate(stylesXml: string, scheme: ColorSchem
 }
 
 export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlockConfig, colorScheme?: ColorScheme): string {
-  const alertColors = alertColorsByScheme(colorScheme ?? 'github');
+  const alertColors = alertColorsByScheme(colorScheme ?? getDefaultColorScheme());
   // Helper: build w:rFonts element for a given font name
   function rFonts(font: string): string {
     return '<w:rFonts w:ascii="' + escapeXml(font) + '" w:hAnsi="' + escapeXml(font) + '"/>';
@@ -3455,7 +3455,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
     return '<w:p>' + pPr + '</w:p>';
   }
   
-  const alertColorMap = alertColorsByScheme(options?.colors ?? 'github');
+  const alertColorMap = alertColorsByScheme(options?.colors ?? getDefaultColorScheme());
   const runs = generateRuns(token.runs, state, options, bibEntries, citeprocEngine);
   const taskPrefix = token.type === 'list_item' && token.taskChecked !== undefined
     ? generateRun(token.taskChecked ? '☒ ' : '☐ ', '')
@@ -3997,7 +3997,7 @@ export async function convertMdToDocx(
   // Resolve effective blockquote style: frontmatter > options > default
   const effectiveBlockquoteStyle = frontmatter.blockquoteStyle ?? options?.blockquoteStyle ?? 'GitHub';
   // Resolve effective color scheme: frontmatter > options > default
-  const effectiveColors: ColorScheme = frontmatter.colors ?? options?.colors ?? 'github';
+  const effectiveColors: ColorScheme = frontmatter.colors ?? options?.colors ?? getDefaultColorScheme();
   const resolvedOptions = options
     ? { ...options, blockquoteStyle: effectiveBlockquoteStyle, colors: effectiveColors }
     : { blockquoteStyle: effectiveBlockquoteStyle, colors: effectiveColors };

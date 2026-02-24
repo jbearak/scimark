@@ -30,10 +30,10 @@ export function alertColorsByScheme(scheme: ColorScheme): Record<GfmAlertType, s
 }
 
 /** Module-level default color scheme, updated from VS Code settings */
-let _defaultColorScheme: ColorScheme = 'github';
+let _defaultColorScheme: ColorScheme = 'guttmacher';
 
 export function setDefaultColorScheme(scheme: ColorScheme): void {
-  _defaultColorScheme = (scheme === 'github' || scheme === 'guttmacher') ? scheme : 'github';
+  _defaultColorScheme = (scheme === 'github' || scheme === 'guttmacher') ? scheme : 'guttmacher';
 }
 
 export function getDefaultColorScheme(): ColorScheme {

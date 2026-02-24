@@ -39,7 +39,7 @@ export function parseArgs(argv: string[]): CliOptions {
     noTemplate: false,
     alwaysUseCommentIds: false,
     blockquoteStyle: 'GitHub',
-    colors: 'github',
+    colors: 'guttmacher',
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -140,7 +140,7 @@ Options:
   --table-indent <n>              Spaces per indent level in HTML tables (DOCX→MD, default: 2)
   --always-use-comment-ids        Always use ID-based comment syntax (DOCX→MD)
   --blockquote-style <style>      Blockquote style: Quote, IntenseQuote, GitHub (MD→DOCX, default: GitHub)
-  --colors <scheme>               Alert color scheme: GitHub, Guttmacher (MD→DOCX, default: GitHub)`);
+  --colors <scheme>               Alert color scheme: GitHub, Guttmacher (MD→DOCX, default: Guttmacher)`);
 }
 
 function showVersion() {

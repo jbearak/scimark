@@ -100,13 +100,11 @@
   // VS Code's built-in GFM alert renderer overrides our blockquote_open renderer,
   // so the markdown-it plugin injects a hidden marker element with a data attribute.
   // We read that marker here and add the color-scheme class to matching elements.
-  var lastScheme = '';
+  // Note: no caching of the last scheme — after a preview refresh the entire DOM is
+  // replaced with new elements that lack classes, so we must always apply them.
   function applyColorScheme() {
     var marker = document.querySelector('[data-manuscript-color-scheme]');
     var scheme = marker ? marker.dataset.manuscriptColorScheme : '';
-    // Skip DOM work if scheme hasn't changed and elements already have correct classes
-    if (scheme === lastScheme) return;
-    lastScheme = scheme;
     var alerts = document.querySelectorAll('.markdown-alert');
     for (var i = 0; i < alerts.length; i++) {
       // Remove any existing color-scheme-* class
@@ -121,15 +119,15 @@
       }
     }
     var blockquotes = document.querySelectorAll('blockquote:not(.markdown-alert)');
-    for (var i = 0; i < blockquotes.length; i++) {
-      var bqClasses = blockquotes[i].className.split(' ');
-      for (var j = bqClasses.length - 1; j >= 0; j--) {
-        if (bqClasses[j].indexOf('color-scheme-') === 0) {
-          blockquotes[i].classList.remove(bqClasses[j]);
+    for (var k = 0; k < blockquotes.length; k++) {
+      var bqClasses = blockquotes[k].className.split(' ');
+      for (var m = bqClasses.length - 1; m >= 0; m--) {
+        if (bqClasses[m].indexOf('color-scheme-') === 0) {
+          blockquotes[k].classList.remove(bqClasses[m]);
         }
       }
       if (scheme) {
-        blockquotes[i].classList.add('color-scheme-' + scheme + '-blockquote');
+        blockquotes[k].classList.add('color-scheme-' + scheme + '-blockquote');
       }
     }
   }
@@ -147,5 +145,11 @@
       });
     }
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+  }
 })();

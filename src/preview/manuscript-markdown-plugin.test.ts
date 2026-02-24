@@ -66,9 +66,9 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
       expect(html).toContain('markdown-alert-note');
     });
 
-    it('does not add color-scheme class for github scheme (default)', () => {
+    it('adds color-scheme-guttmacher class by default (guttmacher is the default scheme)', () => {
       const html = renderWithPlugin('> [!NOTE]\n> Useful information.');
-      expect(html).not.toContain('color-scheme-guttmacher');
+      expect(html).toContain('color-scheme-guttmacher');
       expect(html).toContain('markdown-alert-note');
     });
 
@@ -609,7 +609,7 @@ describe('Edge Cases', () => {
       const output = renderWithPlugin('{>><<}');
       expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
-      expect(output).toBe('<p></p>\n');
+      expect(output).toContain('<p></p>\n');
     });
   });
 
@@ -1282,7 +1282,7 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
       const output = renderWithPlugin('{>><<}');
       expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
-      expect(output).toBe('<p></p>\n');
+      expect(output).toContain('<p></p>\n');
     });
 
     it('should silently remove empty comment adjacent to element without affecting element', () => {
