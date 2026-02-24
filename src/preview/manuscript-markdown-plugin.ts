@@ -5,6 +5,8 @@ import { VALID_COLOR_IDS, getDefaultHighlightColor } from '../highlight-colors';
 import { PARA_PLACEHOLDER, preprocessCriticMarkup, findMatchingClose } from '../critic-markup';
 import { wrapBareLatexEnvironments } from '../latex-env-preprocess';
 import { isGfmDisallowedRawHtml, escapeHtmlText, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from '../gfm';
+import { parseFrontmatter } from '../frontmatter';
+import { getDefaultColorScheme } from '../alert-colors';
 
 /** Escape HTML special characters for use in attribute values */
 function escapeHtmlAttr(str: string): string {
@@ -913,6 +915,9 @@ function paraPlaceholderRule(state: StateInline, silent: boolean): boolean {
 export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
   // Preprocess source before block parsing to handle multi-paragraph CriticMarkup
   md.core.ruler.before('normalize', 'manuscript_markdown_preprocess', (state: any) => {
+    // Parse frontmatter to extract color scheme before preprocessing
+    const { metadata } = parseFrontmatter(state.src);
+    state.env.colorScheme = metadata.colors || getDefaultColorScheme();
     state.src = preprocessCriticMarkup(wrapBareLatexEnvironments(state.src));
   });
 
@@ -1051,7 +1056,8 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
       return self.renderToken(tokens, idx, options);
     }
     const title = token.meta?.gfmAlertTitle || gfmAlertTitle(alertType);
-    return `<blockquote class="markdown-alert markdown-alert-${alertType}"><p class="markdown-alert-title">${alertOcticonSvg(alertType)} ${escapeHtmlText(title)}</p>\n`;
+    const schemeClass = env.colorScheme === 'guttmacher' ? ' color-scheme-guttmacher' : '';
+    return '<blockquote class="markdown-alert markdown-alert-' + alertType + schemeClass + '"><p class="markdown-alert-title">' + alertOcticonSvg(alertType) + ' ' + escapeHtmlText(title) + '</p>\n';
   };
 
 }

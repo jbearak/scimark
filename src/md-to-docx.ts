@@ -4,7 +4,8 @@ import { downloadStyle } from './csl-loader';
 import { existsSync, readFileSync } from 'fs';
 import { isAbsolute, join, resolve, basename } from 'path';
 import { parseBibtex, BibtexEntry } from './bibtex-parser';
-import { parseFrontmatter, Frontmatter, noteTypeToNumber } from './frontmatter';
+import { parseFrontmatter, Frontmatter, noteTypeToNumber, type ColorScheme } from './frontmatter';
+import { alertColorsByScheme } from './alert-colors';
 import { ZoteroBiblData, zoteroStyleFullId } from './converter';
 import { isGfmDisallowedRawHtml, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from './gfm';
 import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDimensions, computeMissingDimension, IMAGE_WARNINGS } from './image-utils';
@@ -96,11 +97,6 @@ const ALERT_STYLE_BY_TYPE: Record<GfmAlertType, string> = {
   important: 'GitHubImportant',
   warning: 'GitHubWarning',
   caution: 'GitHubCaution',
-};
-
-const ALERT_COLOR_BY_TYPE: Record<GfmAlertType, string> = {
-  note: '1F6FEB', tip: '238636', important: '8957E5',
-  warning: '9A6700', caution: 'CF222E',
 };
 
 const ALERT_GLYPH_BY_TYPE: Record<GfmAlertType, string> = {
@@ -1989,6 +1985,8 @@ export interface MdToDocxOptions {
   onStyleNotFound?: (styleName: string) => Promise<boolean>;
   /** Word paragraph style to use for blockquotes. */
   blockquoteStyle?: 'Quote' | 'IntenseQuote' | 'GitHub';
+  /** Color scheme for alert callouts. */
+  colors?: ColorScheme;
 }
 
 export interface MdToDocxResult {
@@ -2444,9 +2442,50 @@ export function applyFontOverridesToTemplate(
   return xml;
 }
 
+/** Map from alert style ID → GfmAlertType for template color patching. */
+const ALERT_STYLE_ID_TO_TYPE: Record<string, GfmAlertType> = {
+  'GitHubNote': 'note',
+  'GitHubTip': 'tip',
+  'GitHubImportant': 'important',
+  'GitHubWarning': 'warning',
+  'GitHubCaution': 'caution',
+};
 
+/**
+ * Patch alert border colors in a template styles.xml string.
+ * Finds each GitHubXxx style and replaces the w:left border color with the
+ * color from the given scheme.  Returns the (potentially mutated) XML string.
+ */
+export function applyAlertColorsToTemplate(stylesXml: string, scheme: ColorScheme): string {
+  if (scheme === 'github') return stylesXml;
+  const colors = alertColorsByScheme(scheme);
+  let xml = stylesXml;
 
-export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlockConfig): string {
+  for (const [styleId, alertType] of Object.entries(ALERT_STYLE_ID_TO_TYPE)) {
+    const styleRegex = new RegExp(
+      '(<w:style\\b[^>]*\\bw:styleId="' + styleId + '"[^>]*>)([\\s\\S]*?)(</w:style>)'
+    );
+    const styleMatch = styleRegex.exec(xml);
+    if (!styleMatch) continue;
+
+    const openTag = styleMatch[1];
+    let innerContent = styleMatch[2];
+    const closeTag = styleMatch[3];
+
+    // Replace w:color on the w:left border element
+    innerContent = innerContent.replace(
+      /(<w:left\b[^>]*\bw:color=")[0-9A-Fa-f]{6}("[^>]*\/>)/,
+      (_match, before, after) => before + colors[alertType] + after
+    );
+
+    xml = xml.slice(0, styleMatch.index) + openTag + innerContent + closeTag + xml.slice(styleMatch.index + styleMatch[0].length);
+  }
+
+  return xml;
+}
+
+export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlockConfig, colorScheme?: ColorScheme): string {
+  const alertColors = alertColorsByScheme(colorScheme ?? 'github');
   // Helper: build w:rFonts element for a given font name
   function rFonts(font: string): string {
     return '<w:rFonts w:ascii="' + escapeXml(font) + '" w:hAnsi="' + escapeXml(font) + '"/>';
@@ -2642,11 +2681,11 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:pPr><w:spacing w:before="0" w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + GITHUB_BLOCKQUOTE_BORDER_COLOR + '"/></w:pBdr><w:ind w:left="' + GITHUB_BLOCKQUOTE_INDENT + '"/></w:pPr>\n' +
     (quoteRpr ? quoteRpr : '') +
     '</w:style>\n' +
-    githubAlertStyle('GitHubNote', 'GitHub Note', '1F6FEB') +
-    githubAlertStyle('GitHubTip', 'GitHub Tip', '238636') +
-    githubAlertStyle('GitHubImportant', 'GitHub Important', '8957E5') +
-    githubAlertStyle('GitHubWarning', 'GitHub Warning', '9A6700') +
-    githubAlertStyle('GitHubCaution', 'GitHub Caution', 'CF222E') +
+    githubAlertStyle('GitHubNote', 'GitHub Note', alertColors.note) +
+    githubAlertStyle('GitHubTip', 'GitHub Tip', alertColors.tip) +
+    githubAlertStyle('GitHubImportant', 'GitHub Important', alertColors.important) +
+    githubAlertStyle('GitHubWarning', 'GitHub Warning', alertColors.warning) +
+    githubAlertStyle('GitHubCaution', 'GitHub Caution', alertColors.caution) +
     '<w:style w:type="character" w:styleId="CodeChar">\n' +
     '<w:name w:val="Code Char"/>\n' +
     codeCharRpr +
@@ -3416,12 +3455,13 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
     return '<w:p>' + pPr + '</w:p>';
   }
   
+  const alertColorMap = alertColorsByScheme(options?.colors ?? 'github');
   const runs = generateRuns(token.runs, state, options, bibEntries, citeprocEngine);
   const taskPrefix = token.type === 'list_item' && token.taskChecked !== undefined
     ? generateRun(token.taskChecked ? '☒ ' : '☐ ', '')
     : '';
   const alertPrefix = token.type === 'blockquote' && token.alertType && token.alertLead
-    ? generateRun(ALERT_GLYPH_BY_TYPE[token.alertType] + ' ' + gfmAlertTitle(token.alertType) + ' ', '<w:rPr><w:b/><w:color w:val="' + ALERT_COLOR_BY_TYPE[token.alertType] + '"/></w:rPr>')
+    ? generateRun(ALERT_GLYPH_BY_TYPE[token.alertType] + ' ' + gfmAlertTitle(token.alertType) + ' ', '<w:rPr><w:b/><w:color w:val="' + alertColorMap[token.alertType] + '"/></w:rPr>')
     : '';
 
   let xml = '<w:p>' + pPr + alertPrefix + taskPrefix + runs + '</w:p>';
@@ -3439,7 +3479,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   // inline left border (no pStyle, so the converter ignores them).  The left
   // rule extends symmetrically above/below content regardless of font size.
   if (token.type === 'blockquote' && (token.alertFirst || token.alertLast)) {
-    const borderColor = token.alertType ? ALERT_COLOR_BY_TYPE[token.alertType] : GITHUB_BLOCKQUOTE_BORDER_COLOR;
+    const borderColor = token.alertType ? alertColorMap[token.alertType] : GITHUB_BLOCKQUOTE_BORDER_COLOR;
     const spacerBqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
     const spacerIndentUnit = spacerBqStyle.startsWith('GitHub') ? GITHUB_BLOCKQUOTE_INDENT : 720;
     const spacerLeftIndent = spacerIndentUnit * (token.level || 1);
@@ -3956,9 +3996,11 @@ export async function convertMdToDocx(
 
   // Resolve effective blockquote style: frontmatter > options > default
   const effectiveBlockquoteStyle = frontmatter.blockquoteStyle ?? options?.blockquoteStyle ?? 'GitHub';
+  // Resolve effective color scheme: frontmatter > options > default
+  const effectiveColors: ColorScheme = frontmatter.colors ?? options?.colors ?? 'github';
   const resolvedOptions = options
-    ? { ...options, blockquoteStyle: effectiveBlockquoteStyle }
-    : { blockquoteStyle: effectiveBlockquoteStyle };
+    ? { ...options, blockquoteStyle: effectiveBlockquoteStyle, colors: effectiveColors }
+    : { blockquoteStyle: effectiveBlockquoteStyle, colors: effectiveColors };
 
   const documentXml = generateDocumentXml(tokens, state, resolvedOptions, bibEntries, citeprocEngine, frontmatter);
 
@@ -4015,17 +4057,19 @@ export async function convertMdToDocx(
   const zip = new JSZip();
   zip.file('word/document.xml', documentXml);
 
-  // Use template styles if available, otherwise default; apply font overrides when present
+  // Use template styles if available, otherwise default; apply font/color overrides when present
   if (templateParts?.has('word/styles.xml') && fontOverrides) {
-    const mutated = applyFontOverridesToTemplate(
+    let mutated = applyFontOverridesToTemplate(
       templateParts.get('word/styles.xml')!,
       fontOverrides
     );
+    mutated = applyAlertColorsToTemplate(mutated, effectiveColors);
     zip.file('word/styles.xml', mutated);
   } else if (templateParts?.has('word/styles.xml')) {
-    zip.file('word/styles.xml', templateParts.get('word/styles.xml')!);
+    const decoded = new TextDecoder('utf-8').decode(templateParts.get('word/styles.xml')!);
+    zip.file('word/styles.xml', applyAlertColorsToTemplate(decoded, effectiveColors));
   } else {
-    zip.file('word/styles.xml', stylesXml(fontOverrides, codeBlockConfig));
+    zip.file('word/styles.xml', stylesXml(fontOverrides, codeBlockConfig, effectiveColors));
   }
 
   // Always use generated settings.xml to guarantee compatibilityMode >= 15

@@ -10,6 +10,8 @@ import {
   parseMd,
   extractFootnoteDefinitions,
   preprocessCriticMarkup,
+  stylesXml,
+  applyAlertColorsToTemplate,
   type MdRun,
   type MdToken,
   type MdTableRow,
@@ -17,6 +19,7 @@ import {
 } from './md-to-docx';
 import { type GfmAlertType } from './gfm';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
+import { alertColorsByScheme, setDefaultColorScheme, getDefaultColorScheme } from './alert-colors';
 
 function makeState(): DocxGenState {
   return {
@@ -2042,5 +2045,169 @@ describe('convertMdToDocx indented code blocks', () => {
       ),
       { numRuns: 10 }
     );
+  });
+});
+
+describe('colors frontmatter', () => {
+  it('parseFrontmatter parses colors: guttmacher', () => {
+    const md = '---\ncolors: guttmacher\n---\nHello';
+    const { metadata } = parseFrontmatter(md);
+    expect(metadata.colors).toBe('guttmacher');
+  });
+
+  it('parseFrontmatter parses colors: github', () => {
+    const md = '---\ncolors: github\n---\nHello';
+    const { metadata } = parseFrontmatter(md);
+    expect(metadata.colors).toBe('github');
+  });
+
+  it('parseFrontmatter is case-insensitive for colors', () => {
+    const md = '---\ncolors: Guttmacher\n---\nHello';
+    const { metadata } = parseFrontmatter(md);
+    expect(metadata.colors).toBe('guttmacher');
+  });
+
+  it('parseFrontmatter rejects invalid colors value', () => {
+    const md = '---\ncolors: rainbow\n---\nHello';
+    const { metadata } = parseFrontmatter(md);
+    expect(metadata.colors).toBeUndefined();
+  });
+
+  it('serializeFrontmatter includes colors', () => {
+    const yaml = serializeFrontmatter({ colors: 'guttmacher' });
+    expect(yaml).toContain('colors: guttmacher');
+  });
+
+  it('colors round-trips through serialize → parse', () => {
+    for (const scheme of ['github', 'guttmacher'] as const) {
+      const yaml = serializeFrontmatter({ colors: scheme });
+      const { metadata } = parseFrontmatter(yaml + '\nBody text');
+      expect(metadata.colors).toBe(scheme);
+    }
+  });
+
+  it('generateParagraph uses guttmacher alert colors when specified', () => {
+    const token: MdToken = {
+      type: 'blockquote', level: 1, alertType: 'note', alertLead: true,
+      runs: [{ type: 'text', text: 'info' }]
+    };
+    const state = makeState();
+    const xml = generateParagraph(token, state, { colors: 'guttmacher' });
+    expect(xml).toContain('w:val="0F6779"');
+    expect(xml).not.toContain('w:val="1F6FEB"');
+  });
+
+  it('generateParagraph uses github alert colors by default', () => {
+    const token: MdToken = {
+      type: 'blockquote', level: 1, alertType: 'note', alertLead: true,
+      runs: [{ type: 'text', text: 'info' }]
+    };
+    const state = makeState();
+    const xml = generateParagraph(token, state);
+    expect(xml).toContain('w:val="1F6FEB"');
+  });
+
+  it('guttmacher spacer border uses guttmacher colors', () => {
+    const token: MdToken = {
+      type: 'blockquote', level: 1, alertType: 'tip', alertFirst: true, alertLast: true,
+      runs: [{ type: 'text', text: 'tip text' }]
+    };
+    const state = makeState();
+    const xml = generateParagraph(token, state, { colors: 'guttmacher' });
+    expect(xml).toContain('w:color="78BD53"');
+    expect(xml).not.toContain('w:color="238636"');
+  });
+
+  it('stylesXml uses guttmacher colors in alert styles', () => {
+    const xml = stylesXml(undefined, undefined, 'guttmacher');
+    expect(xml).toContain('0F6779');
+    expect(xml).toContain('78BD53');
+    expect(xml).toContain('9F3D61');
+    expect(xml).toContain('E26237');
+    expect(xml).toContain('D55A1F');
+    expect(xml).not.toContain('1F6FEB');
+  });
+
+  it('stylesXml uses github colors by default', () => {
+    const xml = stylesXml();
+    expect(xml).toContain('1F6FEB');
+    expect(xml).toContain('238636');
+    expect(xml).toContain('8957E5');
+    expect(xml).toContain('9A6700');
+    expect(xml).toContain('CF222E');
+  });
+
+  it('frontmatter colors overrides options in convertMdToDocx', async () => {
+    const md = '---\ncolors: guttmacher\n---\n\n> [!NOTE]\n> info text';
+    const { docx } = await convertMdToDocx(md, { colors: 'github' });
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('0F6779');
+    expect(docXml).not.toContain('1F6FEB');
+  });
+
+  it('defaults to github colors when no frontmatter or options', async () => {
+    const md = '> [!NOTE]\n> info text';
+    const { docx } = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('1F6FEB');
+  });
+
+  it('applyAlertColorsToTemplate patches border colors for guttmacher', () => {
+    // Generate a default styles.xml (github colors), then patch to guttmacher
+    const original = stylesXml();
+    expect(original).toContain('1F6FEB'); // github note color
+    const patched = applyAlertColorsToTemplate(original, 'guttmacher');
+    expect(patched).toContain('0F6779'); // guttmacher note
+    expect(patched).toContain('78BD53'); // guttmacher tip
+    expect(patched).toContain('9F3D61'); // guttmacher important
+    expect(patched).toContain('E26237'); // guttmacher warning
+    expect(patched).toContain('D55A1F'); // guttmacher caution
+    expect(patched).not.toContain('1F6FEB'); // github note should be gone
+  });
+
+  it('applyAlertColorsToTemplate is a no-op for github scheme', () => {
+    const original = stylesXml();
+    const patched = applyAlertColorsToTemplate(original, 'github');
+    expect(patched).toBe(original);
+  });
+
+  it('template-based export applies guttmacher colors to styles.xml', async () => {
+    // First, generate a DOCX to use as template (has github colors)
+    const templateMd = '> [!NOTE]\n> template note';
+    const { docx: templateDocx } = await convertMdToDocx(templateMd);
+
+    // Now convert with guttmacher using that template
+    const md = '---\ncolors: guttmacher\n---\n\n> [!TIP]\n> guttmacher tip';
+    const { docx } = await convertMdToDocx(md, { templateDocx: new Uint8Array(templateDocx) });
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const stylesContent = await zip.file('word/styles.xml')!.async('string');
+    // Template styles should have guttmacher colors patched in
+    expect(stylesContent).toContain('0F6779'); // note
+    expect(stylesContent).toContain('78BD53'); // tip
+    expect(stylesContent).not.toContain('1F6FEB'); // github note should be replaced
+  });
+});
+
+describe('alert-colors module', () => {
+  it('alertColorsByScheme falls back to github for unknown scheme', () => {
+    expect(alertColorsByScheme('unknown' as any).note).toBe('1F6FEB');
+  });
+
+  it('setDefaultColorScheme rejects invalid values and falls back to github', () => {
+    setDefaultColorScheme('github');
+    setDefaultColorScheme('rainbow' as any);
+    expect(getDefaultColorScheme()).toBe('github');
+  });
+
+  it('setDefaultColorScheme accepts valid values', () => {
+    setDefaultColorScheme('guttmacher');
+    expect(getDefaultColorScheme()).toBe('guttmacher');
+    setDefaultColorScheme('github');
+    expect(getDefaultColorScheme()).toBe('github');
   });
 });

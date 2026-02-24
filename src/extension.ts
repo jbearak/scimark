@@ -13,7 +13,7 @@ import { WordCountController } from './wordcount';
 import { convertDocx, CitationKeyFormat } from './converter';
 import { convertMdToDocx } from './md-to-docx';
 import * as path from 'path';
-import { parseFrontmatter, hasCitations, normalizeBibPath } from './frontmatter';
+import { parseFrontmatter, hasCitations, normalizeBibPath, normalizeColorScheme } from './frontmatter';
 import { BUNDLED_STYLE_LABELS } from './csl-loader';
 import { getCompletionContextAtOffset } from './lsp/citekey-language';
 import { getCslCompletionContext, shouldAutoTriggerSuggestFromChanges } from './lsp/csl-language';
@@ -30,6 +30,7 @@ import {
 	setDefaultHighlightColor,
 	getDefaultHighlightColor,
 } from './highlight-colors';
+import { setDefaultColorScheme } from './alert-colors';
 import { computeCodeRegions, overlapsCodeRegion } from './code-regions';
 
 // --- Implementation notes ---
@@ -393,6 +394,20 @@ export function activate(context: vscode.ExtensionContext) {
 				if (vscode.window.activeTextEditor) {
 					updateHighlightDecorations(vscode.window.activeTextEditor);
 				}
+			}
+		})
+	);
+
+	// Read and sync default color scheme setting
+	function syncDefaultColorScheme() {
+		const cfg = vscode.workspace.getConfiguration('manuscriptMarkdown');
+		setDefaultColorScheme(normalizeColorScheme(cfg.get<string>('colors', 'github') ?? 'github') ?? 'github');
+	}
+	syncDefaultColorScheme();
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('manuscriptMarkdown.colors')) {
+				syncDefaultColorScheme();
 			}
 		})
 	);
@@ -996,6 +1011,7 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 	const sourceDir = path.dirname(input.basePath);
 	const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
 	const blockquoteStyle = config.get<'Quote' | 'IntenseQuote' | 'GitHub'>('blockquoteStyle', 'GitHub');
+	const colors = config.get<'github' | 'guttmacher'>('colors', 'github');
 	const result = await convertMdToDocx(input.markdown, {
 		bibtex: input.bibtex,
 		authorName: authorName ?? undefined,
@@ -1003,6 +1019,7 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 		cslCacheDir,
 		sourceDir,
 		blockquoteStyle,
+		colors,
 		onStyleNotFound: async (styleName: string) => {
 			const choice = await vscode.window.showWarningMessage(
 				`CSL style "${styleName}" is not bundled. Download it from the CSL repository? Without it, citations will use plain-text fallback formatting.`,

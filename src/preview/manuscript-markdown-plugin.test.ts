@@ -59,6 +59,38 @@ describe('Manuscript Markdown Plugin Property Tests', () => {
       expect(html).toContain('Plain text.');
       expect(html).toContain('markdown-alert-note');
     });
+
+    it('adds color-scheme-guttmacher class when frontmatter has colors: guttmacher', () => {
+      const html = renderWithPlugin('---\ncolors: guttmacher\n---\n\n> [!NOTE]\n> Useful information.');
+      expect(html).toContain('color-scheme-guttmacher');
+      expect(html).toContain('markdown-alert-note');
+    });
+
+    it('does not add color-scheme class for github scheme (default)', () => {
+      const html = renderWithPlugin('> [!NOTE]\n> Useful information.');
+      expect(html).not.toContain('color-scheme-guttmacher');
+      expect(html).toContain('markdown-alert-note');
+    });
+
+    it('does not add color-scheme class when frontmatter has colors: github', () => {
+      const html = renderWithPlugin('---\ncolors: github\n---\n\n> [!NOTE]\n> Useful information.');
+      expect(html).not.toContain('color-scheme-guttmacher');
+      expect(html).toContain('markdown-alert-note');
+    });
+
+    it('applies color-scheme-guttmacher to all alert types', () => {
+      const html = renderWithPlugin(
+        '---\ncolors: guttmacher\n---\n\n' +
+        '> [!NOTE]\n> note\n\n' +
+        '> [!TIP]\n> tip\n\n' +
+        '> [!IMPORTANT]\n> important\n\n' +
+        '> [!WARNING]\n> warning\n\n' +
+        '> [!CAUTION]\n> caution'
+      );
+      for (const type of ['note', 'tip', 'important', 'warning', 'caution']) {
+        expect(html).toContain('markdown-alert-' + type + ' color-scheme-guttmacher');
+      }
+    });
   });
 
   // Property 1: Manuscript Markdown pattern transformation (genuine property-based tests)

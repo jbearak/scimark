@@ -694,6 +694,15 @@
           "default": "GitHub",
           "description": "Word paragraph style to use for blockquotes when converting Markdown to DOCX"
         },
+        "manuscriptMarkdown.colors": {
+          "type": "string",
+          "enum": [
+            "github",
+            "guttmacher"
+          ],
+          "default": "github",
+          "description": "Color scheme for alert callouts in preview and DOCX export"
+        },
         "manuscriptMarkdown.alwaysUseCommentIds": {
           "type": "boolean",
           "default": false,
