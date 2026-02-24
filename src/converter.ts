@@ -140,6 +140,13 @@ export const DEFAULT_FORMATTING: Readonly<RunFormatting> = Object.freeze({
   code: false,
 });
 
+// Revision-bearing elements mapped to their CriticMarkup type.
+// w:ins/w:moveTo → addition, w:del/w:moveFrom → deletion.
+const REVISION_ELEMENTS: Record<string, 'addition' | 'deletion'> = {
+  'w:ins': 'addition', 'w:del': 'deletion',
+  'w:moveTo': 'addition', 'w:moveFrom': 'deletion',
+};
+
 // Tags that are interpreted semantically by the MD→DOCX parser/preview pipeline
 // and therefore must be escaped when they occur as literal plain text in DOCX.
 const MARKDOWN_HTML_SENSITIVE_TAGS = new Set([
@@ -1095,15 +1102,10 @@ function parseNoteBody(
         if (key === selfRefTag && !skippedSelfRef) {
           skippedSelfRef = true;
           continue;
-        } else if (key === 'w:ins') {
+        } else if (key in REVISION_ELEMENTS) {
           const author = getAttr(node, 'author');
           const date = getAttr(node, 'date');
-          const rev = { type: 'addition' as const, author, date };
-          if (Array.isArray(node[key])) walkNoteBody(node[key], currentFormatting, target, inTableCell, rev);
-        } else if (key === 'w:del') {
-          const author = getAttr(node, 'author');
-          const date = getAttr(node, 'date');
-          const rev = { type: 'deletion' as const, author, date };
+          const rev = { type: REVISION_ELEMENTS[key], author, date };
           if (Array.isArray(node[key])) walkNoteBody(node[key], currentFormatting, target, inTableCell, rev);
         } else if (key === 'w:fldChar' && context) {
           const fldType = getAttr(node, 'fldCharType');
@@ -1750,15 +1752,10 @@ export async function extractDocumentContent(
           }
         } else if (key === 'w:instrText' && inField) {
           fieldInstrParts.push(nodeText(node['w:instrText'] || []));
-        } else if (key === 'w:ins') {
+        } else if (key in REVISION_ELEMENTS) {
           const author = getAttr(node, 'author');
           const date = getAttr(node, 'date');
-          const rev = { type: 'addition' as const, author, date };
-          if (Array.isArray(node[key])) walk(node[key], currentFormatting, target, inTableCell, rev);
-        } else if (key === 'w:del') {
-          const author = getAttr(node, 'author');
-          const date = getAttr(node, 'date');
-          const rev = { type: 'deletion' as const, author, date };
+          const rev = { type: REVISION_ELEMENTS[key], author, date };
           if (Array.isArray(node[key])) walk(node[key], currentFormatting, target, inTableCell, rev);
         } else if (key === 'w:commentRangeStart') {
           const id = getAttr(node, 'id');

@@ -2905,6 +2905,92 @@ describe('Track changes (CriticMarkup)', () => {
       const result = await convertDocx(buf);
       expect(result.markdown).toContain('[^1]: {-- old note--}');
     });
+
+    test('w:moveTo creates addition', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p><w:moveTo w:author="Alice" w:date="2024-06-01T00:00:00Z">'
+        + '<w:r><w:t>moved here</w:t></w:r>'
+        + '</w:moveTo></w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('{++moved here++}');
+    });
+
+    test('w:moveFrom creates deletion', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p><w:moveFrom w:author="Bob" w:date="2024-06-01T00:00:00Z">'
+        + '<w:r><w:delText>moved away</w:delText></w:r>'
+        + '</w:moveFrom></w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('{--moved away--}');
+    });
+
+    test('w:moveFrom handles w:t as well as w:delText', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p><w:moveFrom w:author="A" w:date="2024-01-01T00:00:00Z">'
+        + '<w:r><w:t>hello</w:t></w:r>'
+        + '</w:moveFrom></w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('{--hello--}');
+    });
+
+    test('w:moveTo in footnote body', async () => {
+      const docXml = wrapDocumentXml(
+        '<w:p><w:r><w:t>Text</w:t></w:r>'
+        + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+      );
+      const footnotesXml = wrapNotesXml('footnotes',
+        '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r>'
+        + '<w:moveTo w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:t> moved note</w:t></w:r></w:moveTo>'
+        + '</w:p></w:footnote>'
+      );
+      const buf = await buildSyntheticDocx(docXml, { 'word/footnotes.xml': footnotesXml });
+      const result = await convertDocx(buf);
+      expect(result.markdown).toContain('[^1]: {++ moved note++}');
+    });
+
+    test('w:moveFrom revision context does not leak to siblings', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p>'
+        + '<w:moveFrom w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:delText>gone</w:delText></w:r></w:moveFrom>'
+        + '<w:r><w:t> normal</w:t></w:r>'
+        + '</w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('{--gone--} normal');
+    });
+
+    test('moveFrom range markers are harmless', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p>'
+        + '<w:moveFromRangeStart w:id="0" w:name="move1"/>'
+        + '<w:r><w:t>normal</w:t></w:r>'
+        + '<w:moveFromRangeEnd w:id="0"/>'
+        + '</w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('normal');
+    });
+
+    test('moveTo range markers are harmless', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p>'
+        + '<w:moveToRangeStart w:id="1" w:name="move1"/>'
+        + '<w:r><w:t>normal</w:t></w:r>'
+        + '<w:moveToRangeEnd w:id="1"/>'
+        + '</w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('normal');
+    });
   });
 
   describe('Rendering', () => {
