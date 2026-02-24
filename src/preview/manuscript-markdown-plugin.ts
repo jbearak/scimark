@@ -5,7 +5,7 @@ import { VALID_COLOR_IDS, getDefaultHighlightColor } from '../highlight-colors';
 import { PARA_PLACEHOLDER, preprocessCriticMarkup, findMatchingClose } from '../critic-markup';
 import { wrapBareLatexEnvironments } from '../latex-env-preprocess';
 import { isGfmDisallowedRawHtml, escapeHtmlText, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from '../gfm';
-import { parseFrontmatter } from '../frontmatter';
+import { parseFrontmatter, type ColorScheme } from '../frontmatter';
 import { getDefaultColorScheme } from '../alert-colors';
 
 /** Escape HTML special characters for use in attribute values */
@@ -915,9 +915,11 @@ function paraPlaceholderRule(state: StateInline, silent: boolean): boolean {
 export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
   // Preprocess source before block parsing to handle multi-paragraph CriticMarkup
   md.core.ruler.before('normalize', 'manuscript_markdown_preprocess', (state: any) => {
-    // Parse frontmatter to extract color scheme before preprocessing
+    // Parse frontmatter to extract color scheme before preprocessing.
+    // Priority: frontmatter > md.manuscriptColors (set by extension) > module-level default
     const { metadata } = parseFrontmatter(state.src);
-    state.env.colorScheme = metadata.colors || getDefaultColorScheme();
+    const defaultScheme: ColorScheme = (md as any).manuscriptColors || getDefaultColorScheme();
+    state.env.colorScheme = metadata.colors || defaultScheme;
     state.src = preprocessCriticMarkup(wrapBareLatexEnvironments(state.src));
   });
 

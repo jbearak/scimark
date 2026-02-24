@@ -51,6 +51,7 @@ import { computeCodeRegions, overlapsCodeRegion } from './code-regions';
 let languageClient: LanguageClient | undefined;
 let languageClientDisposables: vscode.Disposable[] = [];
 let cslCacheDir: string = '';
+let syncPreviewColors: (scheme: string) => void = () => {};
 
 export function activate(context: vscode.ExtensionContext) {
 	cslCacheDir = path.join(context.globalStorageUri.fsPath, 'csl-styles');
@@ -408,6 +409,10 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.workspace.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration('manuscriptMarkdown.colors')) {
 				syncDefaultColorScheme();
+				const scheme = normalizeColorScheme(
+					vscode.workspace.getConfiguration('manuscriptMarkdown').get<string>('colors', 'github') ?? 'github'
+				) ?? 'github';
+				syncPreviewColors(scheme);
 				vscode.commands.executeCommand('markdown.preview.refresh');
 			}
 		})
@@ -629,8 +634,15 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	// Return markdown-it plugin for preview integration
+	let previewMd: any;
+	syncPreviewColors = (scheme: string) => {
+		if (previewMd) previewMd.manuscriptColors = scheme;
+	};
 	return {
 		extendMarkdownIt(md: any) {
+			previewMd = md;
+			const cfg = vscode.workspace.getConfiguration('manuscriptMarkdown');
+			md.manuscriptColors = normalizeColorScheme(cfg.get<string>('colors', 'github') ?? 'github') ?? 'github';
 			return md.use(manuscriptMarkdownPlugin);
 		}
 	};
