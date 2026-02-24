@@ -2456,8 +2456,7 @@ function renderInlineRange(
     if (item.href) {
       formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
     }
-    const revision = (item as any).revision;
-    out += wrapWithRevision(formattedText, revision);
+    out += wrapWithRevision(formattedText, item.revision);
     i++;
   }
   return { text: out, nextIndex: i, deferredComments: [] };
@@ -2694,8 +2693,7 @@ function renderInlineRangeWithIds(
     if (item.href) {
       formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
     }
-    const revision = (item as any).revision;
-    out += wrapWithRevision(formattedText, revision);
+    out += wrapWithRevision(formattedText, item.revision);
     i++;
   }
 
@@ -3181,7 +3179,8 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      output.push(MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE);
+      const mathBlock = MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE;
+      output.push(item.revision ? wrapWithRevision(mathBlock, item.revision) : mathBlock);
       // A display math block breaks list flow; reset list continuation state.
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
@@ -3279,7 +3278,8 @@ export function buildMarkdown(
             bodyParts.push(part.text);
             deferredAll.push(...part.deferredComments);
           }
-          bodyParts.push(MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE);
+          const mathBlock = MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE;
+          bodyParts.push(item.revision ? wrapWithRevision(mathBlock, item.revision) : mathBlock);
           partStart = bi + 1;
         } else if (item.type === 'table') {
           // Flush preceding inline content
