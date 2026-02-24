@@ -15,6 +15,7 @@ import {
   DEFAULT_FORMATTING,
   RunFormatting,
   ContentItem,
+  RevisionInfo,
   isToggleOn,
   parseHeadingLevel,
   parseAlertType,
@@ -2789,6 +2790,355 @@ describe('Inline code round-trip', () => {
     const docxResult = await convertMdToDocx(md);
     const result = await convertDocx(docxResult.docx);
     expect(result.markdown.trim()).toBe('Use `` `backtick` `` in code');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Track changes (CriticMarkup)
+// ---------------------------------------------------------------------------
+
+describe('Track changes (CriticMarkup)', () => {
+  const AUTHOR = 'Test Author';
+  const DATE = '2024-01-15T10:30:00Z';
+
+  // Helper: wrap document XML with r: namespace for hyperlink tests
+  function wrapDocumentXmlWithR(bodyContent: string): string {
+    return '<?xml version="1.0"?>'
+      + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+      + ' xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+      + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      + '<w:body>' + bodyContent + '</w:body>'
+      + '</w:document>';
+  }
+
+  // Common revision objects
+  const addRev: RevisionInfo = { type: 'addition', author: AUTHOR, date: DATE };
+  const delRev: RevisionInfo = { type: 'deletion', author: AUTHOR, date: DATE };
+
+  describe('Parsing', () => {
+    test('w:ins creates addition with author/date', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p><w:ins w:author="Alice" w:date="2024-06-01T00:00:00Z">'
+        + '<w:r><w:t>added</w:t></w:r>'
+        + '</w:ins></w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('{++added++}');
+    });
+
+    test('w:del creates deletion with author/date', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p><w:del w:author="Bob" w:date="2024-06-01T00:00:00Z">'
+        + '<w:r><w:delText>removed</w:delText></w:r>'
+        + '</w:del></w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('{--removed--}');
+    });
+
+    test('w:delText handled same as w:t inside w:del', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p><w:del w:author="A" w:date="2024-01-01T00:00:00Z">'
+        + '<w:r><w:delText>hello</w:delText></w:r>'
+        + '</w:del></w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('{--hello--}');
+    });
+
+    test('revision context does not leak to siblings', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p>'
+        + '<w:ins w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:t>new</w:t></w:r></w:ins>'
+        + '<w:r><w:t> normal</w:t></w:r>'
+        + '</w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('{++new++} normal');
+    });
+
+    test('revision propagates through hyperlinks', async () => {
+      const xml = wrapDocumentXmlWithR(
+        '<w:p><w:ins w:author="A" w:date="2024-01-01T00:00:00Z">'
+        + '<w:hyperlink r:id="rId1"><w:r><w:t>link</w:t></w:r></w:hyperlink>'
+        + '</w:ins></w:p>'
+      );
+      const relsXml = '<?xml version="1.0"?>'
+        + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com" TargetMode="External"/>'
+        + '</Relationships>';
+      const buf = await buildSyntheticDocx(xml, { 'word/_rels/document.xml.rels': relsXml });
+      const result = await convertDocx(buf);
+      expect(result.markdown.trim()).toBe('{++[link](https://example.com)++}');
+    });
+
+    test('revision in footnote body', async () => {
+      const docXml = wrapDocumentXml(
+        '<w:p><w:r><w:t>Text</w:t></w:r>'
+        + '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>'
+      );
+      const footnotesXml = wrapNotesXml('footnotes',
+        '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r>'
+        + '<w:ins w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:t> added note</w:t></w:r></w:ins>'
+        + '</w:p></w:footnote>'
+      );
+      const buf = await buildSyntheticDocx(docXml, { 'word/footnotes.xml': footnotesXml });
+      const result = await convertDocx(buf);
+      expect(result.markdown).toContain('[^1]: {++ added note++}');
+    });
+
+    test('revision in endnote body', async () => {
+      const docXml = wrapDocumentXml(
+        '<w:p><w:r><w:t>Text</w:t></w:r>'
+        + '<w:r><w:endnoteReference w:id="1"/></w:r></w:p>'
+      );
+      const endnotesXml = wrapNotesXml('endnotes',
+        '<w:endnote w:id="1"><w:p><w:r><w:endnoteRef/></w:r>'
+        + '<w:del w:author="B" w:date="2024-02-01T00:00:00Z"><w:r><w:delText> old note</w:delText></w:r></w:del>'
+        + '</w:p></w:endnote>'
+      );
+      const buf = await buildSyntheticDocx(docXml, { 'word/endnotes.xml': endnotesXml });
+      const result = await convertDocx(buf);
+      expect(result.markdown).toContain('[^1]: {-- old note--}');
+    });
+  });
+
+  describe('Rendering', () => {
+    test('text addition renders {++text++}', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'added', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: addRev },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('{++added++}');
+    });
+
+    test('text deletion renders {--text--}', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'removed', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: delRev },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('{--removed--}');
+    });
+
+    test('bold inside addition', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'bold', commentIds: new Set(), formatting: { ...DEFAULT_FORMATTING, bold: true }, revision: addRev },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('{++**bold**++}');
+    });
+
+    test('italic inside deletion', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'italic', commentIds: new Set(), formatting: { ...DEFAULT_FORMATTING, italic: true }, revision: delRev },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('{--*italic*--}');
+    });
+
+    test('footnote ref with addition revision', async () => {
+      const docXml = wrapDocumentXml(
+        '<w:p><w:ins w:author="A" w:date="2024-01-01T00:00:00Z">'
+        + '<w:r><w:footnoteReference w:id="1"/></w:r>'
+        + '</w:ins></w:p>'
+      );
+      const footnotesXml = wrapNotesXml('footnotes',
+        '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t> A note.</w:t></w:r></w:p></w:footnote>'
+      );
+      const buf = await buildSyntheticDocx(docXml, { 'word/footnotes.xml': footnotesXml });
+      const result = await convertDocx(buf);
+      expect(result.markdown).toContain('{++[^1]++}');
+    });
+
+    test('substitution: same author+date renders {~~old~>new~~}', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'old', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: delRev },
+        { type: 'text', text: 'new', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: addRev },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('{~~old~>new~~}');
+    });
+
+    test('substitution with formatting', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'old', commentIds: new Set(), formatting: { ...DEFAULT_FORMATTING, bold: true }, revision: delRev },
+        { type: 'text', text: 'new', commentIds: new Set(), formatting: { ...DEFAULT_FORMATTING, italic: true }, revision: addRev },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('{~~**old**~>*new*~~}');
+    });
+
+    test('substitution NOT triggered when authors differ', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'old', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: { type: 'deletion', author: 'Alice', date: DATE } },
+        { type: 'text', text: 'new', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: { type: 'addition', author: 'Bob', date: DATE } },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('{--old--}{++new++}');
+    });
+
+    test('substitution NOT triggered when dates differ', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'old', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: { type: 'deletion', author: AUTHOR, date: '2024-01-01T00:00:00Z' } },
+        { type: 'text', text: 'new', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: { type: 'addition', author: AUTHOR, date: '2024-12-31T00:00:00Z' } },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('{--old--}{++new++}');
+    });
+
+    test('substitution skipped when comment IDs present', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'old', commentIds: new Set(['c1']), formatting: DEFAULT_FORMATTING, revision: delRev },
+        { type: 'text', text: 'new', commentIds: new Set(['c1']), formatting: DEFAULT_FORMATTING, revision: addRev },
+      ];
+      const comments = new Map([['c1', { author: 'R', text: 'review', date: '' } as any]]);
+      const md = buildMarkdown(content, comments);
+      // Should render separately (not as substitution) because comment IDs are present
+      expect(md).toContain('{--old--}');
+      expect(md).toContain('{++new++}');
+      expect(md).not.toContain('{~~');
+    });
+
+    test('mixed revisions in same paragraph', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'keep ', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+        { type: 'text', text: 'removed', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: delRev },
+        { type: 'text', text: ' still here ', commentIds: new Set(), formatting: DEFAULT_FORMATTING },
+        { type: 'text', text: 'added', commentIds: new Set(), formatting: DEFAULT_FORMATTING, revision: addRev },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('keep {--removed--} still here {++added++}');
+    });
+
+    test('inline math with revision', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'math', latex: 'x^2', display: false, commentIds: new Set(), revision: addRev },
+      ];
+      const md = buildMarkdown(content, new Map());
+      expect(md.trim()).toBe('{++$x^2$++}');
+    });
+
+    test('display math with revision', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'math', latex: 'E=mc^2', display: true, commentIds: new Set(), revision: delRev },
+      ];
+      const md = buildMarkdown(content, new Map());
+      // Display math inside deletion markers
+      expect(md).toContain('{--');
+      expect(md).toContain('E=mc^2');
+      expect(md).toContain('--}');
+    });
+
+    test('image with addition revision', async () => {
+      const docXml = wrapDocumentXml(
+        '<w:p><w:ins w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:drawing>'
+        + '<wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+        + '<wp:extent cx="914400" cy="914400"/>'
+        + '<wp:docPr name="img" descr="test image"/>'
+        + '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        + '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        + '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        + '<pic:blipFill><a:blip r:embed="rId1" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/></pic:blipFill>'
+        + '</pic:pic></a:graphicData></a:graphic></wp:inline>'
+        + '</w:drawing></w:r></w:ins></w:p>'
+      );
+      const relsXml = '<?xml version="1.0"?>'
+        + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>'
+        + '</Relationships>';
+      const buf = await buildSyntheticDocx(docXml, { 'word/_rels/document.xml.rels': relsXml });
+      const result = await convertDocx(buf);
+      expect(result.markdown).toContain('{++');
+      expect(result.markdown).toContain('test image');
+      expect(result.markdown).toContain('++}');
+    });
+
+    test('revision inside grouped comment path (ID-based)', () => {
+      const content: ContentItem[] = [
+        { type: 'para' } as any,
+        { type: 'text', text: 'commented', commentIds: new Set(['c1']), formatting: DEFAULT_FORMATTING, revision: addRev },
+        { type: 'text', text: ' also', commentIds: new Set(['c1']), formatting: DEFAULT_FORMATTING },
+      ];
+      const comments = new Map([['c1', { author: 'Rev', text: 'note', date: '', replies: [] } as any]]);
+      const md = buildMarkdown(content, comments);
+      expect(md).toContain('{++commented++}');
+    });
+  });
+
+  describe('Integration', () => {
+    test('multi-change document with mixed substitution/separate markers', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p>'
+        + '<w:r><w:t>Before </w:t></w:r>'
+        // substitution pair — same author+date
+        + '<w:del w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:delText>old</w:delText></w:r></w:del>'
+        + '<w:ins w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:t>new</w:t></w:r></w:ins>'
+        + '<w:r><w:t> middle </w:t></w:r>'
+        // separate — different authors
+        + '<w:del w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:delText>gone</w:delText></w:r></w:del>'
+        + '<w:ins w:author="B" w:date="2024-01-01T00:00:00Z"><w:r><w:t>arrived</w:t></w:r></w:ins>'
+        + '<w:r><w:t> after</w:t></w:r>'
+        + '</w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      const md = result.markdown.trim();
+      // First pair: substitution
+      expect(md).toContain('{~~old~>new~~}');
+      // Second pair: separate markers (different authors)
+      expect(md).toContain('{--gone--}');
+      expect(md).toContain('{++arrived++}');
+    });
+
+    test('track changes across multiple paragraphs', async () => {
+      const xml = wrapDocumentXml(
+        '<w:p><w:ins w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:t>First added</w:t></w:r></w:ins></w:p>'
+        + '<w:p><w:del w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:delText>Second removed</w:delText></w:r></w:del></w:p>'
+        + '<w:p><w:r><w:t>Third normal</w:t></w:r></w:p>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown).toContain('{++First added++}');
+      expect(result.markdown).toContain('{--Second removed--}');
+      expect(result.markdown).toContain('Third normal');
+    });
+
+    test('revision inside table cell', async () => {
+      const xml = wrapDocumentXml(
+        '<w:tbl>'
+        + '<w:tblPr><w:tblStyle w:val="TableGrid"/></w:tblPr>'
+        + '<w:tblGrid><w:gridCol w:w="5000"/><w:gridCol w:w="5000"/></w:tblGrid>'
+        + '<w:tr>'
+        + '<w:tc><w:p><w:r><w:t>Header 1</w:t></w:r></w:p></w:tc>'
+        + '<w:tc><w:p><w:r><w:t>Header 2</w:t></w:r></w:p></w:tc>'
+        + '</w:tr>'
+        + '<w:tr>'
+        + '<w:tc><w:p><w:ins w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:t>added cell</w:t></w:r></w:ins></w:p></w:tc>'
+        + '<w:tc><w:p><w:del w:author="A" w:date="2024-01-01T00:00:00Z"><w:r><w:delText>removed cell</w:delText></w:r></w:del></w:p></w:tc>'
+        + '</w:tr>'
+        + '</w:tbl>'
+      );
+      const buf = await buildSyntheticDocx(xml);
+      const result = await convertDocx(buf);
+      expect(result.markdown).toContain('{++added cell++}');
+      expect(result.markdown).toContain('{--removed cell--}');
+    });
   });
 });
 

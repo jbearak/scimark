@@ -165,6 +165,8 @@ function escapeSensitiveHtmlLikeTags(text: string): string {
   });
 }
 
+export type RevisionInfo = { type: 'addition' | 'deletion'; author: string; date: string };
+
 export type ContentItem =
   | {
       type: 'text';
@@ -172,9 +174,9 @@ export type ContentItem =
       commentIds: Set<string>;
       formatting: RunFormatting;
       href?: string;           // hyperlink URL if inside w:hyperlink
-      revision?: { type: 'addition' | 'deletion'; author: string; date: string };
+      revision?: RevisionInfo;
     }
-  | { type: 'citation'; text: string; commentIds: Set<string>; pandocKeys: string[]; revision?: { type: 'addition' | 'deletion'; author: string; date: string } }
+  | { type: 'citation'; text: string; commentIds: Set<string>; pandocKeys: string[]; revision?: RevisionInfo }
   | { type: 'table'; rows: TableRow[] }
   | {
       type: 'para';
@@ -186,10 +188,10 @@ export type ContentItem =
       isCodeBlock?: boolean;   // true if Word "Code Block" paragraph style
       blockquoteGroupIndex?: number; // sequential group index from md→docx gap metadata
     }
-  | { type: 'math'; latex: string; display: boolean; commentIds: Set<string>; revision?: { type: 'addition' | 'deletion'; author: string; date: string } }
-  | { type: 'footnote_ref'; noteId: string; noteKind: 'footnote' | 'endnote'; commentIds: Set<string>; revision?: { type: 'addition' | 'deletion'; author: string; date: string } }
+  | { type: 'math'; latex: string; display: boolean; commentIds: Set<string>; revision?: RevisionInfo }
+  | { type: 'footnote_ref'; noteId: string; noteKind: 'footnote' | 'endnote'; commentIds: Set<string>; revision?: RevisionInfo }
   | { type: 'html_comment'; text: string; commentIds: Set<string> }
-  | { type: 'image'; rId: string; src: string; alt: string; widthPx: number; heightPx: number; commentIds: Set<string>; revision?: { type: 'addition' | 'deletion'; author: string; date: string } };
+  | { type: 'image'; rId: string; src: string; alt: string; widthPx: number; heightPx: number; commentIds: Set<string>; revision?: RevisionInfo };
 export interface FootnoteBody {
   id: string;
   content: ContentItem[];
@@ -1084,7 +1086,7 @@ function parseNoteBody(
     currentFormatting: RunFormatting = DEFAULT_FORMATTING,
     target: ContentItem[] = content,
     inTableCell = false,
-    currentRevision?: { type: 'addition' | 'deletion'; author: string; date: string }
+    currentRevision?: RevisionInfo
   ): void {
     for (const node of nodes) {
       for (const key of Object.keys(node)) {
@@ -1693,7 +1695,7 @@ export async function extractDocumentContent(
     currentFormatting: RunFormatting = DEFAULT_FORMATTING,
     target: ContentItem[] = content,
     inTableCell = false,
-    currentRevision?: { type: 'addition' | 'deletion'; author: string; date: string }
+    currentRevision?: RevisionInfo
   ): void {
     for (const node of nodes) {
       for (const key of Object.keys(node)) {
@@ -2090,15 +2092,17 @@ function formattingEquals(a: RunFormatting, b: RunFormatting): boolean {
     a.code === b.code;
 }
 
-function revisionsEqual(a: { type: 'addition' | 'deletion'; author: string; date: string } | undefined, b: { type: 'addition' | 'deletion'; author: string; date: string } | undefined): boolean {
+function revisionsEqual(a: RevisionInfo | undefined, b: RevisionInfo | undefined): boolean {
   if (!a && !b) return true;
   if (!a || !b) return false;
   return a.type === b.type && a.author === b.author && a.date === b.date;
 }
 
+// Avoid literal '$$' — tool text-replacement corrupts '$' in replacement
+// strings. See CLAUDE.md "Template literal corruption" rule.
 const MATH_FENCE = '$'.repeat(2);
 
-function wrapWithRevision(text: string, rev?: { type: 'addition' | 'deletion'; author: string; date: string }): string {
+function wrapWithRevision(text: string, rev?: RevisionInfo): string {
   if (!rev) return text;
   if (rev.type === 'addition') return `{++${text}++}`;
   if (rev.type === 'deletion') return `{--${text}--}`;
@@ -2110,6 +2114,47 @@ function commentSetsEqual(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false;
   for (const id of a) if (!b.has(id)) return false;
   return true;
+}
+
+/** Render a CriticMarkup substitution `{~~old~>new~~}` when a deletion and
+ *  addition of the same type are adjacent with matching author/date.
+ *  Returns the substitution string, or `null` if the pair cannot be rendered
+ *  as a substitution (e.g. unsupported type). */
+function tryRenderSubstitution(
+  deletion: ContentItem & { type: 'text' | 'citation' | 'math' },
+  addition: ContentItem & { type: 'text' | 'citation' | 'math' },
+  precedingText: string,
+): string | null {
+  if (deletion.type !== addition.type) return null;
+
+  let oldText = '';
+  if (deletion.type === 'text') {
+    oldText = wrapWithFormatting(deletion.text, deletion.formatting);
+    if (deletion.href) oldText = `[${oldText}](${formatHrefForMarkdown(deletion.href)})`;
+  } else if (deletion.type === 'citation') {
+    oldText = deletion.pandocKeys.length > 0
+      ? (precedingText.endsWith(' ') ? '' : ' ') + '[' + deletion.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
+      : deletion.text;
+  } else if (deletion.type === 'math') {
+    oldText = deletion.display ? MATH_FENCE + '\n' + deletion.latex + '\n' + MATH_FENCE : '$' + deletion.latex + '$';
+  }
+
+  let newText = '';
+  if (addition.type === 'text') {
+    newText = wrapWithFormatting(addition.text, addition.formatting);
+    if (addition.href) newText = `[${newText}](${formatHrefForMarkdown(addition.href)})`;
+  } else if (addition.type === 'citation') {
+    newText = addition.pandocKeys.length > 0
+      ? (oldText.endsWith(' ') ? '' : ' ') + '[' + addition.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
+      : addition.text;
+  } else if (addition.type === 'math') {
+    newText = addition.display ? MATH_FENCE + '\n' + addition.latex + '\n' + MATH_FENCE : '$' + addition.latex + '$';
+  }
+
+  if (oldText && newText) {
+    return '{~~' + oldText + '~>' + newText + '~~}';
+  }
+  return null;
 }
 
 function mergeConsecutiveRuns(content: ContentItem[]): ContentItem[] {
@@ -2301,40 +2346,17 @@ function renderInlineRange(
     // Detect substitution: a deletion followed immediately by an addition
     // with identical author and date. Skip if either item has comments to
     // avoid unbalancing comment markers.
-    if ((item.type === 'text' || item.type === 'citation' || item.type === 'math' || item.type === 'footnote_ref' || item.type === 'image') && item.revision?.type === 'deletion' && item.commentIds.size === 0) {
+    if ((item.type === 'text' || item.type === 'citation' || item.type === 'math') && item.revision?.type === 'deletion' && item.commentIds.size === 0) {
       const next = segment[i + 1];
-      if (next && next.type === item.type && (next.type === 'text' || next.type === 'citation' || next.type === 'math' || next.type === 'footnote_ref' || next.type === 'image') &&
+      if (next && next.type === item.type && (next.type === 'text' || next.type === 'citation' || next.type === 'math') &&
           next.revision?.type === 'addition' &&
           next.revision.author === item.revision.author &&
           next.revision.date === item.revision.date &&
           next.commentIds.size === 0) {
 
-        let oldText = '';
-        if (item.type === 'text') {
-          oldText = wrapWithFormatting(item.text, item.formatting);
-          if (item.href) oldText = `[${oldText}](${formatHrefForMarkdown(item.href)})`;
-        } else if (item.type === 'citation') {
-          oldText = item.pandocKeys.length > 0
-            ? (out.endsWith(' ') ? '' : ' ') + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
-            : item.text;
-        } else if (item.type === 'math') {
-          oldText = item.display ? MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE : '$' + item.latex + '$';
-        }
-
-        let newText = '';
-        if (next.type === 'text') {
-          newText = wrapWithFormatting(next.text, next.formatting);
-          if (next.href) newText = `[${newText}](${formatHrefForMarkdown(next.href)})`;
-        } else if (next.type === 'citation') {
-          newText = next.pandocKeys.length > 0
-            ? (oldText.endsWith(' ') ? '' : ' ') + '[' + next.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
-            : next.text;
-        } else if (next.type === 'math') {
-          newText = next.display ? MATH_FENCE + '\n' + next.latex + '\n' + MATH_FENCE : '$' + next.latex + '$';
-        }
-
-        if (oldText && newText) {
-          out += `{~~${oldText}~>${newText}~~}`;
+        const result = tryRenderSubstitution(item, next, out);
+        if (result !== null) {
+          out += result;
           i += 2;
           continue;
         }
@@ -2500,41 +2522,18 @@ function renderInlineRangeWithIds(
     // Detect substitution: a deletion followed immediately by an addition
     // with identical author and date. Skip if comment context differs to
     // avoid unbalancing comment markers.
-    if ((item.type === 'text' || item.type === 'citation' || item.type === 'math' || item.type === 'footnote_ref' || item.type === 'image') && item.revision?.type === 'deletion') {
+    if ((item.type === 'text' || item.type === 'citation' || item.type === 'math') && item.revision?.type === 'deletion') {
       const next = segment[i + 1];
-      if (next && next.type === item.type && (next.type === 'text' || next.type === 'citation' || next.type === 'math' || next.type === 'footnote_ref' || next.type === 'image') &&
+      if (next && next.type === item.type && (next.type === 'text' || next.type === 'citation' || next.type === 'math') &&
           next.revision?.type === 'addition' &&
           next.revision.author === item.revision.author &&
           next.revision.date === item.revision.date &&
           commentSetsEqual(item.commentIds, prevCommentIds) &&
           commentSetsEqual(next.commentIds, prevCommentIds)) {
 
-        let oldText = '';
-        if (item.type === 'text') {
-          oldText = wrapWithFormatting(item.text, item.formatting);
-          if (item.href) oldText = `[${oldText}](${formatHrefForMarkdown(item.href)})`;
-        } else if (item.type === 'citation') {
-          oldText = item.pandocKeys.length > 0
-            ? (out.endsWith(' ') ? '' : ' ') + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
-            : item.text;
-        } else if (item.type === 'math') {
-          oldText = item.display ? MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE : '$' + item.latex + '$';
-        }
-
-        let newText = '';
-        if (next.type === 'text') {
-          newText = wrapWithFormatting(next.text, next.formatting);
-          if (next.href) newText = `[${newText}](${formatHrefForMarkdown(next.href)})`;
-        } else if (next.type === 'citation') {
-          newText = next.pandocKeys.length > 0
-            ? (oldText.endsWith(' ') ? '' : ' ') + '[' + next.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
-            : next.text;
-        } else if (next.type === 'math') {
-          newText = next.display ? MATH_FENCE + '\n' + next.latex + '\n' + MATH_FENCE : '$' + next.latex + '$';
-        }
-
-        if (oldText && newText) {
-          out += `{~~${oldText}~>${newText}~~}`;
+        const result = tryRenderSubstitution(item, next, out);
+        if (result !== null) {
+          out += result;
           i += 2;
           continue;
         }
