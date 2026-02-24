@@ -124,7 +124,7 @@ describe('DOCX table conversion', () => {
     const buf = await zip.generateAsync({ type: 'uint8array' });
     const result = await convertDocx(buf);
 
-    expect(result.markdown).toContain('{====annotated====}{>>Reviewer');
+    expect(result.markdown).toContain('{==annotated==}{>>Reviewer');
     expect(result.markdown).toContain('@smith2020cell, p. 20');
     expect(result.markdown).toContain('$x$');
     expect(result.markdown).toContain('<table>');
@@ -1109,7 +1109,7 @@ describe('buildMarkdown', () => {
     expect(result).toBe(`{==normal **bold**==}{>>Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}): note<<}`);
   });
 
-  test('highlighted commented text produces nested {====text====} delimiters', () => {
+  test('highlighted commented text produces single {==text==} delimiters', () => {
     const comments = new Map([
       ['c1', { author: 'Reviewer', text: 'note', date: '2025-01-01T00:00:00Z' }]
     ]);
@@ -1123,7 +1123,7 @@ describe('buildMarkdown', () => {
     ];
 
     const result = buildMarkdown(content, comments);
-    expect(result).toBe(`{====highlighted====}{>>Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}): note<<}`);
+    expect(result).toBe(`{==highlighted==}{>>Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}): note<<}`);
   });
 
   test('highlight spanning into a comment region is preserved with ID-based syntax', () => {

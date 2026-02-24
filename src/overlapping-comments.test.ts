@@ -206,7 +206,7 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     expect(result).toContain('== both==');
   });
 
-  test('highlighted text inside non-overlapping comment produces {====text====}', () => {
+  test('highlighted text inside non-overlapping comment produces {==text==}', () => {
     const comments = new Map([
       ['c1', { author: 'alice', text: 'note', date: '' }],
     ]);
@@ -219,7 +219,7 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
       },
     ];
     const result = buildMarkdown(content, comments);
-    expect(result).toContain('{====text====}');
+    expect(result).toContain('{==text==}');
     expect(result).toContain('{>>alice: note<<}');
   });
 
@@ -544,11 +544,11 @@ describe('Overlapping comments: round-trip', () => {
     expect(customXml || '').toContain('&quot;0&quot;:&quot;intro-note&quot;');
   });
 
-  test('{====text====} round-trips with highlighted text in comment', async () => {
-    const md = '{====text====}{>>alice: note<<}';
+  test('{==text==} round-trips with highlighted text in comment', async () => {
+    const md = '{==text==}{>>alice: note<<}';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });
     const roundtrip = await convertDocx(docx);
-    expect(roundtrip.markdown).toContain('{====text====}');
+    expect(roundtrip.markdown).toContain('{==text==}');
   });
 
   test('=={==text==}== round-trips as highlighted text', async () => {
