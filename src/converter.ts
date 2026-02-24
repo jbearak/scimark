@@ -1272,9 +1272,9 @@ function parseNoteBody(
               break;
             }
           }
-          walkNoteBody(runChildren, runFormatting, target, inTableCell);
+          walkNoteBody(runChildren, runFormatting, target, inTableCell, currentRevision);
         } else if (Array.isArray(node[key])) {
-          walkNoteBody(node[key], currentFormatting, target, inTableCell);
+          walkNoteBody(node[key], currentFormatting, target, inTableCell, currentRevision);
         }
       }
     }
@@ -2066,7 +2066,7 @@ export async function extractDocumentContent(
             }
           }
         } else if (Array.isArray(node[key])) {
-          walk(node[key], currentFormatting, target, inTableCell);
+          walk(node[key], currentFormatting, target, inTableCell, currentRevision);
         }
       }
     }
@@ -2095,6 +2095,8 @@ function revisionsEqual(a: { type: 'addition' | 'deletion'; author: string; date
   if (!a || !b) return false;
   return a.type === b.type && a.author === b.author && a.date === b.date;
 }
+
+const MATH_FENCE = '$'.repeat(2);
 
 function wrapWithRevision(text: string, rev?: { type: 'addition' | 'deletion'; author: string; date: string }): string {
   if (!rev) return text;
@@ -2297,14 +2299,16 @@ function renderInlineRange(
     if (i >= segmentEnd) break;
 
     // Detect substitution: a deletion followed immediately by an addition
-    // with identical author and date.
-    if ((item.type === 'text' || item.type === 'citation' || item.type === 'math' || item.type === 'footnote_ref' || item.type === 'image') && item.revision?.type === 'deletion') {
+    // with identical author and date. Skip if either item has comments to
+    // avoid unbalancing comment markers.
+    if ((item.type === 'text' || item.type === 'citation' || item.type === 'math' || item.type === 'footnote_ref' || item.type === 'image') && item.revision?.type === 'deletion' && item.commentIds.size === 0) {
       const next = segment[i + 1];
       if (next && next.type === item.type && (next.type === 'text' || next.type === 'citation' || next.type === 'math' || next.type === 'footnote_ref' || next.type === 'image') &&
           next.revision?.type === 'addition' &&
           next.revision.author === item.revision.author &&
-          next.revision.date === item.revision.date) {
-        
+          next.revision.date === item.revision.date &&
+          next.commentIds.size === 0) {
+
         let oldText = '';
         if (item.type === 'text') {
           oldText = wrapWithFormatting(item.text, item.formatting);
@@ -2314,7 +2318,7 @@ function renderInlineRange(
             ? (out.endsWith(' ') ? '' : ' ') + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
             : item.text;
         } else if (item.type === 'math') {
-          oldText = item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+          oldText = item.display ? MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE : '$' + item.latex + '$';
         }
 
         let newText = '';
@@ -2326,7 +2330,7 @@ function renderInlineRange(
             ? (oldText.endsWith(' ') ? '' : ' ') + '[' + next.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
             : next.text;
         } else if (next.type === 'math') {
-          newText = next.display ? '$$' + '\n' + next.latex + '\n' + '$$' : '$' + next.latex + '$';
+          newText = next.display ? MATH_FENCE + '\n' + next.latex + '\n' + MATH_FENCE : '$' + next.latex + '$';
         }
 
         if (oldText && newText) {
@@ -2351,7 +2355,7 @@ function renderInlineRange(
     }
 
     if (item.type === 'math') {
-      const mathText = item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+      const mathText = item.display ? MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE : '$' + item.latex + '$';
       out += wrapWithRevision(mathText, item.revision);
       i++;
       continue;
@@ -2432,6 +2436,7 @@ function renderInlineRange(
         if (seg.href) {
           segText = `[${segText}](${formatHrefForMarkdown(seg.href)})`;
         }
+        segText = wrapWithRevision(segText, seg.revision);
         groupedCommentText.push(segText);
         j++;
       }
@@ -2494,14 +2499,17 @@ function renderInlineRangeWithIds(
     if (i >= segmentEnd) break;
 
     // Detect substitution: a deletion followed immediately by an addition
-    // with identical author and date.
+    // with identical author and date. Skip if comment context differs to
+    // avoid unbalancing comment markers.
     if ((item.type === 'text' || item.type === 'citation' || item.type === 'math' || item.type === 'footnote_ref' || item.type === 'image') && item.revision?.type === 'deletion') {
       const next = segment[i + 1];
       if (next && next.type === item.type && (next.type === 'text' || next.type === 'citation' || next.type === 'math' || next.type === 'footnote_ref' || next.type === 'image') &&
           next.revision?.type === 'addition' &&
           next.revision.author === item.revision.author &&
-          next.revision.date === item.revision.date) {
-        
+          next.revision.date === item.revision.date &&
+          commentSetsEqual(item.commentIds, prevCommentIds) &&
+          commentSetsEqual(next.commentIds, prevCommentIds)) {
+
         let oldText = '';
         if (item.type === 'text') {
           oldText = wrapWithFormatting(item.text, item.formatting);
@@ -2511,7 +2519,7 @@ function renderInlineRangeWithIds(
             ? (out.endsWith(' ') ? '' : ' ') + '[' + item.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
             : item.text;
         } else if (item.type === 'math') {
-          oldText = item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+          oldText = item.display ? MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE : '$' + item.latex + '$';
         }
 
         let newText = '';
@@ -2523,7 +2531,7 @@ function renderInlineRangeWithIds(
             ? (oldText.endsWith(' ') ? '' : ' ') + '[' + next.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
             : next.text;
         } else if (next.type === 'math') {
-          newText = next.display ? '$$' + '\n' + next.latex + '\n' + '$$' : '$' + next.latex + '$';
+          newText = next.display ? MATH_FENCE + '\n' + next.latex + '\n' + MATH_FENCE : '$' + next.latex + '$';
         }
 
         if (oldText && newText) {
@@ -2576,7 +2584,7 @@ function renderInlineRangeWithIds(
       }
       prevCommentIds = new Set(currentIds);
 
-      const mathText = item.display ? '$$' + '\n' + item.latex + '\n' + '$$' : '$' + item.latex + '$';
+      const mathText = item.display ? MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE : '$' + item.latex + '$';
       out += wrapWithRevision(mathText, item.revision);
       i++;
       continue;
@@ -3173,7 +3181,7 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      output.push('$$' + '\n' + item.latex + '\n' + '$$');
+      output.push(MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE);
       // A display math block breaks list flow; reset list continuation state.
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
@@ -3271,7 +3279,7 @@ export function buildMarkdown(
             bodyParts.push(part.text);
             deferredAll.push(...part.deferredComments);
           }
-          bodyParts.push('$$' + '\n' + item.latex + '\n' + '$$');
+          bodyParts.push(MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE);
           partStart = bi + 1;
         } else if (item.type === 'table') {
           // Flush preceding inline content
