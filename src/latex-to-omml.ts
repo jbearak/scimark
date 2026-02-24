@@ -98,6 +98,10 @@ function makeHiddenCommentRun(text: string): string {
   return '<m:r><m:rPr><m:nor/></m:rPr><w:rPr><w:vanish/></w:rPr><m:t xml:space="preserve">\u200B' + escapeXmlChars(text) + '</m:t></m:r>';
 }
 
+function makeCalligraphicRun(text: string): string {
+  return '<m:r><m:rPr><m:scr m:val="script"/><m:sty m:val="p"/></m:rPr><m:t>' + escapeXmlChars(text) + '</m:t></m:r>';
+}
+
 
 // ---------------------------------------------------------------------------
 // Tokenizer
@@ -236,12 +240,21 @@ class Parser {
       // Don't consume — closing brace belongs to the enclosing group
       return '';
     } else {
-      // Single token
+      // No braces: LaTeX binds scripts to exactly one character.
+      // Strip leading whitespace, take the first character, splice remainder back.
       const next = this.consume();
-      if (next) {
-        return this.parseToken(next);
+      if (!next) return '';
+      if (next.type === 'text') {
+        const trimmed = next.value.replace(/^\s+/, '');
+        if (trimmed.length === 0) return '';
+        const first = trimmed[0];
+        const rest = trimmed.slice(1);
+        if (rest) {
+          this.tokens.splice(this.pos, 0, { type: 'text', value: rest, pos: next.pos });
+        }
+        return makeRun(first);
       }
-      return '';
+      return this.parseToken(next);
     }
   }
 
@@ -360,6 +373,11 @@ class Parser {
       case '\\mathrm': {
         const text = this.parseGroup();
         return makeStyledRun(this.extractText(text));
+      }
+
+      case '\\mathcal': {
+        const calText = this.parseGroup();
+        return makeCalligraphicRun(this.extractText(calText));
       }
 
       case '\\operatorname': {

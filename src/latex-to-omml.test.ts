@@ -144,6 +144,17 @@ describe('latexToOmml', () => {
     expect(result).toBe('<m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>text</m:t></m:r>');
   });
 
+  test('mathcal produces calligraphic run', () => {
+    const result = latexToOmml('\\mathcal{A}');
+    expect(result).toBe('<m:r><m:rPr><m:scr m:val="script"/><m:sty m:val="p"/></m:rPr><m:t>A</m:t></m:r>');
+  });
+
+  test('mathcal with multiple characters', () => {
+    const result = latexToOmml('\\mathcal{OL}');
+    expect(result).toContain('<m:scr m:val="script"/>');
+    expect(result).toContain('OL');
+  });
+
   test('mathrm does not double-escape XML entities', () => {
     const result = latexToOmml('\\mathrm{A&B}');
     expect(result).toBe('<m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>A&amp;B</m:t></m:r>');
