@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, afterEach } from 'bun:test';
 import * as fc from 'fast-check';
 import {
   generateRPr,
@@ -2194,6 +2194,10 @@ describe('colors frontmatter', () => {
 });
 
 describe('alert-colors module', () => {
+  afterEach(() => {
+    setDefaultColorScheme('github');
+  });
+
   it('alertColorsByScheme falls back to github for unknown scheme', () => {
     expect(alertColorsByScheme('unknown' as any).note).toBe('1F6FEB');
   });

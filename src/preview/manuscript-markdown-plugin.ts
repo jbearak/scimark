@@ -948,11 +948,12 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
   // Inject a hidden marker element so the preview script can apply the color scheme
   // class to alert elements (needed because VS Code's built-in GFM alert renderer
   // overrides our blockquote_open renderer and doesn't include our color class).
+  const ALLOWED_PREVIEW_SCHEMES = new Set<ColorScheme>(['guttmacher']);
   md.core.ruler.push('manuscript_color_scheme_marker', (state: any) => {
-    const scheme = state.env.colorScheme;
-    if (scheme && scheme !== 'github') {
+    const scheme: ColorScheme | undefined = state.env.colorScheme;
+    if (scheme && scheme !== 'github' && ALLOWED_PREVIEW_SCHEMES.has(scheme)) {
       const token = new state.Token('html_block', '', 0);
-      token.content = '<span class="manuscript-colors-' + scheme + '" style="display:none"></span>\n';
+      token.content = '<span data-manuscript-color-scheme="' + scheme + '" style="display:none"></span>\n';
       state.tokens.unshift(token);
     }
   });
@@ -1070,7 +1071,7 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
       return self.renderToken(tokens, idx, options);
     }
     const title = token.meta?.gfmAlertTitle || gfmAlertTitle(alertType);
-    const schemeClass = env.colorScheme === 'guttmacher' ? ' color-scheme-guttmacher' : '';
+    const schemeClass = env.colorScheme && env.colorScheme !== 'github' ? ' color-scheme-' + env.colorScheme : '';
     return '<blockquote class="markdown-alert markdown-alert-' + alertType + schemeClass + '"><p class="markdown-alert-title">' + alertOcticonSvg(alertType) + ' ' + escapeHtmlText(title) + '</p>\n';
   };
 

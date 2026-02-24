@@ -13,7 +13,7 @@ import { WordCountController } from './wordcount';
 import { convertDocx, CitationKeyFormat } from './converter';
 import { convertMdToDocx } from './md-to-docx';
 import * as path from 'path';
-import { parseFrontmatter, hasCitations, normalizeBibPath, normalizeColorScheme } from './frontmatter';
+import { parseFrontmatter, hasCitations, normalizeBibPath, normalizeColorScheme, type ColorScheme } from './frontmatter';
 import { BUNDLED_STYLE_LABELS } from './csl-loader';
 import { getCompletionContextAtOffset } from './lsp/citekey-language';
 import { getCslCompletionContext, shouldAutoTriggerSuggestFromChanges } from './lsp/csl-language';
@@ -400,18 +400,16 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	// Read and sync default color scheme setting
-	function syncDefaultColorScheme() {
+	function getConfiguredColorScheme(): ColorScheme {
 		const cfg = vscode.workspace.getConfiguration('manuscriptMarkdown');
-		setDefaultColorScheme(normalizeColorScheme(cfg.get<string>('colors', 'github') ?? 'github') ?? 'github');
+		return normalizeColorScheme(cfg.get<string>('colors', 'github') ?? 'github') ?? 'github';
 	}
-	syncDefaultColorScheme();
+	setDefaultColorScheme(getConfiguredColorScheme());
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration('manuscriptMarkdown.colors')) {
-				syncDefaultColorScheme();
-				const scheme = normalizeColorScheme(
-					vscode.workspace.getConfiguration('manuscriptMarkdown').get<string>('colors', 'github') ?? 'github'
-				) ?? 'github';
+				const scheme = getConfiguredColorScheme();
+				setDefaultColorScheme(scheme);
 				syncPreviewColors(scheme);
 				vscode.commands.executeCommand('markdown.preview.refresh');
 			}
@@ -641,8 +639,7 @@ export function activate(context: vscode.ExtensionContext) {
 	return {
 		extendMarkdownIt(md: any) {
 			previewMd = md;
-			const cfg = vscode.workspace.getConfiguration('manuscriptMarkdown');
-			md.manuscriptColors = normalizeColorScheme(cfg.get<string>('colors', 'github') ?? 'github') ?? 'github';
+			md.manuscriptColors = getConfiguredColorScheme();
 			return md.use(manuscriptMarkdownPlugin);
 		}
 	};

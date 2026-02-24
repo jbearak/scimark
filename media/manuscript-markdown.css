@@ -133,9 +133,9 @@ body.vscode-dark blockquote:not(.markdown-alert) {
   border-left-color: #6e7681;
   background: rgba(110, 118, 129, 0.1);
 }
-.color-scheme-guttmacher-blockquote {
-  border-left-color: #868789 !important;
-  background: rgba(134, 135, 137, 0.1) !important;
+blockquote.color-scheme-guttmacher-blockquote {
+  border-left-color: #868789;
+  background: rgba(134, 135, 137, 0.1);
 }
 
 /* GitHub-style markdown alerts */

@@ -98,30 +98,54 @@
 
   // Color scheme support for alert callouts and blockquotes.
   // VS Code's built-in GFM alert renderer overrides our blockquote_open renderer,
-  // so the markdown-it plugin injects a hidden marker element instead.  We read
-  // that marker here and add the color-scheme class to matching elements.
+  // so the markdown-it plugin injects a hidden marker element with a data attribute.
+  // We read that marker here and add the color-scheme class to matching elements.
+  var lastScheme = '';
   function applyColorScheme() {
-    var isGuttmacher = !!document.querySelector('.manuscript-colors-guttmacher');
+    var marker = document.querySelector('[data-manuscript-color-scheme]');
+    var scheme = marker ? marker.dataset.manuscriptColorScheme : '';
+    // Skip DOM work if scheme hasn't changed and elements already have correct classes
+    if (scheme === lastScheme && lastScheme !== '') return;
+    lastScheme = scheme;
     var alerts = document.querySelectorAll('.markdown-alert');
     for (var i = 0; i < alerts.length; i++) {
-      if (isGuttmacher) {
-        alerts[i].classList.add('color-scheme-guttmacher');
-      } else {
-        alerts[i].classList.remove('color-scheme-guttmacher');
+      // Remove any existing color-scheme-* class
+      var classes = alerts[i].className.split(' ');
+      for (var j = classes.length - 1; j >= 0; j--) {
+        if (classes[j].indexOf('color-scheme-') === 0) {
+          alerts[i].classList.remove(classes[j]);
+        }
+      }
+      if (scheme) {
+        alerts[i].classList.add('color-scheme-' + scheme);
       }
     }
     var blockquotes = document.querySelectorAll('blockquote:not(.markdown-alert)');
     for (var i = 0; i < blockquotes.length; i++) {
-      if (isGuttmacher) {
-        blockquotes[i].classList.add('color-scheme-guttmacher-blockquote');
-      } else {
-        blockquotes[i].classList.remove('color-scheme-guttmacher-blockquote');
+      var bqClasses = blockquotes[i].className.split(' ');
+      for (var j = bqClasses.length - 1; j >= 0; j--) {
+        if (bqClasses[j].indexOf('color-scheme-') === 0) {
+          blockquotes[i].classList.remove(bqClasses[j]);
+        }
+      }
+      if (scheme) {
+        blockquotes[i].classList.add('color-scheme-' + scheme + '-blockquote');
       }
     }
   }
 
   // Run once on load, then watch for DOM changes (preview refreshes).
+  // Use requestAnimationFrame to batch rapid MutationObserver callbacks.
   applyColorScheme();
-  var observer = new MutationObserver(applyColorScheme);
+  var rafPending = false;
+  var observer = new MutationObserver(function() {
+    if (!rafPending) {
+      rafPending = true;
+      requestAnimationFrame(function() {
+        rafPending = false;
+        applyColorScheme();
+      });
+    }
+  });
   observer.observe(document.body, { childList: true, subtree: true });
 })();
