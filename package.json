@@ -704,7 +704,7 @@
             "GitHub",
             "Guttmacher"
           ],
-          "default": "github",
+          "default": "guttmacher",
           "description": "Color scheme for alert callouts in preview and DOCX export"
         },
         "manuscriptMarkdown.alwaysUseCommentIds": {

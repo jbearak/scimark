@@ -13,9 +13,9 @@ export const GITHUB_ALERT_COLORS: Record<GfmAlertType, string> = {
 /** Guttmacher brand alert border colors (6-digit hex, no #) */
 export const GUTTMACHER_ALERT_COLORS: Record<GfmAlertType, string> = {
   note: '0F6779',
-  tip: '78BD53',
+  tip: '5C9E38',
   important: '9F3D61',
-  warning: 'E26237',
+  warning: 'B39215',
   caution: 'D55A1F',
 };
 

@@ -2114,16 +2114,16 @@ describe('colors frontmatter', () => {
     };
     const state = makeState();
     const xml = generateParagraph(token, state, { colors: 'guttmacher' });
-    expect(xml).toContain('w:color="78BD53"');
+    expect(xml).toContain('w:color="5C9E38"');
     expect(xml).not.toContain('w:color="238636"');
   });
 
   it('stylesXml uses guttmacher colors in alert styles', () => {
     const xml = stylesXml(undefined, undefined, 'guttmacher');
     expect(xml).toContain('0F6779');
-    expect(xml).toContain('78BD53');
+    expect(xml).toContain('5C9E38');
     expect(xml).toContain('9F3D61');
-    expect(xml).toContain('E26237');
+    expect(xml).toContain('B39215');
     expect(xml).toContain('D55A1F');
     expect(xml).not.toContain('1F6FEB');
   });
@@ -2162,9 +2162,9 @@ describe('colors frontmatter', () => {
     expect(original).toContain('1F6FEB'); // github note color
     const patched = applyAlertColorsToTemplate(original, 'guttmacher');
     expect(patched).toContain('0F6779'); // guttmacher note
-    expect(patched).toContain('78BD53'); // guttmacher tip
+    expect(patched).toContain('5C9E38'); // guttmacher tip
     expect(patched).toContain('9F3D61'); // guttmacher important
-    expect(patched).toContain('E26237'); // guttmacher warning
+    expect(patched).toContain('B39215'); // guttmacher warning
     expect(patched).toContain('D55A1F'); // guttmacher caution
     expect(patched).not.toContain('1F6FEB'); // github note should be gone
   });
@@ -2188,7 +2188,7 @@ describe('colors frontmatter', () => {
     const stylesContent = await zip.file('word/styles.xml')!.async('string');
     // Template styles should have guttmacher colors patched in
     expect(stylesContent).toContain('0F6779'); // note
-    expect(stylesContent).toContain('78BD53'); // tip
+    expect(stylesContent).toContain('5C9E38'); // tip
     expect(stylesContent).not.toContain('1F6FEB'); // github note should be replaced
   });
 });
