@@ -24,9 +24,10 @@ const COLOR_SCHEMES: Record<ColorScheme, Record<GfmAlertType, string>> = {
   guttmacher: GUTTMACHER_ALERT_COLORS,
 };
 
-/** Return the alert color map for a given color scheme. */
+/** Return the alert color map for a given color scheme.
+ *  Falls back to the default scheme's colors for unrecognized values. */
 export function alertColorsByScheme(scheme: ColorScheme): Record<GfmAlertType, string> {
-  return COLOR_SCHEMES[scheme] ?? GITHUB_ALERT_COLORS;
+  return COLOR_SCHEMES[scheme] ?? COLOR_SCHEMES[_defaultColorScheme];
 }
 
 /** Module-level default color scheme, updated from VS Code settings */

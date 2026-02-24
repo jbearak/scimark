@@ -606,10 +606,10 @@ describe('Edge Cases', () => {
     }
 
     it('should remove empty comment pattern silently', () => {
-      const output = renderWithPlugin('{>><<}');
+      const output = renderWithPlugin('{>><<}', 'github');
       expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
-      expect(output).toContain('<p></p>\n');
+      expect(output).toBe('<p></p>\n');
     });
   });
 
@@ -1279,10 +1279,10 @@ describe('Property 2: Preservation — Non-Whitespace-Separated Behavior', () =>
 
   describe('Empty comment removal', () => {
     it('should silently remove empty comments', () => {
-      const output = renderWithPlugin('{>><<}');
+      const output = renderWithPlugin('{>><<}', 'github');
       expect(output).not.toContain('manuscript-markdown-comment');
       expect(output).not.toContain('data-comment');
-      expect(output).toContain('<p></p>\n');
+      expect(output).toBe('<p></p>\n');
     });
 
     it('should silently remove empty comment adjacent to element without affecting element', () => {

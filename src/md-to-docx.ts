@@ -2454,10 +2454,10 @@ const ALERT_STYLE_ID_TO_TYPE: Record<string, GfmAlertType> = {
 /**
  * Patch alert border colors in a template styles.xml string.
  * Finds each GitHubXxx style and replaces the w:left border color with the
- * color from the given scheme.  Returns the (potentially mutated) XML string.
+ * color from the given scheme, regardless of what scheme the template was
+ * originally generated with.  Returns the (potentially mutated) XML string.
  */
 export function applyAlertColorsToTemplate(stylesXml: string, scheme: ColorScheme): string {
-  if (scheme === 'github') return stylesXml;
   const colors = alertColorsByScheme(scheme);
   let xml = stylesXml;
 

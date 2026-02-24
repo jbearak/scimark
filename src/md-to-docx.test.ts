@@ -2161,10 +2161,22 @@ describe('colors frontmatter', () => {
     expect(patched).not.toContain(GITHUB_ALERT_COLORS.note);
   });
 
-  it('applyAlertColorsToTemplate is a no-op for matching scheme', () => {
-    const original = stylesXml(undefined, undefined, 'github');
+  it('applyAlertColorsToTemplate patches from guttmacher back to github', () => {
+    const original = stylesXml(undefined, undefined, 'guttmacher');
+    expect(original).toContain(GUTTMACHER_ALERT_COLORS.note);
     const patched = applyAlertColorsToTemplate(original, 'github');
-    expect(patched).toBe(original);
+    for (const color of Object.values(GITHUB_ALERT_COLORS)) {
+      expect(patched).toContain(color);
+    }
+    expect(patched).not.toContain(GUTTMACHER_ALERT_COLORS.note);
+  });
+
+  it('applyAlertColorsToTemplate is a no-op for matching scheme', () => {
+    for (const scheme of ['github', 'guttmacher'] as const) {
+      const original = stylesXml(undefined, undefined, scheme);
+      const patched = applyAlertColorsToTemplate(original, scheme);
+      expect(patched).toBe(original);
+    }
   });
 
   it('template-based export applies guttmacher colors to styles.xml', async () => {
@@ -2190,8 +2202,9 @@ describe('alert-colors module', () => {
     setDefaultColorScheme('guttmacher');
   });
 
-  it('alertColorsByScheme falls back to github for unknown scheme', () => {
-    expect(alertColorsByScheme('unknown' as any).note).toBe(GITHUB_ALERT_COLORS.note);
+  it('alertColorsByScheme falls back to default scheme for unknown value', () => {
+    // Default scheme is guttmacher, so unknown values should resolve to guttmacher colors
+    expect(alertColorsByScheme('unknown' as any).note).toBe(GUTTMACHER_ALERT_COLORS.note);
   });
 
   it('setDefaultColorScheme rejects invalid values and falls back to guttmacher', () => {
