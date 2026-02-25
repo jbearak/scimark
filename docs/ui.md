@@ -27,29 +27,22 @@ Text formatting, lists, and structure commands for Markdown editing.
 | | **Bold Italic** | `manuscript-markdown.formatBoldItalic` |
 | | **Strikethrough** | `manuscript-markdown.formatStrikethrough` |
 | | **Underline** | `manuscript-markdown.formatUnderline` |
-| Highlight | **Highlight** | `manuscript-markdown.formatHighlight` |
-| | **Highlight Color** ▸ | submenu — see below |
-| Text formatting | **Inline Code** | `manuscript-markdown.formatInlineCode` |
+| Highlight | **Highlight** ▸ | submenu — see below |
+| Code | **Inline Code** | `manuscript-markdown.formatInlineCode` |
 | | **Code Block** | `manuscript-markdown.formatCodeBlock` |
-| | **Link** | `manuscript-markdown.formatLink` |
-| Lists | **Bulleted List** | `manuscript-markdown.formatBulletedList` |
-| | **Numbered List** | `manuscript-markdown.formatNumberedList` |
-| | **Task List** | `manuscript-markdown.formatTaskList` |
-| | **Quote Block** | `manuscript-markdown.formatQuoteBlock` |
-| Tables | **Reflow Table** | `manuscript-markdown.reflowTable` |
-| | **Compact Table** | `manuscript-markdown.compactTable` |
+| Link | **Link** | `manuscript-markdown.formatLink` |
+| Lists | **List** ▸ | submenu — see below |
+| Block Quote | **Block Quote** | `manuscript-markdown.formatQuoteBlock` |
+| Tables | **Reflow Table** ▸ | submenu — see below |
 | Heading | **Heading** ▸ | submenu — see below |
 
-> **Reflow Table** re-aligns a Markdown pipe table — the kind you build with `|` and `-` characters — so that the `|` column separators line up neatly. Place your cursor anywhere in the table and run the command.
->
-> **Compact Table** is the inverse of Reflow Table: it strips padding whitespace from each cell and reduces the separator row to minimal `---` dashes (preserving alignment colons). Place your cursor anywhere in the table and run the command. Useful for keeping tables narrow in version-controlled files.
+#### Highlight submenu
 
-#### Highlight Color submenu
-
-The colors are shown in three groups, separated by divider lines. The group labels (Standard, Dark, Neutral) are used here for reference only — they don't appear as visible text in the VS Code menu.
+The submenu has four groups separated by divider lines: a default-color Highlight command at the top, then Standard, Dark, and Neutral color choices. The group labels are used here for reference only — they don't appear as visible text in the VS Code menu.
 
 | Group | Item | Command |
 |-------|------|---------|
+| Default | **Highlight** | `manuscript-markdown.formatHighlight` |
 | Standard | **Yellow** | `manuscript-markdown.formatHighlight_yellow` |
 | | **Green** | `manuscript-markdown.formatHighlight_green` |
 | | **Turquoise** | `manuscript-markdown.formatHighlight_turquoise` |
@@ -65,7 +58,26 @@ The colors are shown in three groups, separated by divider lines. The group labe
 | | **Gray 25%** | `manuscript-markdown.formatHighlight_gray-25` |
 | | **Black** | `manuscript-markdown.formatHighlight_black` |
 
-> The plain **Highlight** command uses the color set in `manuscript-markdown.defaultHighlightColor` (default: yellow). The **Highlight Color** submenu lets you pick a specific color. See [Configuration](configuration.md) for details.
+> The plain **Highlight** command uses the color set in `manuscript-markdown.defaultHighlightColor` (default: yellow). The **Highlight** submenu lets you pick a specific color. See [Configuration](configuration.md) for details.
+
+#### List submenu
+
+| Item | Command |
+|------|---------|
+| **Bulleted List** | `manuscript-markdown.formatBulletedList` |
+| **Numbered List** | `manuscript-markdown.formatNumberedList` |
+| **Task List** | `manuscript-markdown.formatTaskList` |
+
+#### Reflow Table submenu
+
+| Item | Command |
+|------|---------|
+| **Expand Table** | `manuscript-markdown.reflowTable` |
+| **Compact Table** | `manuscript-markdown.compactTable` |
+
+> **Expand Table** re-aligns a Markdown pipe table — the kind you build with `|` and `-` characters — so that the `|` column separators line up neatly. Place your cursor anywhere in the table and run the command.
+>
+> **Compact Table** is the inverse of Expand Table: it strips padding whitespace from each cell and reduces the separator row to minimal `---` dashes (preserving alignment colons). Place your cursor anywhere in the table and run the command. Useful for keeping tables narrow in version-controlled files.
 
 #### Heading submenu
 
