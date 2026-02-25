@@ -3998,7 +3998,7 @@ export async function convertDocx(
   // Emit pipe-table-max-line-width when the resolved value differs from the
   // default, OR when the DOCX explicitly stored a value (even if it equals 120)
   // so that an intentional `pipe-table-max-line-width: 120` survives round-trip.
-  if (resolvedPipeTableMaxLineWidth !== 120 || storedPipeTableMaxLineWidth != null) {
+  if (resolvedPipeTableMaxLineWidth !== 120 || storedPipeTableMaxLineWidth != null || options?.pipeTableMaxLineWidth != null) {
     fm.pipeTableMaxLineWidth = resolvedPipeTableMaxLineWidth;
   }
   const frontmatterStr = serializeFrontmatter(fm);
