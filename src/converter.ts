@@ -974,8 +974,9 @@ export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Pr
     if (!Array.isArray(children)) continue;
     for (const child of children) {
       if (child['vt:lpwstr'] !== undefined) {
-        const n = parseInt(nodeText(child['vt:lpwstr'] || []), 10);
-        if (Number.isInteger(n) && n >= 0) return n;
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
+        if (!/^\d+$/.test(raw)) continue;
+        return parseInt(raw, 10);
       }
     }
   }
@@ -2221,7 +2222,7 @@ function mergeConsecutiveRuns(content: ContentItem[]): ContentItem[] {
 function renderInlineSegment(
   segment: ContentItem[],
   comments: Map<string, Comment>,
-  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> }
+  renderOpts?: RenderOpts
 ): { text: string; deferredComments: string[] } {
   const result = renderInlineRange(segment, 0, comments, undefined, renderOpts);
   return {
@@ -2339,7 +2340,7 @@ function renderInlineRange(
   startIndex: number,
   comments: Map<string, Comment>,
   opts?: { stopBeforeDisplayMath?: boolean },
-  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> }
+  renderOpts?: RenderOpts
 ): { text: string; nextIndex: number; deferredComments: string[] } {
   let out = '';
   let i = startIndex;
@@ -2731,7 +2732,7 @@ function renderInlineRangeWithIds(
   return { text: out, nextIndex: i, deferredComments: deferred.map(d => d.body) };
 }
 
-function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  ', renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> }): string {
+function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  ', renderOpts?: RenderOpts): string {
   const i1 = indent;  // tr level
   const i2 = indent + indent;  // td/th level
   const i3 = indent + indent + indent;  // content level
@@ -2816,6 +2817,12 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
   }
 
   const numCols = Math.max(...rows.map(r => r.cells.length));
+
+  // GFM pipe tables support exactly one header row (the first).  Bail out if
+  // the DOCX marks multiple header rows or a non-first row as header.
+  const explicitHeaderRows = rows.reduce((n, r) => n + (r.isHeader ? 1 : 0), 0);
+  if (explicitHeaderRows > 1) return null;
+  if (explicitHeaderRows === 1 && !rows[0].isHeader) return null;
 
   // Snapshot emittedIdCommentBodies so we can restore on fallback.
   // renderInlineSegment marks deferred comment bodies as emitted; if we
@@ -3842,14 +3849,13 @@ export async function convertDocx(
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
-  let resolvedPipeTableMaxLineWidth = options?.pipeTableMaxLineWidth
-    ?? storedPipeTableMaxLineWidth
-    ?? options?.pipeTableMaxLineWidthDefault
+  // Each tier is validated so NaN / negative / non-integer values are treated as "no value".
+  const validWidth = (v: number | null | undefined): number | undefined =>
+    v != null && Number.isFinite(v) && Number.isInteger(v) && v >= 0 ? v : undefined;
+  const resolvedPipeTableMaxLineWidth = validWidth(options?.pipeTableMaxLineWidth)
+    ?? validWidth(storedPipeTableMaxLineWidth)
+    ?? validWidth(options?.pipeTableMaxLineWidthDefault)
     ?? 120;
-  // Sanitize: must be a finite non-negative integer; fall back to 120 if invalid
-  if (!Number.isFinite(resolvedPipeTableMaxLineWidth) || !Number.isInteger(resolvedPipeTableMaxLineWidth) || resolvedPipeTableMaxLineWidth < 0) {
-    resolvedPipeTableMaxLineWidth = 120;
-  }
 
   // Group reply comments under their parents and get IDs to exclude from ranges
   const replyIds = groupCommentThreads(comments, threads);
@@ -3998,7 +4004,7 @@ export async function convertDocx(
   // Emit pipe-table-max-line-width when the resolved value differs from the
   // default, OR when the DOCX explicitly stored a value (even if it equals 120)
   // so that an intentional `pipe-table-max-line-width: 120` survives round-trip.
-  if (resolvedPipeTableMaxLineWidth !== 120 || storedPipeTableMaxLineWidth != null) {
+  if (resolvedPipeTableMaxLineWidth !== 120 || storedPipeTableMaxLineWidth != null || validWidth(options?.pipeTableMaxLineWidth) != null) {
     fm.pipeTableMaxLineWidth = resolvedPipeTableMaxLineWidth;
   }
   const frontmatterStr = serializeFrontmatter(fm);

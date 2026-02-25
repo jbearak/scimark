@@ -1,6 +1,6 @@
 import { describe, it } from 'bun:test';
 import * as fc from 'fast-check';
-import { wrapSelection, wrapLines, wrapLinesNumbered, formatHeading, highlightAndComment, wrapCodeBlock, substituteAndComment, additionAndComment, deletionAndComment, reflowTable, compactTable, parseTable } from './formatting';
+import { wrapSelection, wrapLines, wrapLinesNumbered, formatHeading, highlightAndComment, wrapCodeBlock, substituteAndComment, additionAndComment, deletionAndComment, reflowTable, compactTable, parseTable, isTableRow } from './formatting';
 
 describe('Formatting Module Property Tests', () => {
   
@@ -1292,15 +1292,7 @@ describe('compactTable', () => {
     const input = '| a | bb | ccc |\n| --- | --- | --- |\n| d | ee | fff |';
     const reflowed = reflowTable(input);
     const compacted = compactTable(reflowed.newText);
-    const parsed = parseTable(compacted.newText);
-    if (!parsed) throw new Error('Should be valid table');
-    // After compact, no cell should have trailing spaces
-    for (const row of parsed.rows) {
-      if (row.isSeparator) continue;
-      for (const cell of row.cells) {
-        if (cell !== cell.trim()) throw new Error('Cell has extra whitespace: "' + cell + '"');
-      }
-    }
+    if (compacted.newText !== input) throw new Error('compactTable(reflowTable(input)) should equal input, got: "' + compacted.newText + '"');
   });
 
   it('handles escaped pipes in cell content', () => {
@@ -1321,6 +1313,12 @@ describe('compactTable', () => {
     const compacted = compactTable(input);
     if (!compacted.newText.includes('a\\|b'))
       throw new Error('Compacted table lost escaped pipe');
+  });
+
+  it('recognizes row ending with escaped pipe in last cell', () => {
+    // | a | b\| has the trailing \| as content, not a closing delimiter,
+    // but the row still has 2 unescaped pipes (opening + mid) so it's valid.
+    if (!isTableRow('| a | b\\|')) throw new Error('Should recognize row with escaped trailing pipe');
   });
 
   it('splits on pipe after escaped backslash (\\\\|)', () => {

@@ -338,15 +338,11 @@ export function isTableRow(line: string): boolean {
     return false;
   }
 
-  // Must start and end with | (unescaped)
+  // Must start with | and end with | (the trailing | may be an escaped pipe
+  // treated as content by the parser — this is intentional; see tests).
   if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
     return false;
   }
-  // A trailing \| is an escaped pipe, not a row-closing delimiter
-  if (trimmed.length >= 2 && trimmed[trimmed.length - 2] === '\\') {
-    return false;
-  }
-
   // Must contain at least 2 unescaped pipes (opening + closing)
   const pipeCount = splitOnPipes(trimmed).length - 1;
   return pipeCount >= 2;
@@ -375,7 +371,7 @@ export function isSeparatorRow(line: string): boolean {
   
   // Each cell (between pipes) must contain at least 3 characters that are hyphens or colons
   // and at least one must be a hyphen (standard markdown requirement)
-  const cells = trimmed.slice(1, -1).split('|');
+  const cells = splitOnPipes(trimmed.slice(1, -1));
   return cells.every(cell => {
     const trimmedCell = cell.trim();
     const hyphensAndColons = trimmedCell.match(/[-:]/g);
@@ -532,11 +528,12 @@ export function compactTable(text: string): TextTransformation {
     return { newText: text };
   }
 
-  const { rows, alignments } = parsed;
+  const { rows, columnWidths, alignments } = parsed;
+  const columnCount = columnWidths.length;
 
   const formattedRows = rows.map(row => {
     if (row.isSeparator) {
-      const cells = row.cells.map((_, i) => {
+      const cells = Array.from({ length: columnCount }, (_, i) => {
         const a = alignments[i] || 'default';
         switch (a) {
           case 'left': return ':---';
@@ -547,7 +544,8 @@ export function compactTable(text: string): TextTransformation {
       });
       return '| ' + cells.join(' | ') + ' |';
     } else {
-      return '| ' + row.cells.join(' | ') + ' |';
+      const cells = Array.from({ length: columnCount }, (_, i) => row.cells[i] ?? '');
+      return '| ' + cells.join(' | ') + ' |';
     }
   });
 

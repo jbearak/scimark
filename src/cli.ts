@@ -84,17 +84,17 @@ export function parseArgs(argv: string[]): CliOptions {
       options.alwaysUseCommentIds = true;
     } else if (arg === '--table-indent') {
       const val = requireValue('--table-indent');
-      const n = parseInt(val, 10);
-      if (isNaN(n) || n < 0) {
+      if (!/^\d+$/.test(val)) {
         throw new Error(`Invalid table indent "${val}". Use a non-negative integer`);
       }
+      const n = parseInt(val, 10);
       options.tableIndent = ' '.repeat(n);
     } else if (arg === '--pipe-table-max-line-width') {
       const val = requireValue('--pipe-table-max-line-width');
-      const n = parseInt(val, 10);
-      if (isNaN(n) || n < 0) {
+      if (!/^\d+$/.test(val)) {
         throw new Error('Invalid pipe table max line width "' + val + '". Use a non-negative integer');
       }
+      const n = parseInt(val, 10);
       options.pipeTableMaxLineWidth = n;
       options.pipeTableMaxLineWidthExplicit = true;
     } else if (arg === '--blockquote-style') {
