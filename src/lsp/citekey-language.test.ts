@@ -513,6 +513,17 @@ describe('getAccessLinksForEntry', () => {
 		expect(links).toHaveLength(4);
 		expect(links.map(l => l.fieldName)).toEqual(['doi', 'isbn', 'issn', 'url']);
 	});
+
+	test('requires lowercase field keys (bibtex parser normalizes these)', () => {
+		const entry = makeEntry({
+			DOI: '10.1234/test',
+			ISBN: '978-0-306-40615-7',
+			ISSN: '0028-0836',
+			URL: 'https://example.com',
+		});
+		const links = getAccessLinksForEntry(entry);
+		expect(links).toHaveLength(0);
+	});
 });
 
 describe('findBibFieldLinkAtLine — url field', () => {

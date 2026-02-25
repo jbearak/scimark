@@ -444,13 +444,23 @@ async function isExistingFileAsync(filePath: string): Promise<boolean> {
 	}
 }
 
-export interface BibFieldLink {
+export interface BibFieldLinkValid {
 	fieldName: string;
 	value: string;
-	url?: string;
+	url: string;
 	label: string;
-	invalid?: boolean;
+	invalid?: false;
 }
+
+export interface BibFieldLinkInvalid {
+	fieldName: string;
+	value: string;
+	url?: undefined;
+	label: string;
+	invalid: true;
+}
+
+export type BibFieldLink = BibFieldLinkValid | BibFieldLinkInvalid;
 
 const BIB_FIELD_LINK_RE = /^\s*(doi|isbn|issn|url)\s*=\s*[{"]\s*([^}"]+?)\s*[}"]/i;
 
@@ -494,8 +504,8 @@ export function buildBibFieldLink(fieldName: string, rawValue: string): BibField
 	}
 }
 
-export function getAccessLinksForEntry(entry: BibtexEntry): BibFieldLink[] {
-	const links: BibFieldLink[] = [];
+export function getAccessLinksForEntry(entry: BibtexEntry): BibFieldLinkValid[] {
+	const links: BibFieldLinkValid[] = [];
 	for (const field of ['doi', 'isbn', 'issn', 'url'] as const) {
 		const value = entry.fields.get(field);
 		if (value) {
