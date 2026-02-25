@@ -407,7 +407,7 @@
         {
           "command": "manuscript-markdown.formatQuoteBlock",
           "when": "editorLangId == markdown",
-          "group": "2a_blockquote@1"
+          "group": "2_quote@1"
         },
         {
           "submenu": "markdown.reflowTable",
