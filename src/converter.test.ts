@@ -515,6 +515,23 @@ describe('Pipe table rendering', () => {
     expect(result.markdown).toContain('<table>');
   });
 
+  test('line width exactly at limit stays as pipe table', async () => {
+    const maxWidth = 80;
+    // | + space + content + space + | = 4 chars of overhead for a single-cell row
+    const fittingText = 'x'.repeat(maxWidth - 4);
+    const result = await buildAndConvertTable(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>' + fittingText + '</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>',
+      { pipeTableMaxLineWidth: maxWidth },
+    );
+
+    expect(result.markdown).not.toContain('<table>');
+    expect(result.markdown).toContain('| ' + fittingText + ' |');
+  });
+
   test('pipeTableMaxLineWidth=0 always uses HTML', async () => {
     const result = await buildAndConvertTable(
       '<w:tbl>'
@@ -542,9 +559,8 @@ describe('Pipe table rendering', () => {
     expect(result.markdown).not.toContain('<table>');
   });
 
-  test('already-escaped backslash-pipe in cell content is not double-escaped', async () => {
-    // If the rendered text already contains \|, we must not turn it into \\|
-    // which would produce an escaped backslash + bare pipe, breaking the cell.
+  test('backslash and pipe in cell content are each escaped independently', async () => {
+    // A literal \| in DOCX content has both characters escaped: \\ and \|.
     const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'

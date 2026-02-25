@@ -342,11 +342,6 @@ export function isTableRow(line: string): boolean {
   if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
     return false;
   }
-  // A trailing \| is an escaped pipe, not a row-closing delimiter
-  if (trimmed.length >= 2 && trimmed[trimmed.length - 2] === '\\') {
-    return false;
-  }
-
   // Must contain at least 2 unescaped pipes (opening + closing)
   const pipeCount = splitOnPipes(trimmed).length - 1;
   return pipeCount >= 2;
