@@ -23,6 +23,7 @@ export interface CliOptions {
   tableIndent: string;
   alwaysUseCommentIds: boolean;
   pipeTableMaxLineWidth: number;
+  pipeTableMaxLineWidthExplicit: boolean;
   blockquoteStyle: BlockquoteStyle;
   colors: ColorScheme;
 }
@@ -40,6 +41,7 @@ export function parseArgs(argv: string[]): CliOptions {
     noTemplate: false,
     alwaysUseCommentIds: false,
     pipeTableMaxLineWidth: 120,
+    pipeTableMaxLineWidthExplicit: false,
     blockquoteStyle: 'GitHub',
     colors: 'guttmacher',
   };
@@ -94,6 +96,7 @@ export function parseArgs(argv: string[]): CliOptions {
         throw new Error('Invalid pipe table max line width "' + val + '". Use a non-negative integer');
       }
       options.pipeTableMaxLineWidth = n;
+      options.pipeTableMaxLineWidthExplicit = true;
     } else if (arg === '--blockquote-style') {
       const raw = requireValue('--blockquote-style');
       const style = normalizeBlockquoteStyle(raw);
@@ -200,7 +203,13 @@ async function runDocxToMd(options: CliOptions) {
   // Check output conflicts up-front so dual conflicts are reported together.
   assertNoDocxToMdConflicts(mdPath, bibPath, options.force);
 
-  const result = await convertDocx(data, options.citationKeyFormat, { tableIndent: options.tableIndent, alwaysUseCommentIds: options.alwaysUseCommentIds, pipeTableMaxLineWidth: options.pipeTableMaxLineWidth });
+  const result = await convertDocx(data, options.citationKeyFormat, {
+    tableIndent: options.tableIndent,
+    alwaysUseCommentIds: options.alwaysUseCommentIds,
+    ...(options.pipeTableMaxLineWidthExplicit
+      ? { pipeTableMaxLineWidth: options.pipeTableMaxLineWidth }
+      : { pipeTableMaxLineWidthDefault: options.pipeTableMaxLineWidth }),
+  });
   fs.writeFileSync(mdPath, result.markdown);
   console.log(mdPath);
 

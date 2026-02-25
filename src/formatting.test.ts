@@ -1302,4 +1302,37 @@ describe('compactTable', () => {
       }
     }
   });
+
+  it('handles escaped pipes in cell content', () => {
+    const input = [
+      '| Header |',
+      '| --- |',
+      '| a\\|b |',
+    ].join('\n');
+    const parsed = parseTable(input);
+    if (!parsed) throw new Error('Should parse table with escaped pipe');
+    // The escaped pipe should be part of the cell, not a delimiter
+    if (parsed.rows[2].cells.length !== 1)
+      throw new Error('Expected 1 cell, got ' + parsed.rows[2].cells.length);
+    if (parsed.rows[2].cells[0] !== 'a\\|b')
+      throw new Error('Expected "a\\|b", got "' + parsed.rows[2].cells[0] + '"');
+
+    // Compact should preserve escaped pipes
+    const compacted = compactTable(input);
+    if (!compacted.newText.includes('a\\|b'))
+      throw new Error('Compacted table lost escaped pipe');
+  });
+
+  it('splits on pipe after escaped backslash (\\\\|)', () => {
+    // \\| means escaped backslash followed by unescaped pipe (delimiter)
+    const input = [
+      '| A | B |',
+      '| --- | --- |',
+      '| x\\\\ | y |',
+    ].join('\n');
+    const parsed = parseTable(input);
+    if (!parsed) throw new Error('Should parse table');
+    if (parsed.rows[2].cells.length !== 2)
+      throw new Error('Expected 2 cells, got ' + parsed.rows[2].cells.length);
+  });
 });

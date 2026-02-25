@@ -637,6 +637,25 @@ describe('Pipe table rendering', () => {
     // The frontmatter should contain the round-tripped value
     expect(mdResult.markdown).toMatch(/pipe-table-max-line-width:\s*80/);
   });
+
+  test('explicit pipe-table-max-line-width: 120 survives round-trip', async () => {
+    const md = [
+      '---',
+      'pipe-table-max-line-width: 120',
+      '---',
+      '',
+      '| H1 | H2 |',
+      '| --- | --- |',
+      '| A | B |',
+      '',
+    ].join('\n');
+
+    const docxResult = await convertMdToDocx(md);
+    const mdResult = await convertDocx(docxResult.docx, 'authorYearTitle');
+
+    // Even though 120 equals the default, it was explicitly stored and must survive
+    expect(mdResult.markdown).toMatch(/pipe-table-max-line-width:\s*120/);
+  });
 });
 
 describe('Integration: tables.docx fixture', () => {
