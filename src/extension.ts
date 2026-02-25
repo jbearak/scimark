@@ -51,7 +51,10 @@ import { computeCodeRegions, overlapsCodeRegion } from './code-regions';
 let languageClient: LanguageClient | undefined;
 let languageClientDisposables: vscode.Disposable[] = [];
 let cslCacheDir: string = '';
-let syncPreviewColors: (scheme: string) => void = () => {};
+let previewMd: any;
+function syncPreviewColors(scheme: string) {
+	if (previewMd) previewMd.manuscriptColors = scheme;
+}
 
 export function activate(context: vscode.ExtensionContext) {
 	cslCacheDir = path.join(context.globalStorageUri.fsPath, 'csl-styles');
@@ -632,10 +635,6 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	// Return markdown-it plugin for preview integration
-	let previewMd: any;
-	syncPreviewColors = (scheme: string) => {
-		if (previewMd) previewMd.manuscriptColors = scheme;
-	};
 	return {
 		extendMarkdownIt(md: any) {
 			previewMd = md;

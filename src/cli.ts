@@ -22,7 +22,7 @@ export interface CliOptions {
   cslCacheDir: string;
   tableIndent: string;
   alwaysUseCommentIds: boolean;
-  blockquoteStyle: 'Quote' | 'IntenseQuote' | 'GitHub';
+  blockquoteStyle: BlockquoteStyle;
   colors: ColorScheme;
 }
 

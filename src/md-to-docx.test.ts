@@ -2045,6 +2045,10 @@ describe('convertMdToDocx indented code blocks', () => {
 });
 
 describe('colors frontmatter', () => {
+  afterEach(() => {
+    setDefaultColorScheme('guttmacher');
+  });
+
   it('parseFrontmatter parses colors: guttmacher', () => {
     const md = '---\ncolors: guttmacher\n---\nHello';
     const { metadata } = parseFrontmatter(md);
