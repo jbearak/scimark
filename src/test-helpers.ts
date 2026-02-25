@@ -20,9 +20,12 @@ export const hasNoSpecialSyntax = (s: string) => {
   return !/[\\`*_\[\]&<>"']/.test(s);
 };
 
-/** Create a MarkdownIt instance with the Manuscript Markdown plugin and render input. */
-export function renderWithPlugin(input: string): string {
+/** Create a MarkdownIt instance with the Manuscript Markdown plugin and render input.
+ *  Pass colorScheme to override the module-level default (e.g. 'github' to suppress the
+ *  color marker span in tests that don't care about color scheme behavior). */
+export function renderWithPlugin(input: string, colorScheme?: string): string {
   const md = new MarkdownIt();
+  if (colorScheme !== undefined) (md as any).manuscriptColors = colorScheme;
   md.use(manuscriptMarkdownPlugin);
   return md.render(input);
 }

@@ -70,6 +70,18 @@ export function normalizeBlockquoteStyle(raw: string): BlockquoteStyle | undefin
   return BLOCKQUOTE_STYLE_NAMES[raw.toLowerCase().trim()];
 }
 
+export type ColorScheme = 'github' | 'guttmacher';
+
+const COLOR_SCHEME_NAMES: Record<string, ColorScheme> = {
+  'github': 'github',
+  'guttmacher': 'guttmacher',
+};
+
+/** Normalize a raw colors value (case-insensitive). */
+export function normalizeColorScheme(raw: string): ColorScheme | undefined {
+  return COLOR_SCHEME_NAMES[raw.toLowerCase().trim()];
+}
+
 export interface Frontmatter {
   title?: string[];
   author?: string;
@@ -93,6 +105,7 @@ export interface Frontmatter {
   codeFontColor?: string;
   codeBlockInset?: number;
   blockquoteStyle?: BlockquoteStyle;
+  colors?: ColorScheme;
 }
 
 /**
@@ -225,6 +238,11 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
         if (style) metadata.blockquoteStyle = style;
         break;
       }
+      case 'colors': {
+        const scheme = normalizeColorScheme(value);
+        if (scheme) metadata.colors = scheme;
+        break;
+      }
     }
   }
 
@@ -276,6 +294,7 @@ export function serializeFrontmatter(metadata: Frontmatter): string {
   if (metadata.codeFontColor) lines.push('code-font-color: ' + metadata.codeFontColor);
   if (metadata.codeBlockInset !== undefined) lines.push('code-block-inset: ' + metadata.codeBlockInset);
   if (metadata.blockquoteStyle) lines.push('blockquote-style: ' + metadata.blockquoteStyle);
+  if (metadata.colors) lines.push('colors: ' + metadata.colors);
   if (lines.length === 0) return '';
   return '---\n' + lines.join('\n') + '\n---\n';
 }

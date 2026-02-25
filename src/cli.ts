@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { parseFrontmatter, hasCitations, normalizeBibPath } from './frontmatter';
+import { parseFrontmatter, hasCitations, normalizeBibPath, normalizeBlockquoteStyle, normalizeColorScheme, type ColorScheme, type BlockquoteStyle } from './frontmatter';
 
 // --- Implementation notes ---
 // - Flag parsing: validate missing-next-arg and next-token-is-flag before consuming args[++i]
@@ -22,7 +22,8 @@ export interface CliOptions {
   cslCacheDir: string;
   tableIndent: string;
   alwaysUseCommentIds: boolean;
-  blockquoteStyle: 'Quote' | 'IntenseQuote' | 'GitHub';
+  blockquoteStyle: BlockquoteStyle;
+  colors: ColorScheme;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -38,6 +39,7 @@ export function parseArgs(argv: string[]): CliOptions {
     noTemplate: false,
     alwaysUseCommentIds: false,
     blockquoteStyle: 'GitHub',
+    colors: 'guttmacher',
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -84,11 +86,19 @@ export function parseArgs(argv: string[]): CliOptions {
       }
       options.tableIndent = ' '.repeat(n);
     } else if (arg === '--blockquote-style') {
-      const style = requireValue('--blockquote-style');
-      if (!['Quote', 'IntenseQuote', 'GitHub'].includes(style)) {
-        throw new Error(`Invalid blockquote style "${style}". Use Quote, IntenseQuote, or GitHub`);
+      const raw = requireValue('--blockquote-style');
+      const style = normalizeBlockquoteStyle(raw);
+      if (!style) {
+        throw new Error(`Invalid blockquote style "${raw}". Use Quote, IntenseQuote, or GitHub`);
       }
-      options.blockquoteStyle = style as 'Quote' | 'IntenseQuote' | 'GitHub';
+      options.blockquoteStyle = style;
+    } else if (arg === '--colors') {
+      const raw = requireValue('--colors');
+      const scheme = normalizeColorScheme(raw);
+      if (!scheme) {
+        throw new Error(`Invalid color scheme "${raw}". Use GitHub or Guttmacher`);
+      }
+      options.colors = scheme;
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown option "${arg}"`);
     } else if (!options.inputPath) {
@@ -129,7 +139,8 @@ Options:
   --csl-cache-dir <path>          CSL style cache directory
   --table-indent <n>              Spaces per indent level in HTML tables (DOCX→MD, default: 2)
   --always-use-comment-ids        Always use ID-based comment syntax (DOCX→MD)
-  --blockquote-style <style>      Blockquote style: Quote, IntenseQuote, GitHub (MD→DOCX, default: GitHub)`);
+  --blockquote-style <style>      Blockquote style: Quote, IntenseQuote, GitHub (MD→DOCX, default: GitHub)
+  --colors <scheme>               Alert color scheme: GitHub, Guttmacher (MD→DOCX, default: Guttmacher)`);
 }
 
 function showVersion() {
@@ -282,6 +293,7 @@ async function runMdToDocx(options: CliOptions) {
     sourceDir: path.dirname(options.inputPath),
     onStyleNotFound: async () => true,
     blockquoteStyle: options.blockquoteStyle,
+    colors: options.colors,
   });
 
   fs.writeFileSync(docxPath, result.docx);

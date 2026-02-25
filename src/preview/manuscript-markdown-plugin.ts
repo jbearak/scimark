@@ -5,6 +5,8 @@ import { VALID_COLOR_IDS, getDefaultHighlightColor } from '../highlight-colors';
 import { PARA_PLACEHOLDER, preprocessCriticMarkup, findMatchingClose } from '../critic-markup';
 import { wrapBareLatexEnvironments } from '../latex-env-preprocess';
 import { isGfmDisallowedRawHtml, escapeHtmlText, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from '../gfm';
+import { parseFrontmatter, type ColorScheme } from '../frontmatter';
+import { getDefaultColorScheme } from '../alert-colors';
 
 /** Escape HTML special characters for use in attribute values */
 function escapeHtmlAttr(str: string): string {
@@ -913,6 +915,11 @@ function paraPlaceholderRule(state: StateInline, silent: boolean): boolean {
 export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
   // Preprocess source before block parsing to handle multi-paragraph CriticMarkup
   md.core.ruler.before('normalize', 'manuscript_markdown_preprocess', (state: any) => {
+    // Parse frontmatter to extract color scheme before preprocessing.
+    // Priority: frontmatter > md.manuscriptColors (set by extension) > module-level default
+    const { metadata } = parseFrontmatter(state.src);
+    const defaultScheme: ColorScheme = (md as any).manuscriptColors || getDefaultColorScheme();
+    state.env.colorScheme = metadata.colors || defaultScheme;
     state.src = preprocessCriticMarkup(wrapBareLatexEnvironments(state.src));
   });
 
@@ -937,6 +944,20 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
   md.core.ruler.after('inline', 'manuscript_markdown_associate_comments', associateCommentsRule);
   md.core.ruler.after('manuscript_markdown_associate_comments', 'manuscript_markdown_task_list', taskListRule);
   md.core.ruler.after('manuscript_markdown_task_list', 'manuscript_markdown_alert_blockquote', alertBlockquoteRule);
+
+  // Inject a hidden marker element so the preview script can apply the color scheme
+  // class to alert elements (needed because VS Code's built-in GFM alert renderer
+  // overrides our blockquote_open renderer and doesn't include our color class).
+  // Keep in sync with ColorScheme in frontmatter.ts and CSS in manuscript-markdown.css.
+  const ALLOWED_PREVIEW_SCHEMES = new Set<ColorScheme>(['guttmacher']);
+  md.core.ruler.push('manuscript_color_scheme_marker', (state: any) => {
+    const scheme: ColorScheme | undefined = state.env.colorScheme;
+    if (scheme && ALLOWED_PREVIEW_SCHEMES.has(scheme)) {
+      const token = new state.Token('html_block', '', 0);
+      token.content = '<span data-manuscript-color-scheme="' + scheme + '" style="display:none"></span>\n';
+      state.tokens.unshift(token);
+    }
+  });
 
   // Register renderers for each Manuscript Markdown token type
   for (const pattern of patterns) {
@@ -1051,7 +1072,8 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
       return self.renderToken(tokens, idx, options);
     }
     const title = token.meta?.gfmAlertTitle || gfmAlertTitle(alertType);
-    return `<blockquote class="markdown-alert markdown-alert-${alertType}"><p class="markdown-alert-title">${alertOcticonSvg(alertType)} ${escapeHtmlText(title)}</p>\n`;
+    const schemeClass = env.colorScheme && ALLOWED_PREVIEW_SCHEMES.has(env.colorScheme) ? ' color-scheme-' + env.colorScheme : '';
+    return '<blockquote class="markdown-alert markdown-alert-' + alertType + schemeClass + '"><p class="markdown-alert-title">' + alertOcticonSvg(alertType) + ' ' + escapeHtmlText(title) + '</p>\n';
   };
 
 }

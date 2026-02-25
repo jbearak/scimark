@@ -13,7 +13,7 @@ import { WordCountController } from './wordcount';
 import { convertDocx, CitationKeyFormat } from './converter';
 import { convertMdToDocx } from './md-to-docx';
 import * as path from 'path';
-import { parseFrontmatter, hasCitations, normalizeBibPath } from './frontmatter';
+import { parseFrontmatter, hasCitations, normalizeBibPath, normalizeColorScheme, type ColorScheme } from './frontmatter';
 import { BUNDLED_STYLE_LABELS } from './csl-loader';
 import { getCompletionContextAtOffset } from './lsp/citekey-language';
 import { getCslCompletionContext, shouldAutoTriggerSuggestFromChanges } from './lsp/csl-language';
@@ -30,6 +30,7 @@ import {
 	setDefaultHighlightColor,
 	getDefaultHighlightColor,
 } from './highlight-colors';
+import { setDefaultColorScheme } from './alert-colors';
 import { computeCodeRegions, overlapsCodeRegion } from './code-regions';
 
 // --- Implementation notes ---
@@ -50,6 +51,10 @@ import { computeCodeRegions, overlapsCodeRegion } from './code-regions';
 let languageClient: LanguageClient | undefined;
 let languageClientDisposables: vscode.Disposable[] = [];
 let cslCacheDir: string = '';
+let previewMd: any;
+function syncPreviewColors(scheme: ColorScheme) {
+	if (previewMd) previewMd.manuscriptColors = scheme;
+}
 
 export function activate(context: vscode.ExtensionContext) {
 	cslCacheDir = path.join(context.globalStorageUri.fsPath, 'csl-styles');
@@ -397,6 +402,23 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	// Read and sync default color scheme setting
+	function getConfiguredColorScheme(): ColorScheme {
+		const cfg = vscode.workspace.getConfiguration('manuscriptMarkdown');
+		return normalizeColorScheme(cfg.get<string>('colors') ?? '') ?? 'guttmacher';
+	}
+	setDefaultColorScheme(getConfiguredColorScheme());
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('manuscriptMarkdown.colors')) {
+				const scheme = getConfiguredColorScheme();
+				setDefaultColorScheme(scheme);
+				syncPreviewColors(scheme);
+				vscode.commands.executeCommand('markdown.preview.refresh');
+			}
+		})
+	);
+
 	// Create decoration types for each color + critic
 	const decorationTypes = new Map<string, vscode.TextEditorDecorationType>();
 	for (const [colorId, colors] of Object.entries(HIGHLIGHT_DECORATION_COLORS)) {
@@ -615,6 +637,8 @@ export function activate(context: vscode.ExtensionContext) {
 	// Return markdown-it plugin for preview integration
 	return {
 		extendMarkdownIt(md: any) {
+			previewMd = md;
+			md.manuscriptColors = getConfiguredColorScheme();
 			return md.use(manuscriptMarkdownPlugin);
 		}
 	};
@@ -996,6 +1020,7 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 	const sourceDir = path.dirname(input.basePath);
 	const config = vscode.workspace.getConfiguration('manuscriptMarkdown');
 	const blockquoteStyle = config.get<'Quote' | 'IntenseQuote' | 'GitHub'>('blockquoteStyle', 'GitHub');
+	const colors = normalizeColorScheme(config.get<string>('colors') ?? '') ?? 'guttmacher';
 	const result = await convertMdToDocx(input.markdown, {
 		bibtex: input.bibtex,
 		authorName: authorName ?? undefined,
@@ -1003,6 +1028,7 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 		cslCacheDir,
 		sourceDir,
 		blockquoteStyle,
+		colors,
 		onStyleNotFound: async (styleName: string) => {
 			const choice = await vscode.window.showWarningMessage(
 				`CSL style "${styleName}" is not bundled. Download it from the CSL repository? Without it, citations will use plain-text fallback formatting.`,

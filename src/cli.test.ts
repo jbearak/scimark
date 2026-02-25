@@ -278,6 +278,12 @@ test('--blockquote-style parses valid values', () => {
   expect(githubOpts.blockquoteStyle).toBe('GitHub');
 });
 
+test('--blockquote-style is case-insensitive', () => {
+  expect(parseArgs(['node', 'cli.js', 'file.md', '--blockquote-style', 'github']).blockquoteStyle).toBe('GitHub');
+  expect(parseArgs(['node', 'cli.js', 'file.md', '--blockquote-style', 'QUOTE']).blockquoteStyle).toBe('Quote');
+  expect(parseArgs(['node', 'cli.js', 'file.md', '--blockquote-style', 'intensequote']).blockquoteStyle).toBe('IntenseQuote');
+});
+
 test('--blockquote-style rejects invalid values', () => {
   expect(() => parseArgs(['node', 'cli.js', 'file.md', '--blockquote-style', 'Fancy'])).toThrow('Invalid blockquote style');
 });
@@ -285,4 +291,27 @@ test('--blockquote-style rejects invalid values', () => {
 test('blockquoteStyle defaults to GitHub', () => {
   const opts = parseArgs(['node', 'cli.js', 'file.md']);
   expect(opts.blockquoteStyle).toBe('GitHub');
+});
+
+test('--colors parses valid values', () => {
+  const githubOpts = parseArgs(['node', 'cli.js', 'file.md', '--colors', 'github']);
+  expect(githubOpts.colors).toBe('github');
+
+  const guttmacherOpts = parseArgs(['node', 'cli.js', 'file.md', '--colors', 'guttmacher']);
+  expect(guttmacherOpts.colors).toBe('guttmacher');
+});
+
+test('--colors is case-insensitive', () => {
+  expect(parseArgs(['node', 'cli.js', 'file.md', '--colors', 'GitHub']).colors).toBe('github');
+  expect(parseArgs(['node', 'cli.js', 'file.md', '--colors', 'GUTTMACHER']).colors).toBe('guttmacher');
+  expect(parseArgs(['node', 'cli.js', 'file.md', '--colors', 'Guttmacher']).colors).toBe('guttmacher');
+});
+
+test('--colors rejects invalid values', () => {
+  expect(() => parseArgs(['node', 'cli.js', 'file.md', '--colors', 'rainbow'])).toThrow('Invalid color scheme');
+});
+
+test('colors defaults to guttmacher', () => {
+  const opts = parseArgs(['node', 'cli.js', 'file.md']);
+  expect(opts.colors).toBe('guttmacher');
 });
