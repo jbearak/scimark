@@ -10,6 +10,8 @@ import {
 	Diagnostic,
 	DiagnosticSeverity,
 	DidChangeWatchedFilesParams,
+	DocumentSymbol,
+	DocumentSymbolParams,
 	Hover,
 	HoverParams,
 	InitializeParams,
@@ -19,6 +21,7 @@ import {
 	ProposedFeatures,
 	Range,
 	ReferenceParams,
+	SymbolKind,
 	TextDocumentSyncKind,
 	TextDocuments,
 } from 'vscode-languageserver/node';
@@ -59,6 +62,7 @@ import {
 	findRangeTextForId,
 	stripCriticMarkup,
 } from './comment-language';
+import { computeBibEntryRanges } from './bib-entry-ranges';
 import { getCslCompletionContext, getCslFieldInfo } from './csl-language';
 import { type Frontmatter, parseFrontmatter } from '../frontmatter';
 import { BUNDLED_STYLE_LABELS, isCslAvailableAsync } from '../csl-loader';
@@ -195,6 +199,7 @@ connection.onInitialize((params: InitializeParams) => {
 				triggerCharacters: ['@', ':'],
 			},
 			definitionProvider: true,
+			documentSymbolProvider: true,
 			hoverProvider: true,
 			referencesProvider: true,
 		},
@@ -427,7 +432,7 @@ connection.onReferences(async (params: ReferenceParams): Promise<Location[]> => 
 	// From .bib (or markdown with the override enabled): find paired
 	// markdown files and return citation usages.
 	const locations = await findReferencesForKey(symbol.key, symbol.bibPath);
-	if (params.context.includeDeclaration) {
+	if (params.context.includeDeclaration && symbol.source !== 'bib') {
 		const declaration = await getDefinitionLocationForKey(symbol.key, symbol.bibPath);
 		if (declaration) {
 			locations.unshift(declaration);
@@ -497,6 +502,49 @@ connection.onHover(async (params: HoverParams): Promise<Hover | null> => {
 	}
 
 	return null;
+});
+
+connection.onDocumentSymbol(async (params: DocumentSymbolParams): Promise<DocumentSymbol[] | null> => {
+	if (!isBibUri(params.textDocument.uri)) {
+		return null;
+	}
+
+	const fsPath = uriToFsPath(params.textDocument.uri);
+	if (!fsPath) {
+		return null;
+	}
+
+	const bibData = await getBibDataForPath(fsPath);
+	if (!bibData) {
+		return [];
+	}
+
+	// Use bibData.text for range computation so offsets stay consistent with
+	// the snapshot that bibData.entries was parsed from (avoids mismatch when
+	// the open document's URI normalizes differently from fsPathToUri).
+	const text = bibData.text;
+	const ranges = computeBibEntryRanges(text);
+	const bibUri = fsPathToUri(fsPath);
+	const doc = documents.get(params.textDocument.uri)
+		?? TextDocument.create(bibUri, 'bibtex', 0, text);
+	const symbols: DocumentSymbol[] = [];
+
+	for (const r of ranges) {
+		const entry = bibData.entries.get(r.key);
+		if (!entry) {
+			continue;
+		}
+
+		symbols.push(DocumentSymbol.create(
+			r.key,
+			getEntryDetail(entry),
+			SymbolKind.Key,
+			Range.create(doc.positionAt(r.entryStart), doc.positionAt(r.entryEnd)),
+			Range.create(doc.positionAt(r.keyStart), doc.positionAt(r.keyEnd)),
+		));
+	}
+
+	return symbols;
 });
 
 documents.listen(connection);
