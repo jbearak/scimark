@@ -123,12 +123,14 @@ describe('DOCX table conversion', () => {
       + '<w:comment w:id="1" w:author="Reviewer" w:date="2025-01-01T00:00:00Z"><w:p><w:r><w:t>note</w:t></w:r></w:p></w:comment>'
       + '</w:comments>');
     const buf = await zip.generateAsync({ type: 'uint8array' });
-    const result = await convertDocx(buf);
+    const result = await convertDocx(buf, 'authorYearTitle', { pipeTableMaxLineWidth: 500 });
 
     expect(result.markdown).toContain('{====annotated====}{>>Reviewer');
     expect(result.markdown).toContain('@smith2020cell, p. 20');
     expect(result.markdown).toContain('$x$');
-    expect(result.markdown).toContain('<table>');
+    // Simple table renders as pipe table (explicit high width to avoid fragility)
+    expect(result.markdown).toContain('| Header |');
+    expect(result.markdown).toContain('| --- |');
   });
 
   test('uses OOXML header flags and defaults to td when no header signal exists', async () => {
@@ -146,8 +148,8 @@ describe('DOCX table conversion', () => {
       + '</w:tbl>'
     );
 
-    const withHeaderMd = (await convertDocx(await buildSyntheticDocx(withHeader))).markdown;
-    const withoutHeaderMd = (await convertDocx(await buildSyntheticDocx(withoutHeader))).markdown;
+    const withHeaderMd = (await convertDocx(await buildSyntheticDocx(withHeader), 'authorYearTitle', { pipeTableMaxLineWidth: 0 })).markdown;
+    const withoutHeaderMd = (await convertDocx(await buildSyntheticDocx(withoutHeader), 'authorYearTitle', { pipeTableMaxLineWidth: 0 })).markdown;
 
     expect(withHeaderMd).toContain('<th>');
     expect(withoutHeaderMd).not.toContain('<th>');
@@ -163,7 +165,7 @@ describe('DOCX table conversion', () => {
       + '</w:tbl>'
     );
     const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf);
+    const result = await convertDocx(buf, 'authorYearTitle', { pipeTableMaxLineWidth: 0 });
 
     const tableHtml = result.markdown.match(/<table>[\s\S]*?<\/table>/)?.[0] ?? '';
     expect(tableHtml).toContain('\n  <tr>');
@@ -183,7 +185,7 @@ describe('DOCX table conversion', () => {
       + '</w:tbl>'
     );
     const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf, 'authorYearTitle', { tableIndent: '\t' });
+    const result = await convertDocx(buf, 'authorYearTitle', { tableIndent: '\t', pipeTableMaxLineWidth: 0 });
 
     const tableHtml = result.markdown.match(/<table>[\s\S]*?<\/table>/)?.[0] ?? '';
     expect(tableHtml).toContain('\n\t<tr>');
@@ -200,7 +202,7 @@ describe('DOCX table conversion', () => {
       + '</w:tbl>'
     );
     const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf, 'authorYearTitle', { tableIndent: '' });
+    const result = await convertDocx(buf, 'authorYearTitle', { tableIndent: '', pipeTableMaxLineWidth: 0 });
 
     const tableHtml = result.markdown.match(/<table>[\s\S]*?<\/table>/)?.[0] ?? '';
     expect(tableHtml).toContain('\n<tr>');
@@ -343,7 +345,7 @@ describe('DOCX table conversion', () => {
         },
       ] as any,
       comments,
-      { alwaysUseCommentIds: true },
+      { alwaysUseCommentIds: true, pipeTableMaxLineWidth: 0 },
     );
 
     const paraMatch = tableMarkdown.match(/<p>([\s\S]*?)<\/p>/);
@@ -404,7 +406,7 @@ describe('colspan/rowspan roundtrip', () => {
       '</table>',
     ].join('\n');
     const { docx } = await convertMdToDocx(indentedMd);
-    const result = await convertDocx(docx);
+    const result = await convertDocx(docx, 'authorYearTitle', { pipeTableMaxLineWidth: 0 });
 
     expect(result.markdown).toContain('<th>');
     expect(result.markdown).toContain('Header');
@@ -413,17 +415,170 @@ describe('colspan/rowspan roundtrip', () => {
   });
 });
 
+describe('Pipe table rendering', () => {
+  test('simple 2x2 table renders as pipe table by default', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tblPr><w:tblLook w:firstRow="1"/></w:tblPr>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>H1</w:t></w:r></w:p></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>H2</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('| H1 | H2 |');
+    expect(result.markdown).toContain('| --- | --- |');
+    expect(result.markdown).toContain('| A | B |');
+    expect(result.markdown).not.toContain('<table>');
+  });
+
+  test('table with colspan falls back to HTML', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>Span</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('<table>');
+    expect(result.markdown).toContain('colspan="2"');
+  });
+
+  test('table with rowspan falls back to HTML', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Tall</w:t></w:r></w:p></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>R1</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '<w:tr>'
+      + '<w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>R2</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('<table>');
+    expect(result.markdown).toContain('rowspan="2"');
+  });
+
+  test('table with multi-paragraph cell falls back to HTML', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc>'
+      + '<w:p><w:r><w:t>para one</w:t></w:r></w:p>'
+      + '<w:p><w:r><w:t>para two</w:t></w:r></w:p>'
+      + '</w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('<table>');
+    expect(result.markdown).toContain('<p>para one</p>');
+    expect(result.markdown).toContain('<p>para two</p>');
+  });
+
+  test('line width exceeding limit falls back to HTML', async () => {
+    const longText = 'x'.repeat(200);
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>' + longText + '</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('<table>');
+  });
+
+  test('pipeTableMaxLineWidth=0 always uses HTML', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf, 'authorYearTitle', { pipeTableMaxLineWidth: 0 });
+
+    expect(result.markdown).toContain('<table>');
+    expect(result.markdown).not.toContain('| A |');
+  });
+
+  test('pipe characters in cell content are escaped', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>a|b</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('a\\|b');
+    expect(result.markdown).not.toContain('<table>');
+  });
+
+  // GFM pipe tables always have a header row; when the DOCX has no header
+  // signal, the first row is promoted to header. A round-trip will mark it
+  // as a header — this is an accepted trade-off vs falling back to HTML.
+  test('table without header row still renders as pipe table', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>C</w:t></w:r></w:p></w:tc>'
+      + '<w:tc><w:p><w:r><w:t>D</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    expect(result.markdown).toContain('| A | B |');
+    expect(result.markdown).toContain('| --- | --- |');
+    expect(result.markdown).toContain('| C | D |');
+  });
+});
+
 describe('Integration: tables.docx fixture', () => {
-  test('converts tables.docx and produces three tables', async () => {
+  test('converts tables.docx and produces three tables (simple one as pipe, complex as HTML)', async () => {
     const result = await convertDocx(tablesData);
-    const tables = result.markdown.match(/<table>/g) || [];
-    expect(tables.length).toBe(3);
+    // Simple table becomes pipe table; two complex tables remain HTML
+    const htmlTables = result.markdown.match(/<table>/g) || [];
+    expect(htmlTables.length).toBe(2);
+    expect(result.markdown).toContain('| --- |');
   });
 
   test('simple table has header row and content cells', async () => {
     const result = await convertDocx(tablesData);
-    // First table: simple 2x5, first row is header
-    expect(result.markdown).toContain('<th>');
+    // First table: simple 2x5, first row is header — now a pipe table
     expect(result.markdown).toContain('Row 1 Col 1');
     expect(result.markdown).toContain('Row 2 Col 1');
     expect(result.markdown).toContain('Row 2 Col 5');

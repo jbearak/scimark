@@ -495,6 +495,42 @@ export function formatSeparatorRow(columnWidths: number[], alignments?: ColumnAl
  * @param text - The table text to reflow
  * @returns TextTransformation with the reflowed table
  */
+/**
+ * Compacts a markdown table by removing padding whitespace.
+ * Each cell is trimmed and separated by ` | ` with no extra padding.
+ * Separator row uses minimal `---` (with alignment colons preserved).
+ */
+export function compactTable(text: string): TextTransformation {
+  const parsed = parseTable(text);
+
+  if (!parsed) {
+    return { newText: text };
+  }
+
+  const { rows, alignments } = parsed;
+
+  const formattedRows = rows.map(row => {
+    if (row.isSeparator) {
+      const cells = row.cells.map((_, i) => {
+        const a = alignments[i] || 'default';
+        switch (a) {
+          case 'left': return ':---';
+          case 'right': return '---:';
+          case 'center': return ':---:';
+          default: return '---';
+        }
+      });
+      return '| ' + cells.join(' | ') + ' |';
+    } else {
+      return '| ' + row.cells.join(' | ') + ' |';
+    }
+  });
+
+  return {
+    newText: formattedRows.join('\n')
+  };
+}
+
 export function reflowTable(text: string): TextTransformation {
   const parsed = parseTable(text);
   

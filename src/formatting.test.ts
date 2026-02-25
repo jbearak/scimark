@@ -1,6 +1,6 @@
 import { describe, it } from 'bun:test';
 import * as fc from 'fast-check';
-import { wrapSelection, wrapLines, wrapLinesNumbered, formatHeading, highlightAndComment, wrapCodeBlock, substituteAndComment, additionAndComment, deletionAndComment, reflowTable, parseTable } from './formatting';
+import { wrapSelection, wrapLines, wrapLinesNumbered, formatHeading, highlightAndComment, wrapCodeBlock, substituteAndComment, additionAndComment, deletionAndComment, reflowTable, compactTable, parseTable } from './formatting';
 
 describe('Formatting Module Property Tests', () => {
   
@@ -1209,5 +1209,97 @@ describe('Property 9: Highlight formatting command wraps with == delimiters', ()
       }),
       { numRuns: 100 }
     );
+  });
+});
+
+describe('compactTable', () => {
+  it('removes padding whitespace from a padded table', () => {
+    const input = [
+      '| Name   | Age |',
+      '| ------ | --- |',
+      '| Alice  | 30  |',
+      '| Bob    | 7   |',
+    ].join('\n');
+    const result = compactTable(input);
+    const expected = [
+      '| Name | Age |',
+      '| --- | --- |',
+      '| Alice | 30 |',
+      '| Bob | 7 |',
+    ].join('\n');
+    if (result.newText !== expected) {
+      throw new Error('Expected:\n' + expected + '\n\nGot:\n' + result.newText);
+    }
+  });
+
+  it('preserves alignment indicators in compact form', () => {
+    const input = [
+      '| Left   | Center | Right  |',
+      '| :----- | :----: | -----: |',
+      '| a      | b      | c      |',
+    ].join('\n');
+    const result = compactTable(input);
+    const lines = result.newText.split('\n');
+    const sepCells = lines[1].split('|').slice(1, -1).map(c => c.trim());
+    // Column 0 → left (:--- but NOT :---:)
+    if (!sepCells[0].startsWith(':') || sepCells[0].endsWith(':'))
+      throw new Error('Missing left alignment, got: ' + sepCells[0]);
+    // Column 1 → center (:---:)
+    if (!sepCells[1].startsWith(':') || !sepCells[1].endsWith(':'))
+      throw new Error('Missing center alignment, got: ' + sepCells[1]);
+    // Column 2 → right (---:)
+    if (sepCells[2].startsWith(':') || !sepCells[2].endsWith(':'))
+      throw new Error('Missing right alignment, got: ' + sepCells[2]);
+  });
+
+  it('preserves cell content through compaction', () => {
+    const cellContentArb = fc.string({ minLength: 1, maxLength: 20 })
+      .filter(s => !s.includes('|') && !s.includes('\n'));
+
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: 5 }).chain(numRows =>
+          fc.integer({ min: 1, max: 4 }).chain(numCols =>
+            fc.array(
+              fc.array(cellContentArb, { minLength: numCols, maxLength: numCols }),
+              { minLength: numRows, maxLength: numRows }
+            )
+          )
+        ),
+        (rows) => {
+          const tableText = rows.map(row => '| ' + row.join(' | ') + ' |').join('\n');
+          const result = compactTable(tableText);
+          const originalParsed = parseTable(tableText);
+          const compactedParsed = parseTable(result.newText);
+          if (!originalParsed || !compactedParsed) return false;
+          const origCells = originalParsed.rows.filter(r => !r.isSeparator).flatMap(r => r.cells);
+          const compCells = compactedParsed.rows.filter(r => !r.isSeparator).flatMap(r => r.cells);
+          return origCells.length === compCells.length &&
+            origCells.every((c, i) => c === compCells[i]);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  it('returns original text for non-table input', () => {
+    const text = 'not a table';
+    const result = compactTable(text);
+    if (result.newText !== text) throw new Error('Should return original text');
+  });
+
+  it('is the inverse of reflowTable (reflow then compact removes padding)', () => {
+    const input = '| a | bb | ccc |\n| --- | --- | --- |\n| d | ee | fff |';
+    const reflowed = reflowTable(input);
+    const compacted = compactTable(reflowed.newText);
+    const parsed = parseTable(compacted.newText);
+    if (!parsed) throw new Error('Should be valid table');
+    // After compact, no cell should have trailing spaces
+    for (const row of parsed.rows) {
+      if (row.isSeparator) continue;
+      for (const cell of row.cells) {
+        if (cell !== cell.trim()) throw new Error('Cell has extra whitespace: "' + cell + '"');
+      }
+    }
   });
 });

@@ -2739,6 +2739,102 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
   return lines.join('\n');
 }
 
+type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> };
+
+/**
+ * Try to render a table as a GFM pipe table. Returns null if the table is
+ * ineligible (spans, multi-paragraph cells, newlines in content, or width
+ * exceeding the limit). Rendering and eligibility checking are combined into
+ * one pass so that renderInlineSegment side-effects (e.g. emittedIdCommentBodies)
+ * are not duplicated.
+ */
+function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, comments: Map<string, Comment>, renderOpts?: RenderOpts): string | null {
+  if (maxLineWidth <= 0) return null;
+  const rows = table.rows;
+  if (rows.length === 0) return null;
+
+  // Structural checks first (no side effects)
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if (cell.colspan && cell.colspan > 1) return null;
+      if (cell.rowspan && cell.rowspan > 1) return null;
+      if (cell.paragraphs.length > 1) return null;
+    }
+  }
+
+  const numCols = Math.max(...rows.map(r => r.cells.length));
+
+  // Snapshot emittedIdCommentBodies so we can restore on fallback.
+  // renderInlineSegment marks deferred comment bodies as emitted; if we
+  // bail out after rendering (newline or width), the HTML path must be
+  // able to re-render them.
+  const emittedSnapshot = renderOpts?.emittedIdCommentBodies
+    ? new Set(renderOpts.emittedIdCommentBodies) : undefined;
+  const rollback = () => {
+    if (emittedSnapshot && renderOpts?.emittedIdCommentBodies) {
+      renderOpts.emittedIdCommentBodies.clear();
+      for (const v of emittedSnapshot) renderOpts.emittedIdCommentBodies.add(v);
+    }
+  };
+
+  // Render all cell contents (single pass — side effects happen here)
+  const rendered: { text: string; deferred: string[] }[][] = [];
+  for (const row of rows) {
+    const rowCells: { text: string; deferred: string[] }[] = [];
+    for (const cell of row.cells) {
+      if (cell.paragraphs.length > 0) {
+        const r = renderInlineSegment(mergeConsecutiveRuns(cell.paragraphs[0]), comments, renderOpts);
+        if (r.text.includes('\n')) { rollback(); return null; }
+        rowCells.push({ text: r.text.replace(/\|/g, '\\|'), deferred: r.deferredComments });
+      } else {
+        rowCells.push({ text: '', deferred: [] });
+      }
+    }
+    while (rowCells.length < numCols) {
+      rowCells.push({ text: '', deferred: [] });
+    }
+    rendered.push(rowCells);
+  }
+
+  // Check row widths
+  for (const rowCells of rendered) {
+    // | + (space + content + space + |) per cell
+    let width = 1;
+    for (const c of rowCells) {
+      width += 1 + c.text.length + 1 + 1; // space + content + space + |
+    }
+    if (width > maxLineWidth) { rollback(); return null; }
+  }
+
+  // Separator row: | --- | --- | ... | — each column occupies 6 chars
+  const separatorWidth = 1 + numCols * 6;
+  if (separatorWidth > maxLineWidth) { rollback(); return null; }
+
+  // Build pipe table lines
+  const lines: string[] = [];
+  const deferredAll: string[] = [];
+
+  // GFM pipe tables always require a header row. If the DOCX table has no
+  // header signal, the first row is promoted — an accepted round-trip trade-off.
+  const headerCells = rendered[0];
+  lines.push('| ' + headerCells.map(c => c.text).join(' | ') + ' |');
+  for (const c of headerCells) deferredAll.push(...c.deferred);
+
+  lines.push('| ' + Array(numCols).fill('---').join(' | ') + ' |');
+
+  for (let i = 1; i < rendered.length; i++) {
+    const rowCells = rendered[i];
+    lines.push('| ' + rowCells.map(c => c.text).join(' | ') + ' |');
+    for (const c of rowCells) deferredAll.push(...c.deferred);
+  }
+
+  let result = lines.join('\n');
+  if (deferredAll.length > 0) {
+    result += '\n' + deferredAll.join('\n');
+  }
+  return result;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -2790,7 +2886,7 @@ function stripAlertLeadPrefix(text: string, alertType: GfmAlertType): string {
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3192,7 +3288,13 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      output.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
+      const pipeMax = options?.pipeTableMaxLineWidth ?? 120;
+      const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts);
+      if (pipeResult !== null) {
+        output.push(pipeResult);
+      } else {
+        output.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
+      }
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
       pendingAlertPrefixStrip = undefined;
@@ -3284,7 +3386,13 @@ export function buildMarkdown(
             bodyParts.push(part.text);
             deferredAll.push(...part.deferredComments);
           }
-          bodyParts.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
+          const pipeMax2 = options?.pipeTableMaxLineWidth ?? 120;
+          const pipeResult2 = tryRenderPipeTable(item, pipeMax2, comments, renderOpts);
+          if (pipeResult2 !== null) {
+            bodyParts.push(pipeResult2);
+          } else {
+            bodyParts.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
+          }
           partStart = bi + 1;
         }
       }
@@ -3654,7 +3762,7 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
 export async function convertDocx(
   data: Uint8Array,
   format: CitationKeyFormat = 'authorYearTitle',
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
   const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping] = await Promise.all([
@@ -3762,6 +3870,7 @@ export async function convertDocx(
   let markdown = buildMarkdown(docContent, comments, {
     tableIndent: options?.tableIndent,
     alwaysUseCommentIds: options?.alwaysUseCommentIds,
+    pipeTableMaxLineWidth: options?.pipeTableMaxLineWidth,
     commentIdMapping,
     notes: notesMap.size > 0 ? { map: notesMap, assignedLabels } : undefined,
     codeBlockLangs: codeBlockLangMapping,

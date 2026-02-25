@@ -104,6 +104,7 @@ export interface Frontmatter {
   codeBackgroundColor?: string;
   codeFontColor?: string;
   codeBlockInset?: number;
+  pipeTableMaxLineWidth?: number;
   blockquoteStyle?: BlockquoteStyle;
   colors?: ColorScheme;
 }
@@ -233,6 +234,14 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
         }
         break;
       }
+      // 0 = disable pipe tables (always HTML); positive = max line width
+      case 'pipe-table-max-line-width': {
+        const n = parseInt(value, 10);
+        if (Number.isInteger(n) && n >= 0 && value.trim() === String(n)) {
+          metadata.pipeTableMaxLineWidth = n;
+        }
+        break;
+      }
       case 'blockquote-style': {
         const style = normalizeBlockquoteStyle(value);
         if (style) metadata.blockquoteStyle = style;
@@ -293,6 +302,7 @@ export function serializeFrontmatter(metadata: Frontmatter): string {
   if (metadata.codeBackgroundColor) lines.push('code-background-color: ' + metadata.codeBackgroundColor);
   if (metadata.codeFontColor) lines.push('code-font-color: ' + metadata.codeFontColor);
   if (metadata.codeBlockInset !== undefined) lines.push('code-block-inset: ' + metadata.codeBlockInset);
+  if (metadata.pipeTableMaxLineWidth !== undefined) lines.push('pipe-table-max-line-width: ' + metadata.pipeTableMaxLineWidth);
   if (metadata.blockquoteStyle) lines.push('blockquote-style: ' + metadata.blockquoteStyle);
   if (metadata.colors) lines.push('colors: ' + metadata.colors);
   if (lines.length === 0) return '';
