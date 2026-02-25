@@ -498,7 +498,8 @@ describe('Pipe table rendering', () => {
   });
 
   test('line width exceeding limit falls back to HTML', async () => {
-    const longText = 'x'.repeat(200);
+    const maxWidth = 80;
+    const longText = 'x'.repeat(maxWidth);
     const xml = wrapDocumentXml(
       '<w:tbl>'
       + '<w:tr>'
@@ -507,7 +508,7 @@ describe('Pipe table rendering', () => {
       + '</w:tbl>'
     );
     const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf);
+    const result = await convertDocx(buf, 'authorYearTitle', { pipeTableMaxLineWidth: maxWidth });
 
     expect(result.markdown).toContain('<table>');
   });
@@ -542,6 +543,27 @@ describe('Pipe table rendering', () => {
     expect(result.markdown).not.toContain('<table>');
   });
 
+  test('already-escaped backslash-pipe in cell content is not double-escaped', async () => {
+    // If the rendered text already contains \|, we must not turn it into \\|
+    // which would produce an escaped backslash + bare pipe, breaking the cell.
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:p><w:r><w:t>a\\|b</w:t></w:r></w:p></w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+
+    // The backslash should be escaped and pipe should be escaped independently
+    expect(result.markdown).toContain('a\\\\\\|b');
+    expect(result.markdown).not.toContain('<table>');
+    // The output should have exactly one pipe-table row with this cell
+    const lines = result.markdown.split('\n').filter(l => l.includes('a\\\\'));
+    expect(lines.length).toBe(1);
+  });
+
   // GFM pipe tables always have a header row; when the DOCX has no header
   // signal, the first row is promoted to header. A round-trip will mark it
   // as a header — this is an accepted trade-off vs falling back to HTML.
@@ -564,6 +586,64 @@ describe('Pipe table rendering', () => {
     expect(result.markdown).toContain('| A | B |');
     expect(result.markdown).toContain('| --- | --- |');
     expect(result.markdown).toContain('| C | D |');
+  });
+
+  test('commented run in cell with HTML fallback emits comment body exactly once', async () => {
+    const xml = wrapDocumentXml(
+      '<w:tbl>'
+      + '<w:tr>'
+      + '<w:tc><w:p>'
+      + '<w:commentRangeStart w:id="1"/>'
+      + '<w:r><w:t>annotated cell</w:t></w:r>'
+      + '<w:commentRangeEnd w:id="1"/>'
+      + '</w:p>'
+      + '<w:p><w:r><w:t>second paragraph</w:t></w:r></w:p>'
+      + '</w:tc>'
+      + '</w:tr>'
+      + '</w:tbl>'
+    );
+    const commentsXml =
+      '<?xml version="1.0"?>'
+      + '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+      + '<w:comment w:id="1" w:author="Tester" w:date="2025-06-01T00:00:00Z"><w:p><w:r><w:t>unique review note</w:t></w:r></w:p></w:comment>'
+      + '</w:comments>';
+    const buf = await buildSyntheticDocx(xml, { 'word/comments.xml': commentsXml });
+    const result = await convertDocx(buf, 'authorYearTitle', {
+      alwaysUseCommentIds: true,
+      pipeTableMaxLineWidth: 0,
+    });
+
+    // Multi-paragraph cell forces HTML fallback
+    expect(result.markdown).toContain('<table>');
+    // Comment body text appears exactly once
+    const bodyMatches = result.markdown.match(/unique review note/g) || [];
+    expect(bodyMatches.length).toBe(1);
+  });
+
+  test('frontmatter pipe-table-max-line-width round-trips through MD→DOCX→MD', async () => {
+    // Build a simple markdown with a pipe table and a non-default max line width
+    const md = [
+      '---',
+      'pipe-table-max-line-width: 80',
+      '---',
+      '',
+      '| H1 | H2 |',
+      '| --- | --- |',
+      '| A | B |',
+      '',
+    ].join('\n');
+
+    // MD → DOCX
+    const docxResult = await convertMdToDocx(md);
+    const docxBuf = docxResult.docx;
+
+    // DOCX → MD with a different default (120), but the stored value (80) should win
+    const mdResult = await convertDocx(docxBuf, 'authorYearTitle', {
+      pipeTableMaxLineWidthDefault: 120,
+    });
+
+    // The frontmatter should contain the round-tripped value
+    expect(mdResult.markdown).toMatch(/pipe-table-max-line-width:\s*80/);
   });
 });
 

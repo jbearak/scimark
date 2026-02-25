@@ -2922,6 +2922,11 @@ function codeBlockStylingProps(fm: Frontmatter): CustomPropEntry[] {
   return [{ name: 'MANUSCRIPT_CODE_BLOCK_STYLING', value: JSON.stringify(obj) }];
 }
 
+function pipeTableMaxLineWidthProps(fm: Frontmatter): CustomPropEntry[] {
+  if (fm.pipeTableMaxLineWidth === undefined) return [];
+  return [{ name: 'MANUSCRIPT_PIPE_TABLE_MAX_LINE_WIDTH', value: String(fm.pipeTableMaxLineWidth) }];
+}
+
 function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageRelationships?: Map<string, { rId: string; mediaPath: string }>): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
@@ -4120,6 +4125,7 @@ export async function convertMdToDocx(
   customProps.push(...footnoteIdMappingProps(state.footnoteLabelToId));
   customProps.push(...codeBlockLanguageProps(state.codeBlockLanguages));
   customProps.push(...codeBlockStylingProps(frontmatter));
+  customProps.push(...pipeTableMaxLineWidthProps(frontmatter));
   customProps.push(...blockquoteGapProps(state.blockquoteGaps));
   customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
   customProps.push(...imageFormatProps(state.imageFormats));

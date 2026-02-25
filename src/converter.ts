@@ -961,6 +961,27 @@ export async function extractCodeBlockStyling(data: Uint8Array | JSZip): Promise
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_CODE_BLOCK_STYLING');
 }
 
+export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Promise<number | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_PIPE_TABLE_MAX_LINE_WIDTH') continue;
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const n = parseInt(nodeText(child['vt:lpwstr'] || []), 10);
+        if (Number.isInteger(n) && n >= 0) return n;
+      }
+    }
+  }
+  return null;
+}
+
 // Extract blockquote gap metadata from custom XML properties.
 // Returns a Map<number, number> mapping group index → blank-line count between
 // that group and the next.  Uses the same chunked-JSON pattern as code block
@@ -2741,6 +2762,38 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
 
 type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> };
 
+// East Asian Wide / Fullwidth code-point ranges (UAX #11).  Characters in
+// these ranges occupy two terminal columns; everything else is treated as
+// single-width.  This is intentionally conservative — zero-width joiners,
+// combining marks, etc. are counted as width-1 which is acceptable for the
+// "does the pipe table fit?" heuristic.
+function isFullWidth(cp: number): boolean {
+  return (
+    (cp >= 0x1100 && cp <= 0x115f) ||  // Hangul Jamo
+    (cp >= 0x2e80 && cp <= 0x303e) ||  // CJK Radicals, Kangxi, Symbols
+    (cp >= 0x3040 && cp <= 0x33bf) ||  // Hiragana, Katakana, CJK compat
+    (cp >= 0x3400 && cp <= 0x4dbf) ||  // CJK Extension A
+    (cp >= 0x4e00 && cp <= 0xa4cf) ||  // CJK Unified, Yi
+    (cp >= 0xac00 && cp <= 0xd7af) ||  // Hangul Syllables
+    (cp >= 0xf900 && cp <= 0xfaff) ||  // CJK Compatibility Ideographs
+    (cp >= 0xfe10 && cp <= 0xfe6f) ||  // Vertical forms, CJK compat forms
+    (cp >= 0xff01 && cp <= 0xff60) ||  // Fullwidth Latin/Symbols
+    (cp >= 0xffe0 && cp <= 0xffe6) ||  // Fullwidth Signs
+    (cp >= 0x1f000 && cp <= 0x1fbff) || // Emoji & symbols
+    (cp >= 0x20000 && cp <= 0x2ffff) || // CJK Extension B–F
+    (cp >= 0x30000 && cp <= 0x3ffff)    // CJK Extension G+
+  );
+}
+
+function getDisplayWidth(str: string): number {
+  let width = 0;
+  for (const ch of str) {
+    const cp = ch.codePointAt(0)!;
+    width += isFullWidth(cp) ? 2 : 1;
+  }
+  return width;
+}
+
 /**
  * Try to render a table as a GFM pipe table. Returns null if the table is
  * ineligible (spans, multi-paragraph cells, newlines in content, or width
@@ -2785,7 +2838,11 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
       if (cell.paragraphs.length > 0) {
         const r = renderInlineSegment(mergeConsecutiveRuns(cell.paragraphs[0]), comments, renderOpts);
         if (r.text.includes('\n')) { rollback(); return null; }
-        rowCells.push({ text: r.text.replace(/\|/g, '\\|'), deferred: r.deferredComments });
+        // Escape pipes for GFM table cells: \| in source must become \\\| (escaped
+        // backslash + escaped pipe); bare | must become \|. Single-pass callback
+        // avoids double-escape issues with two-step approaches.
+        const escaped = r.text.replace(/\\?\|/g, m => m.length === 2 ? '\\\\\\|' : '\\|');
+        rowCells.push({ text: escaped, deferred: r.deferredComments });
       } else {
         rowCells.push({ text: '', deferred: [] });
       }
@@ -2796,12 +2853,12 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
     rendered.push(rowCells);
   }
 
-  // Check row widths
+  // Check row widths (using display width to account for wide characters)
   for (const rowCells of rendered) {
     // | + (space + content + space + |) per cell
     let width = 1;
     for (const c of rowCells) {
-      width += 1 + c.text.length + 1 + 1; // space + content + space + |
+      width += 1 + getDisplayWidth(c.text) + 1 + 1; // space + content + space + |
     }
     if (width > maxLineWidth) { rollback(); return null; }
   }
@@ -2882,6 +2939,21 @@ function stripAlertLeadPrefix(text: string, alertType: GfmAlertType): string {
   return text;
 }
 
+
+/** Render a table as a GFM pipe table if possible, otherwise fall back to HTML. */
+function renderTableOrFallback(
+  item: { rows: TableRow[] },
+  comments: Map<string, Comment>,
+  options?: { pipeTableMaxLineWidth?: number; tableIndent?: string },
+  renderOpts?: RenderOpts,
+): string {
+  const pipeMax = options?.pipeTableMaxLineWidth ?? 120;
+  const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts);
+  if (pipeResult !== null) {
+    return pipeResult;
+  }
+  return renderHtmlTable(item, comments, options?.tableIndent, renderOpts);
+}
 
 export function buildMarkdown(
   content: ContentItem[],
@@ -3288,13 +3360,7 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      const pipeMax = options?.pipeTableMaxLineWidth ?? 120;
-      const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts);
-      if (pipeResult !== null) {
-        output.push(pipeResult);
-      } else {
-        output.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
-      }
+      output.push(renderTableOrFallback(item, comments, options, renderOpts));
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
       pendingAlertPrefixStrip = undefined;
@@ -3386,13 +3452,7 @@ export function buildMarkdown(
             bodyParts.push(part.text);
             deferredAll.push(...part.deferredComments);
           }
-          const pipeMax2 = options?.pipeTableMaxLineWidth ?? 120;
-          const pipeResult2 = tryRenderPipeTable(item, pipeMax2, comments, renderOpts);
-          if (pipeResult2 !== null) {
-            bodyParts.push(pipeResult2);
-          } else {
-            bodyParts.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
-          }
+          bodyParts.push(renderTableOrFallback(item, comments, options, renderOpts));
           partStart = bi + 1;
         }
       }
@@ -3762,10 +3822,10 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
 export async function convertDocx(
   data: Uint8Array,
   format: CitationKeyFormat = 'authorYearTitle',
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, storedPipeTableMaxLineWidth] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -3778,7 +3838,14 @@ export async function convertDocx(
     extractBlockquoteGapMapping(zip),
     extractBlockquoteAlertStyleMapping(zip),
     extractImageFormatMapping(zip),
+    extractPipeTableMaxLineWidth(zip),
   ]);
+
+  // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
+  const resolvedPipeTableMaxLineWidth = options?.pipeTableMaxLineWidth
+    ?? storedPipeTableMaxLineWidth
+    ?? options?.pipeTableMaxLineWidthDefault
+    ?? 120;
 
   // Group reply comments under their parents and get IDs to exclude from ranges
   const replyIds = groupCommentThreads(comments, threads);
@@ -3870,7 +3937,7 @@ export async function convertDocx(
   let markdown = buildMarkdown(docContent, comments, {
     tableIndent: options?.tableIndent,
     alwaysUseCommentIds: options?.alwaysUseCommentIds,
-    pipeTableMaxLineWidth: options?.pipeTableMaxLineWidth,
+    pipeTableMaxLineWidth: resolvedPipeTableMaxLineWidth,
     commentIdMapping,
     notes: notesMap.size > 0 ? { map: notesMap, assignedLabels } : undefined,
     codeBlockLangs: codeBlockLangMapping,
@@ -3923,6 +3990,9 @@ export async function convertDocx(
     if (fc) fm.codeFontColor = fc;
     const insetStr = codeBlockStyling.get('inset');
     if (insetStr) { const n = parseInt(insetStr, 10); if (n > 0) fm.codeBlockInset = n; }
+  }
+  if (resolvedPipeTableMaxLineWidth !== 120) {
+    fm.pipeTableMaxLineWidth = resolvedPipeTableMaxLineWidth;
   }
   const frontmatterStr = serializeFrontmatter(fm);
   if (frontmatterStr) {

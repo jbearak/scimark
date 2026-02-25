@@ -490,12 +490,6 @@ export function formatSeparatorRow(columnWidths: number[], alignments?: ColumnAl
 }
 
 /**
- * Reflows a markdown table to ensure proper alignment and consistent spacing.
- * Implementation note: Preserve existing alignment/padding; only reflow when explicitly requested.
- * @param text - The table text to reflow
- * @returns TextTransformation with the reflowed table
- */
-/**
  * Compacts a markdown table by removing padding whitespace.
  * Each cell is trimmed and separated by ` | ` with no extra padding.
  * Separator row uses minimal `---` (with alignment colons preserved).
@@ -531,6 +525,12 @@ export function compactTable(text: string): TextTransformation {
   };
 }
 
+/**
+ * Reflows a markdown table to ensure proper alignment and consistent spacing.
+ * Implementation note: Preserve existing alignment/padding; only reflow when explicitly requested.
+ * @param text - The table text to reflow
+ * @returns TextTransformation with the reflowed table
+ */
 export function reflowTable(text: string): TextTransformation {
   const parsed = parseTable(text);
   

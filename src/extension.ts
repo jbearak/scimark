@@ -295,7 +295,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const result = await convertDocx(new Uint8Array(data), format, {
 					tableIndent: ' '.repeat(tableIndentSpaces),
 					alwaysUseCommentIds,
-					pipeTableMaxLineWidth,
+					pipeTableMaxLineWidthDefault: pipeTableMaxLineWidth,
 				});
 
 				const basePath = uri.fsPath.replace(/\.docx$/i, '');
