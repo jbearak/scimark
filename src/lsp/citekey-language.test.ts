@@ -440,6 +440,18 @@ describe('buildBibFieldLink', () => {
 		expect(result!.label).toContain('Invalid URL');
 	});
 
+	test('returns invalid for scheme-only URL with no host', () => {
+		const result = buildBibFieldLink('url', 'https://');
+		expect(result).toBeDefined();
+		expect(result!.invalid).toBe(true);
+	});
+
+	test('returns invalid for URL containing whitespace', () => {
+		const result = buildBibFieldLink('url', 'https://example.com bad');
+		expect(result).toBeDefined();
+		expect(result!.invalid).toBe(true);
+	});
+
 	test('returns invalid for malformed DOI', () => {
 		const result = buildBibFieldLink('doi', 'not-a-doi');
 		expect(result).toBeDefined();

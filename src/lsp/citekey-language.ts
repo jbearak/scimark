@@ -471,7 +471,7 @@ const VALID_ISBN_RE = /^[\d-]{9,17}[\dXx]$/;
 // ISSNs: 4 digits, hyphen, 3 digits, check digit (digit or X)
 const VALID_ISSN_RE = /^\d{4}-?\d{3}[\dXx]$/;
 
-const VALID_URL_RE = /^https?:\/\//i;
+const VALID_URL_RE = /^https?:\/\/\S+$/i;
 
 export function buildBibFieldLink(fieldName: string, rawValue: string): BibFieldLink | undefined {
 	const name = fieldName.toLowerCase();
