@@ -267,8 +267,8 @@
         "icon": "$(file-binary)"
       },
       {
-        "id": "markdown.highlightColor",
-        "label": "Highlight Color"
+        "id": "markdown.highlight",
+        "label": "Highlight"
       }
     ],
     "menus": {
@@ -380,14 +380,9 @@
           "group": "1_format@5"
         },
         {
-          "command": "manuscript-markdown.formatHighlight",
+          "submenu": "markdown.highlight",
           "when": "editorLangId == markdown",
           "group": "1a_highlight@1"
-        },
-        {
-          "submenu": "markdown.highlightColor",
-          "when": "editorLangId == markdown",
-          "group": "1a_highlight@2"
         },
         {
           "command": "manuscript-markdown.formatInlineCode",
@@ -486,7 +481,12 @@
           "group": "1_heading@6"
         }
       ],
-      "markdown.highlightColor": [
+      "markdown.highlight": [
+        {
+          "command": "manuscript-markdown.formatHighlight",
+          "when": "editorLangId == markdown",
+          "group": "1_default@1"
+        },
         {
           "command": "manuscript-markdown.formatHighlight_yellow",
           "when": "editorLangId == markdown",
