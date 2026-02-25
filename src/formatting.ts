@@ -338,7 +338,8 @@ export function isTableRow(line: string): boolean {
     return false;
   }
 
-  // Must start and end with | (unescaped)
+  // Must start with | and end with | (the trailing | may be an escaped pipe
+  // treated as content by the parser — this is intentional; see tests).
   if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
     return false;
   }

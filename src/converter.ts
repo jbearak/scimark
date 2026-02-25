@@ -974,7 +974,7 @@ export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Pr
     if (!Array.isArray(children)) continue;
     for (const child of children) {
       if (child['vt:lpwstr'] !== undefined) {
-        const raw = nodeText(child['vt:lpwstr'] || []);
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
         if (!/^\d+$/.test(raw)) continue;
         const n = parseInt(raw, 10);
         if (n >= 0) return n;
@@ -2818,6 +2818,12 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
   }
 
   const numCols = Math.max(...rows.map(r => r.cells.length));
+
+  // GFM pipe tables support exactly one header row (the first).  Bail out if
+  // the DOCX marks multiple header rows or a non-first row as header.
+  const explicitHeaderRows = rows.reduce((n, r) => n + (r.isHeader ? 1 : 0), 0);
+  if (explicitHeaderRows > 1) return null;
+  if (explicitHeaderRows === 1 && !rows[0].isHeader) return null;
 
   // Snapshot emittedIdCommentBodies so we can restore on fallback.
   // renderInlineSegment marks deferred comment bodies as emitted; if we
