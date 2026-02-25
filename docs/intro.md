@@ -72,11 +72,9 @@ Markdown is a way of formatting text using plain characters. Here are the essent
 ```markdown
 **bold text**
 _italic text_
-==highlighted text==
-==highlighted text=={red}
+*synonym for italic text*
+***bold-italic text***
 ```
-
-The highlight color is optional — without it, the color from the `manuscriptMarkdown.defaultHighlightColor` setting is used, falling back to yellow if that setting is missing or invalid.
 
 #### Citations
 
