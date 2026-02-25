@@ -36,13 +36,8 @@ Text formatting, lists, and structure commands for Markdown editing.
 | | **Numbered List** | `manuscript-markdown.formatNumberedList` |
 | | **Task List** | `manuscript-markdown.formatTaskList` |
 | | **Quote Block** | `manuscript-markdown.formatQuoteBlock` |
-| Tables | **Reflow Table** | `manuscript-markdown.reflowTable` |
-| | **Compact Table** | `manuscript-markdown.compactTable` |
+| Tables | **Reflow Table** ▸ | submenu — see below |
 | Heading | **Heading** ▸ | submenu — see below |
-
-> **Reflow Table** re-aligns a Markdown pipe table — the kind you build with `|` and `-` characters — so that the `|` column separators line up neatly. Place your cursor anywhere in the table and run the command.
->
-> **Compact Table** is the inverse of Reflow Table: it strips padding whitespace from each cell and reduces the separator row to minimal `---` dashes (preserving alignment colons). Place your cursor anywhere in the table and run the command. Useful for keeping tables narrow in version-controlled files.
 
 #### Highlight Color submenu
 
@@ -66,6 +61,17 @@ The colors are shown in three groups, separated by divider lines. The group labe
 | | **Black** | `manuscript-markdown.formatHighlight_black` |
 
 > The plain **Highlight** command uses the color set in `manuscript-markdown.defaultHighlightColor` (default: yellow). The **Highlight Color** submenu lets you pick a specific color. See [Configuration](configuration.md) for details.
+
+#### Reflow Table submenu
+
+| Item | Command |
+|------|---------|
+| **Expand Table** | `manuscript-markdown.reflowTable` |
+| **Compact Table** | `manuscript-markdown.compactTable` |
+
+> **Expand Table** re-aligns a Markdown pipe table — the kind you build with `|` and `-` characters — so that the `|` column separators line up neatly. Place your cursor anywhere in the table and run the command.
+>
+> **Compact Table** is the inverse of Expand Table: it strips padding whitespace from each cell and reduces the separator row to minimal `---` dashes (preserving alignment colons). Place your cursor anywhere in the table and run the command. Useful for keeping tables narrow in version-controlled files.
 
 #### Heading submenu
 

@@ -149,7 +149,7 @@
       },
       {
         "command": "manuscript-markdown.reflowTable",
-        "title": "Reflow Table"
+        "title": "Expand Table"
       },
       {
         "command": "manuscript-markdown.compactTable",
@@ -252,6 +252,10 @@
       {
         "id": "markdown.heading",
         "label": "Heading"
+      },
+      {
+        "id": "markdown.reflowTable",
+        "label": "Reflow Table"
       },
       {
         "id": "docx.actions",
@@ -417,19 +421,26 @@
           "group": "2_lists@4"
         },
         {
-          "command": "manuscript-markdown.reflowTable",
+          "submenu": "markdown.reflowTable",
           "when": "editorLangId == markdown",
           "group": "2_tables@5"
-        },
-        {
-          "command": "manuscript-markdown.compactTable",
-          "when": "editorLangId == markdown",
-          "group": "2_tables@6"
         },
         {
           "submenu": "markdown.heading",
           "when": "editorLangId == markdown",
           "group": "3_heading@1"
+        }
+      ],
+      "markdown.reflowTable": [
+        {
+          "command": "manuscript-markdown.reflowTable",
+          "when": "editorLangId == markdown",
+          "group": "1_tables@1"
+        },
+        {
+          "command": "manuscript-markdown.compactTable",
+          "when": "editorLangId == markdown",
+          "group": "1_tables@2"
         }
       ],
       "markdown.heading": [
