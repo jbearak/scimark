@@ -221,8 +221,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register table formatting commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('manuscript-markdown.reflowTable', () => 
+		vscode.commands.registerCommand('manuscript-markdown.reflowTable', () =>
 			applyTableFormatting((text) => formatting.reflowTable(text))
+		),
+		vscode.commands.registerCommand('manuscript-markdown.compactTable', () =>
+			applyTableFormatting((text) => formatting.compactTable(text))
 		)
 	);
 
@@ -288,9 +291,11 @@ export function activate(context: vscode.ExtensionContext) {
 				const format = config.get<CitationKeyFormat>('citationKeyFormat', 'authorYearTitle');
 				const tableIndentSpaces = config.get<number>('tableIndent', 2);
 				const alwaysUseCommentIds = config.get<boolean>('alwaysUseCommentIds', false);
+				const pipeTableMaxLineWidth = config.get<number>('pipeTableMaxLineWidth', 120);
 				const result = await convertDocx(new Uint8Array(data), format, {
 					tableIndent: ' '.repeat(tableIndentSpaces),
 					alwaysUseCommentIds,
+					pipeTableMaxLineWidthDefault: pipeTableMaxLineWidth,
 				});
 
 				const basePath = uri.fsPath.replace(/\.docx$/i, '');

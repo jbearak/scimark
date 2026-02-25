@@ -22,6 +22,8 @@ export interface CliOptions {
   cslCacheDir: string;
   tableIndent: string;
   alwaysUseCommentIds: boolean;
+  pipeTableMaxLineWidth: number;
+  pipeTableMaxLineWidthExplicit: boolean;
   blockquoteStyle: BlockquoteStyle;
   colors: ColorScheme;
 }
@@ -38,6 +40,8 @@ export function parseArgs(argv: string[]): CliOptions {
     tableIndent: '  ',
     noTemplate: false,
     alwaysUseCommentIds: false,
+    pipeTableMaxLineWidth: 120,
+    pipeTableMaxLineWidthExplicit: false,
     blockquoteStyle: 'GitHub',
     colors: 'guttmacher',
   };
@@ -80,11 +84,19 @@ export function parseArgs(argv: string[]): CliOptions {
       options.alwaysUseCommentIds = true;
     } else if (arg === '--table-indent') {
       const val = requireValue('--table-indent');
-      const n = parseInt(val, 10);
-      if (isNaN(n) || n < 0) {
+      if (!/^\d+$/.test(val)) {
         throw new Error(`Invalid table indent "${val}". Use a non-negative integer`);
       }
+      const n = parseInt(val, 10);
       options.tableIndent = ' '.repeat(n);
+    } else if (arg === '--pipe-table-max-line-width') {
+      const val = requireValue('--pipe-table-max-line-width');
+      if (!/^\d+$/.test(val)) {
+        throw new Error('Invalid pipe table max line width "' + val + '". Use a non-negative integer');
+      }
+      const n = parseInt(val, 10);
+      options.pipeTableMaxLineWidth = n;
+      options.pipeTableMaxLineWidthExplicit = true;
     } else if (arg === '--blockquote-style') {
       const raw = requireValue('--blockquote-style');
       const style = normalizeBlockquoteStyle(raw);
@@ -138,6 +150,7 @@ Options:
   --author <name>                 Author name (MD→DOCX, default: OS username)
   --csl-cache-dir <path>          CSL style cache directory
   --table-indent <n>              Spaces per indent level in HTML tables (DOCX→MD, default: 2)
+  --pipe-table-max-line-width <n> Max line width for pipe tables; 0 = always HTML (DOCX→MD, default: 120)
   --always-use-comment-ids        Always use ID-based comment syntax (DOCX→MD)
   --blockquote-style <style>      Blockquote style: Quote, IntenseQuote, GitHub (MD→DOCX, default: GitHub)
   --colors <scheme>               Alert color scheme: GitHub, Guttmacher (MD→DOCX, default: Guttmacher)`);
@@ -190,7 +203,13 @@ async function runDocxToMd(options: CliOptions) {
   // Check output conflicts up-front so dual conflicts are reported together.
   assertNoDocxToMdConflicts(mdPath, bibPath, options.force);
 
-  const result = await convertDocx(data, options.citationKeyFormat, { tableIndent: options.tableIndent, alwaysUseCommentIds: options.alwaysUseCommentIds });
+  const result = await convertDocx(data, options.citationKeyFormat, {
+    tableIndent: options.tableIndent,
+    alwaysUseCommentIds: options.alwaysUseCommentIds,
+    ...(options.pipeTableMaxLineWidthExplicit
+      ? { pipeTableMaxLineWidth: options.pipeTableMaxLineWidth }
+      : { pipeTableMaxLineWidthDefault: options.pipeTableMaxLineWidth }),
+  });
   fs.writeFileSync(mdPath, result.markdown);
   console.log(mdPath);
 

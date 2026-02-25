@@ -152,6 +152,10 @@
         "title": "Reflow Table"
       },
       {
+        "command": "manuscript-markdown.compactTable",
+        "title": "Compact Table"
+      },
+      {
         "command": "manuscript-markdown.convertDocx",
         "title": "Export to Markdown"
       },
@@ -418,6 +422,11 @@
           "group": "2_tables@5"
         },
         {
+          "command": "manuscript-markdown.compactTable",
+          "when": "editorLangId == markdown",
+          "group": "2_tables@6"
+        },
+        {
           "submenu": "markdown.heading",
           "when": "editorLangId == markdown",
           "group": "3_heading@1"
@@ -668,6 +677,12 @@
           "default": 2,
           "minimum": 0,
           "description": "Number of spaces per indent level for HTML tables in DOCX to Markdown conversion"
+        },
+        "manuscriptMarkdown.pipeTableMaxLineWidth": {
+          "type": "integer",
+          "default": 120,
+          "minimum": 0,
+          "description": "Maximum line width for pipe tables in DOCX→MD conversion. Tables exceeding this width, or containing colspans/rowspans/line breaks, fall back to HTML. Set to 0 to always use HTML tables."
         },
         "manuscriptMarkdown.citationKeyFormat": {
           "type": "string",

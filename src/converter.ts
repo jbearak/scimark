@@ -961,6 +961,28 @@ export async function extractCodeBlockStyling(data: Uint8Array | JSZip): Promise
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_CODE_BLOCK_STYLING');
 }
 
+export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Promise<number | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_PIPE_TABLE_MAX_LINE_WIDTH') continue;
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
+        if (!/^\d+$/.test(raw)) continue;
+        return parseInt(raw, 10);
+      }
+    }
+  }
+  return null;
+}
+
 // Extract blockquote gap metadata from custom XML properties.
 // Returns a Map<number, number> mapping group index → blank-line count between
 // that group and the next.  Uses the same chunked-JSON pattern as code block
@@ -2200,7 +2222,7 @@ function mergeConsecutiveRuns(content: ContentItem[]): ContentItem[] {
 function renderInlineSegment(
   segment: ContentItem[],
   comments: Map<string, Comment>,
-  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> }
+  renderOpts?: RenderOpts
 ): { text: string; deferredComments: string[] } {
   const result = renderInlineRange(segment, 0, comments, undefined, renderOpts);
   return {
@@ -2318,7 +2340,7 @@ function renderInlineRange(
   startIndex: number,
   comments: Map<string, Comment>,
   opts?: { stopBeforeDisplayMath?: boolean },
-  renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> }
+  renderOpts?: RenderOpts
 ): { text: string; nextIndex: number; deferredComments: string[] } {
   let out = '';
   let i = startIndex;
@@ -2710,7 +2732,7 @@ function renderInlineRangeWithIds(
   return { text: out, nextIndex: i, deferredComments: deferred.map(d => d.body) };
 }
 
-function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  ', renderOpts?: { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> }): string {
+function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comment>, indent: string = '  ', renderOpts?: RenderOpts): string {
   const i1 = indent;  // tr level
   const i2 = indent + indent;  // td/th level
   const i3 = indent + indent + indent;  // content level
@@ -2737,6 +2759,144 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
   }
   lines.push('</table>');
   return lines.join('\n');
+}
+
+type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> };
+
+// East Asian Wide / Fullwidth code-point ranges (UAX #11).  Characters in
+// these ranges occupy two terminal columns; everything else is treated as
+// single-width.  This is intentionally conservative — zero-width joiners,
+// combining marks, etc. are counted as width-1 which is acceptable for the
+// "does the pipe table fit?" heuristic.
+function isFullWidth(cp: number): boolean {
+  return (
+    (cp >= 0x1100 && cp <= 0x115f) ||  // Hangul Jamo
+    (cp >= 0x2e80 && cp <= 0x303e) ||  // CJK Radicals, Kangxi, Symbols
+    (cp >= 0x3040 && cp <= 0x33bf) ||  // Hiragana, Katakana, CJK compat
+    (cp >= 0x3400 && cp <= 0x4dbf) ||  // CJK Extension A
+    (cp >= 0x4e00 && cp <= 0xa4cf) ||  // CJK Unified, Yi
+    (cp >= 0xac00 && cp <= 0xd7af) ||  // Hangul Syllables
+    (cp >= 0xf900 && cp <= 0xfaff) ||  // CJK Compatibility Ideographs
+    (cp >= 0xfe10 && cp <= 0xfe6f) ||  // Vertical forms, CJK compat forms
+    (cp >= 0xff01 && cp <= 0xff60) ||  // Fullwidth Latin/Symbols
+    (cp >= 0xffe0 && cp <= 0xffe6) ||  // Fullwidth Signs
+    (cp >= 0x1f000 && cp <= 0x1fbff) || // Emoji & symbols
+    (cp >= 0x20000 && cp <= 0x2ffff) || // CJK Extension B–F
+    (cp >= 0x30000 && cp <= 0x3ffff)    // CJK Extension G+
+  );
+}
+
+function getDisplayWidth(str: string): number {
+  let width = 0;
+  for (const ch of str) {
+    const cp = ch.codePointAt(0)!;
+    width += isFullWidth(cp) ? 2 : 1;
+  }
+  return width;
+}
+
+/**
+ * Try to render a table as a GFM pipe table. Returns null if the table is
+ * ineligible (spans, multi-paragraph cells, newlines in content, or width
+ * exceeding the limit). Rendering and eligibility checking are combined into
+ * one pass so that renderInlineSegment side-effects (e.g. emittedIdCommentBodies)
+ * are not duplicated.
+ */
+function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, comments: Map<string, Comment>, renderOpts?: RenderOpts): string | null {
+  if (maxLineWidth <= 0) return null;
+  const rows = table.rows;
+  if (rows.length === 0) return null;
+
+  // Structural checks first (no side effects)
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if (cell.colspan && cell.colspan > 1) return null;
+      if (cell.rowspan && cell.rowspan > 1) return null;
+      if (cell.paragraphs.length > 1) return null;
+    }
+  }
+
+  const numCols = Math.max(...rows.map(r => r.cells.length));
+
+  // GFM pipe tables support exactly one header row (the first).  Bail out if
+  // the DOCX marks multiple header rows or a non-first row as header.
+  const explicitHeaderRows = rows.reduce((n, r) => n + (r.isHeader ? 1 : 0), 0);
+  if (explicitHeaderRows > 1) return null;
+  if (explicitHeaderRows === 1 && !rows[0].isHeader) return null;
+
+  // Snapshot emittedIdCommentBodies so we can restore on fallback.
+  // renderInlineSegment marks deferred comment bodies as emitted; if we
+  // bail out after rendering (newline or width), the HTML path must be
+  // able to re-render them.
+  const emittedSnapshot = renderOpts?.emittedIdCommentBodies
+    ? new Set(renderOpts.emittedIdCommentBodies) : undefined;
+  const rollback = () => {
+    if (emittedSnapshot && renderOpts?.emittedIdCommentBodies) {
+      renderOpts.emittedIdCommentBodies.clear();
+      for (const v of emittedSnapshot) renderOpts.emittedIdCommentBodies.add(v);
+    }
+  };
+
+  // Render all cell contents (single pass — side effects happen here)
+  const rendered: { text: string; deferred: string[] }[][] = [];
+  for (const row of rows) {
+    const rowCells: { text: string; deferred: string[] }[] = [];
+    for (const cell of row.cells) {
+      if (cell.paragraphs.length > 0) {
+        const r = renderInlineSegment(mergeConsecutiveRuns(cell.paragraphs[0]), comments, renderOpts);
+        if (r.text.includes('\n')) { rollback(); return null; }
+        // Escape pipes for GFM table cells: \| in source must become \\\| (escaped
+        // backslash + escaped pipe); bare | must become \|. Single-pass callback
+        // avoids double-escape issues with two-step approaches.
+        const escaped = r.text.replace(/\\?\|/g, m => m.length === 2 ? '\\\\\\|' : '\\|');
+        rowCells.push({ text: escaped, deferred: r.deferredComments });
+      } else {
+        rowCells.push({ text: '', deferred: [] });
+      }
+    }
+    while (rowCells.length < numCols) {
+      rowCells.push({ text: '', deferred: [] });
+    }
+    rendered.push(rowCells);
+  }
+
+  // Check row widths (using display width to account for wide characters)
+  for (const rowCells of rendered) {
+    // | + (space + content + space + |) per cell
+    let width = 1;
+    for (const c of rowCells) {
+      width += 1 + getDisplayWidth(c.text) + 1 + 1; // space + content + space + |
+    }
+    if (width > maxLineWidth) { rollback(); return null; }
+  }
+
+  // Separator row: | --- | --- | ... | — each column occupies 6 chars
+  const separatorWidth = 1 + numCols * 6;
+  if (separatorWidth > maxLineWidth) { rollback(); return null; }
+
+  // Build pipe table lines
+  const lines: string[] = [];
+  const deferredAll: string[] = [];
+
+  // GFM pipe tables always require a header row. If the DOCX table has no
+  // header signal, the first row is promoted — an accepted round-trip trade-off.
+  const headerCells = rendered[0];
+  lines.push('| ' + headerCells.map(c => c.text).join(' | ') + ' |');
+  for (const c of headerCells) deferredAll.push(...c.deferred);
+
+  lines.push('| ' + Array(numCols).fill('---').join(' | ') + ' |');
+
+  for (let i = 1; i < rendered.length; i++) {
+    const rowCells = rendered[i];
+    lines.push('| ' + rowCells.map(c => c.text).join(' | ') + ' |');
+    for (const c of rowCells) deferredAll.push(...c.deferred);
+  }
+
+  let result = lines.join('\n');
+  if (deferredAll.length > 0) {
+    result += '\n' + deferredAll.join('\n');
+  }
+  return result;
 }
 
 function escapeRegExp(value: string): string {
@@ -2787,10 +2947,25 @@ function stripAlertLeadPrefix(text: string, alertType: GfmAlertType): string {
 }
 
 
+/** Render a table as a GFM pipe table if possible, otherwise fall back to HTML. */
+function renderTableOrFallback(
+  item: { rows: TableRow[] },
+  comments: Map<string, Comment>,
+  options?: { pipeTableMaxLineWidth?: number; tableIndent?: string },
+  renderOpts?: RenderOpts,
+): string {
+  const pipeMax = options?.pipeTableMaxLineWidth ?? 120;
+  const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts);
+  if (pipeResult !== null) {
+    return pipeResult;
+  }
+  return renderHtmlTable(item, comments, options?.tableIndent, renderOpts);
+}
+
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3192,7 +3367,7 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      output.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
+      output.push(renderTableOrFallback(item, comments, options, renderOpts));
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
       pendingAlertPrefixStrip = undefined;
@@ -3284,7 +3459,7 @@ export function buildMarkdown(
             bodyParts.push(part.text);
             deferredAll.push(...part.deferredComments);
           }
-          bodyParts.push(renderHtmlTable(item, comments, options?.tableIndent, renderOpts));
+          bodyParts.push(renderTableOrFallback(item, comments, options, renderOpts));
           partStart = bi + 1;
         }
       }
@@ -3654,10 +3829,10 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
 export async function convertDocx(
   data: Uint8Array,
   format: CitationKeyFormat = 'authorYearTitle',
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, storedPipeTableMaxLineWidth] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -3670,7 +3845,17 @@ export async function convertDocx(
     extractBlockquoteGapMapping(zip),
     extractBlockquoteAlertStyleMapping(zip),
     extractImageFormatMapping(zip),
+    extractPipeTableMaxLineWidth(zip),
   ]);
+
+  // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
+  // Each tier is validated so NaN / negative / non-integer values are treated as "no value".
+  const validWidth = (v: number | null | undefined): number | undefined =>
+    v != null && Number.isFinite(v) && Number.isInteger(v) && v >= 0 ? v : undefined;
+  const resolvedPipeTableMaxLineWidth = validWidth(options?.pipeTableMaxLineWidth)
+    ?? validWidth(storedPipeTableMaxLineWidth)
+    ?? validWidth(options?.pipeTableMaxLineWidthDefault)
+    ?? 120;
 
   // Group reply comments under their parents and get IDs to exclude from ranges
   const replyIds = groupCommentThreads(comments, threads);
@@ -3762,6 +3947,7 @@ export async function convertDocx(
   let markdown = buildMarkdown(docContent, comments, {
     tableIndent: options?.tableIndent,
     alwaysUseCommentIds: options?.alwaysUseCommentIds,
+    pipeTableMaxLineWidth: resolvedPipeTableMaxLineWidth,
     commentIdMapping,
     notes: notesMap.size > 0 ? { map: notesMap, assignedLabels } : undefined,
     codeBlockLangs: codeBlockLangMapping,
@@ -3814,6 +4000,12 @@ export async function convertDocx(
     if (fc) fm.codeFontColor = fc;
     const insetStr = codeBlockStyling.get('inset');
     if (insetStr) { const n = parseInt(insetStr, 10); if (n > 0) fm.codeBlockInset = n; }
+  }
+  // Emit pipe-table-max-line-width when the resolved value differs from the
+  // default, OR when the DOCX explicitly stored a value (even if it equals 120)
+  // so that an intentional `pipe-table-max-line-width: 120` survives round-trip.
+  if (resolvedPipeTableMaxLineWidth !== 120 || storedPipeTableMaxLineWidth != null || validWidth(options?.pipeTableMaxLineWidth) != null) {
+    fm.pipeTableMaxLineWidth = resolvedPipeTableMaxLineWidth;
   }
   const frontmatterStr = serializeFrontmatter(fm);
   if (frontmatterStr) {

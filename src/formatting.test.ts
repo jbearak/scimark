@@ -1,6 +1,6 @@
 import { describe, it } from 'bun:test';
 import * as fc from 'fast-check';
-import { wrapSelection, wrapLines, wrapLinesNumbered, formatHeading, highlightAndComment, wrapCodeBlock, substituteAndComment, additionAndComment, deletionAndComment, reflowTable, parseTable } from './formatting';
+import { wrapSelection, wrapLines, wrapLinesNumbered, formatHeading, highlightAndComment, wrapCodeBlock, substituteAndComment, additionAndComment, deletionAndComment, reflowTable, compactTable, parseTable, isTableRow } from './formatting';
 
 describe('Formatting Module Property Tests', () => {
   
@@ -1209,5 +1209,128 @@ describe('Property 9: Highlight formatting command wraps with == delimiters', ()
       }),
       { numRuns: 100 }
     );
+  });
+});
+
+describe('compactTable', () => {
+  it('removes padding whitespace from a padded table', () => {
+    const input = [
+      '| Name   | Age |',
+      '| ------ | --- |',
+      '| Alice  | 30  |',
+      '| Bob    | 7   |',
+    ].join('\n');
+    const result = compactTable(input);
+    const expected = [
+      '| Name | Age |',
+      '| --- | --- |',
+      '| Alice | 30 |',
+      '| Bob | 7 |',
+    ].join('\n');
+    if (result.newText !== expected) {
+      throw new Error('Expected:\n' + expected + '\n\nGot:\n' + result.newText);
+    }
+  });
+
+  it('preserves alignment indicators in compact form', () => {
+    const input = [
+      '| Left   | Center | Right  |',
+      '| :----- | :----: | -----: |',
+      '| a      | b      | c      |',
+    ].join('\n');
+    const result = compactTable(input);
+    const lines = result.newText.split('\n');
+    const sepCells = lines[1].split('|').slice(1, -1).map(c => c.trim());
+    // Column 0 → left (:--- but NOT :---:)
+    if (!sepCells[0].startsWith(':') || sepCells[0].endsWith(':'))
+      throw new Error('Missing left alignment, got: ' + sepCells[0]);
+    // Column 1 → center (:---:)
+    if (!sepCells[1].startsWith(':') || !sepCells[1].endsWith(':'))
+      throw new Error('Missing center alignment, got: ' + sepCells[1]);
+    // Column 2 → right (---:)
+    if (sepCells[2].startsWith(':') || !sepCells[2].endsWith(':'))
+      throw new Error('Missing right alignment, got: ' + sepCells[2]);
+  });
+
+  it('preserves cell content through compaction', () => {
+    const cellContentArb = fc.string({ minLength: 1, maxLength: 20 })
+      .filter(s => !s.includes('|') && !s.includes('\n'));
+
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: 5 }).chain(numRows =>
+          fc.integer({ min: 1, max: 4 }).chain(numCols =>
+            fc.array(
+              fc.array(cellContentArb, { minLength: numCols, maxLength: numCols }),
+              { minLength: numRows, maxLength: numRows }
+            )
+          )
+        ),
+        (rows) => {
+          const tableText = rows.map(row => '| ' + row.join(' | ') + ' |').join('\n');
+          const result = compactTable(tableText);
+          const originalParsed = parseTable(tableText);
+          const compactedParsed = parseTable(result.newText);
+          if (!originalParsed || !compactedParsed) return false;
+          const origCells = originalParsed.rows.filter(r => !r.isSeparator).flatMap(r => r.cells);
+          const compCells = compactedParsed.rows.filter(r => !r.isSeparator).flatMap(r => r.cells);
+          return origCells.length === compCells.length &&
+            origCells.every((c, i) => c === compCells[i]);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  it('returns original text for non-table input', () => {
+    const text = 'not a table';
+    const result = compactTable(text);
+    if (result.newText !== text) throw new Error('Should return original text');
+  });
+
+  it('is the inverse of reflowTable (reflow then compact removes padding)', () => {
+    const input = '| a | bb | ccc |\n| --- | --- | --- |\n| d | ee | fff |';
+    const reflowed = reflowTable(input);
+    const compacted = compactTable(reflowed.newText);
+    if (compacted.newText !== input) throw new Error('compactTable(reflowTable(input)) should equal input, got: "' + compacted.newText + '"');
+  });
+
+  it('handles escaped pipes in cell content', () => {
+    const input = [
+      '| Header |',
+      '| --- |',
+      '| a\\|b |',
+    ].join('\n');
+    const parsed = parseTable(input);
+    if (!parsed) throw new Error('Should parse table with escaped pipe');
+    // The escaped pipe should be part of the cell, not a delimiter
+    if (parsed.rows[2].cells.length !== 1)
+      throw new Error('Expected 1 cell, got ' + parsed.rows[2].cells.length);
+    if (parsed.rows[2].cells[0] !== 'a\\|b')
+      throw new Error('Expected "a\\|b", got "' + parsed.rows[2].cells[0] + '"');
+
+    // Compact should preserve escaped pipes
+    const compacted = compactTable(input);
+    if (!compacted.newText.includes('a\\|b'))
+      throw new Error('Compacted table lost escaped pipe');
+  });
+
+  it('recognizes row ending with escaped pipe in last cell', () => {
+    // | a | b\| has the trailing \| as content, not a closing delimiter,
+    // but the row still has 2 unescaped pipes (opening + mid) so it's valid.
+    if (!isTableRow('| a | b\\|')) throw new Error('Should recognize row with escaped trailing pipe');
+  });
+
+  it('splits on pipe after escaped backslash (\\\\|)', () => {
+    // \\| means escaped backslash followed by unescaped pipe (delimiter)
+    const input = [
+      '| A | B |',
+      '| --- | --- |',
+      '| x\\\\ | y |',
+    ].join('\n');
+    const parsed = parseTable(input);
+    if (!parsed) throw new Error('Should parse table');
+    if (parsed.rows[2].cells.length !== 2)
+      throw new Error('Expected 2 cells, got ' + parsed.rows[2].cells.length);
   });
 });

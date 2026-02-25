@@ -300,6 +300,33 @@ export interface ParsedTable {
 }
 
 /**
+ * Split a string on unescaped `|` characters.
+ * `\|` (escaped pipe) is kept as part of the cell; `\\|` (escaped backslash
+ * then unescaped pipe) splits normally.
+ */
+function splitOnPipes(line: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '\\' && i + 1 < line.length) {
+      // Consume the escape pair as literal content
+      current += line[i] + line[i + 1];
+      i += 2;
+    } else if (line[i] === '|') {
+      parts.push(current);
+      current = '';
+      i++;
+    } else {
+      current += line[i];
+      i++;
+    }
+  }
+  parts.push(current);
+  return parts;
+}
+
+/**
  * Checks if a line is a valid markdown table row
  * A valid table row starts and ends with | and contains at least one | separator
  * @param line - The line to check
@@ -310,14 +337,14 @@ export function isTableRow(line: string): boolean {
   if (trimmed.length === 0) {
     return false;
   }
-  
-  // Must start and end with |
+
+  // Must start with | and end with | (the trailing | may be an escaped pipe
+  // treated as content by the parser — this is intentional; see tests).
   if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
     return false;
   }
-  
-  // Must contain at least one | separator (meaning at least 2 | total)
-  const pipeCount = (trimmed.match(/\|/g) || []).length;
+  // Must contain at least 2 unescaped pipes (opening + closing)
+  const pipeCount = splitOnPipes(trimmed).length - 1;
   return pipeCount >= 2;
 }
 
@@ -344,7 +371,7 @@ export function isSeparatorRow(line: string): boolean {
   
   // Each cell (between pipes) must contain at least 3 characters that are hyphens or colons
   // and at least one must be a hyphen (standard markdown requirement)
-  const cells = trimmed.slice(1, -1).split('|');
+  const cells = splitOnPipes(trimmed.slice(1, -1));
   return cells.every(cell => {
     const trimmedCell = cell.trim();
     const hyphensAndColons = trimmedCell.match(/[-:]/g);
@@ -396,8 +423,8 @@ export function parseTable(text: string): ParsedTable | null {
   const rows: TableRow[] = lines.map(line => {
     const isSep = isSeparatorRow(line);
     
-    // Extract cells by splitting on | and removing first/last empty elements
-    const parts = line.split('|');
+    // Extract cells by splitting on unescaped | and removing first/last empty elements
+    const parts = splitOnPipes(line);
     // Trim all cells to get the actual content without padding
     // This means cell content is defined as the trimmed text between pipes
     const cells = parts.slice(1, -1).map(cell => cell.trim());
@@ -487,6 +514,44 @@ export function formatSeparatorRow(columnWidths: number[], alignments?: ColumnAl
     }
   });
   return '| ' + cells.join(' | ') + ' |';
+}
+
+/**
+ * Compacts a markdown table by removing padding whitespace.
+ * Each cell is trimmed and separated by ` | ` with no extra padding.
+ * Separator row uses minimal `---` (with alignment colons preserved).
+ */
+export function compactTable(text: string): TextTransformation {
+  const parsed = parseTable(text);
+
+  if (!parsed) {
+    return { newText: text };
+  }
+
+  const { rows, columnWidths, alignments } = parsed;
+  const columnCount = columnWidths.length;
+
+  const formattedRows = rows.map(row => {
+    if (row.isSeparator) {
+      const cells = Array.from({ length: columnCount }, (_, i) => {
+        const a = alignments[i] || 'default';
+        switch (a) {
+          case 'left': return ':---';
+          case 'right': return '---:';
+          case 'center': return ':---:';
+          default: return '---';
+        }
+      });
+      return '| ' + cells.join(' | ') + ' |';
+    } else {
+      const cells = Array.from({ length: columnCount }, (_, i) => row.cells[i] ?? '');
+      return '| ' + cells.join(' | ') + ' |';
+    }
+  });
+
+  return {
+    newText: formattedRows.join('\n')
+  };
 }
 
 /**
