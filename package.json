@@ -121,7 +121,7 @@
       },
       {
         "command": "manuscript-markdown.formatQuoteBlock",
-        "title": "Quote Block"
+        "title": "Block Quote"
       },
       {
         "command": "manuscript-markdown.formatHeading1",
@@ -252,6 +252,10 @@
       {
         "id": "markdown.heading",
         "label": "Heading"
+      },
+      {
+        "id": "markdown.list",
+        "label": "List"
       },
       {
         "id": "markdown.reflowTable",
@@ -388,47 +392,54 @@
         {
           "command": "manuscript-markdown.formatInlineCode",
           "when": "editorLangId == markdown",
-          "group": "1_format@7"
+          "group": "1b_code@1"
         },
         {
           "command": "manuscript-markdown.formatCodeBlock",
           "when": "editorLangId == markdown",
-          "group": "1_format@8"
+          "group": "1b_code@2"
         },
         {
           "command": "manuscript-markdown.formatLink",
           "when": "editorLangId == markdown",
-          "group": "1_format@9"
+          "group": "1c_link@1"
         },
         {
-          "command": "manuscript-markdown.formatBulletedList",
+          "submenu": "markdown.list",
           "when": "editorLangId == markdown",
           "group": "2_lists@1"
         },
         {
-          "command": "manuscript-markdown.formatNumberedList",
-          "when": "editorLangId == markdown",
-          "group": "2_lists@2"
-        },
-        {
-          "command": "manuscript-markdown.formatTaskList",
-          "when": "editorLangId == markdown",
-          "group": "2_lists@3"
-        },
-        {
           "command": "manuscript-markdown.formatQuoteBlock",
           "when": "editorLangId == markdown",
-          "group": "2_lists@4"
+          "group": "2a_blockquote@1"
         },
         {
           "submenu": "markdown.reflowTable",
           "when": "editorLangId == markdown",
-          "group": "2_tables@5"
+          "group": "2_tables@1"
         },
         {
           "submenu": "markdown.heading",
           "when": "editorLangId == markdown",
           "group": "3_heading@1"
+        }
+      ],
+      "markdown.list": [
+        {
+          "command": "manuscript-markdown.formatBulletedList",
+          "when": "editorLangId == markdown",
+          "group": "1_lists@1"
+        },
+        {
+          "command": "manuscript-markdown.formatNumberedList",
+          "when": "editorLangId == markdown",
+          "group": "1_lists@2"
+        },
+        {
+          "command": "manuscript-markdown.formatTaskList",
+          "when": "editorLangId == markdown",
+          "group": "1_lists@3"
         }
       ],
       "markdown.reflowTable": [
