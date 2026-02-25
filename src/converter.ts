@@ -3842,10 +3842,14 @@ export async function convertDocx(
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
-  const resolvedPipeTableMaxLineWidth = options?.pipeTableMaxLineWidth
+  let resolvedPipeTableMaxLineWidth = options?.pipeTableMaxLineWidth
     ?? storedPipeTableMaxLineWidth
     ?? options?.pipeTableMaxLineWidthDefault
     ?? 120;
+  // Sanitize: must be a finite non-negative integer; fall back to 120 if invalid
+  if (!Number.isFinite(resolvedPipeTableMaxLineWidth) || !Number.isInteger(resolvedPipeTableMaxLineWidth) || resolvedPipeTableMaxLineWidth < 0) {
+    resolvedPipeTableMaxLineWidth = 120;
+  }
 
   // Group reply comments under their parents and get IDs to exclude from ranges
   const replyIds = groupCommentThreads(comments, threads);

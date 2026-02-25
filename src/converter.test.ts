@@ -416,8 +416,19 @@ describe('colspan/rowspan roundtrip', () => {
 });
 
 describe('Pipe table rendering', () => {
+  /** Build a synthetic DOCX from table XML and convert it. */
+  async function buildAndConvertTable(
+    tableXml: string,
+    convertOpts?: Parameters<typeof convertDocx>[2],
+    extraFiles?: Record<string, string>,
+  ) {
+    const xml = wrapDocumentXml(tableXml);
+    const buf = await buildSyntheticDocx(xml, extraFiles);
+    return convertDocx(buf, 'authorYearTitle', convertOpts);
+  }
+
   test('simple 2x2 table renders as pipe table by default', async () => {
-    const xml = wrapDocumentXml(
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tblPr><w:tblLook w:firstRow="1"/></w:tblPr>'
       + '<w:tr>'
@@ -430,8 +441,6 @@ describe('Pipe table rendering', () => {
       + '</w:tr>'
       + '</w:tbl>'
     );
-    const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf);
 
     expect(result.markdown).toContain('| H1 | H2 |');
     expect(result.markdown).toContain('| --- | --- |');
@@ -440,7 +449,7 @@ describe('Pipe table rendering', () => {
   });
 
   test('table with colspan falls back to HTML', async () => {
-    const xml = wrapDocumentXml(
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'
       + '<w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>Span</w:t></w:r></w:p></w:tc>'
@@ -451,15 +460,13 @@ describe('Pipe table rendering', () => {
       + '</w:tr>'
       + '</w:tbl>'
     );
-    const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf);
 
     expect(result.markdown).toContain('<table>');
     expect(result.markdown).toContain('colspan="2"');
   });
 
   test('table with rowspan falls back to HTML', async () => {
-    const xml = wrapDocumentXml(
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'
       + '<w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Tall</w:t></w:r></w:p></w:tc>'
@@ -471,15 +478,13 @@ describe('Pipe table rendering', () => {
       + '</w:tr>'
       + '</w:tbl>'
     );
-    const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf);
 
     expect(result.markdown).toContain('<table>');
     expect(result.markdown).toContain('rowspan="2"');
   });
 
   test('table with multi-paragraph cell falls back to HTML', async () => {
-    const xml = wrapDocumentXml(
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'
       + '<w:tc>'
@@ -489,8 +494,6 @@ describe('Pipe table rendering', () => {
       + '</w:tr>'
       + '</w:tbl>'
     );
-    const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf);
 
     expect(result.markdown).toContain('<table>');
     expect(result.markdown).toContain('<p>para one</p>');
@@ -500,44 +503,40 @@ describe('Pipe table rendering', () => {
   test('line width exceeding limit falls back to HTML', async () => {
     const maxWidth = 80;
     const longText = 'x'.repeat(maxWidth);
-    const xml = wrapDocumentXml(
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'
       + '<w:tc><w:p><w:r><w:t>' + longText + '</w:t></w:r></w:p></w:tc>'
       + '</w:tr>'
-      + '</w:tbl>'
+      + '</w:tbl>',
+      { pipeTableMaxLineWidth: maxWidth },
     );
-    const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf, 'authorYearTitle', { pipeTableMaxLineWidth: maxWidth });
 
     expect(result.markdown).toContain('<table>');
   });
 
   test('pipeTableMaxLineWidth=0 always uses HTML', async () => {
-    const xml = wrapDocumentXml(
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'
       + '<w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>'
       + '</w:tr>'
-      + '</w:tbl>'
+      + '</w:tbl>',
+      { pipeTableMaxLineWidth: 0 },
     );
-    const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf, 'authorYearTitle', { pipeTableMaxLineWidth: 0 });
 
     expect(result.markdown).toContain('<table>');
     expect(result.markdown).not.toContain('| A |');
   });
 
   test('pipe characters in cell content are escaped', async () => {
-    const xml = wrapDocumentXml(
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'
       + '<w:tc><w:p><w:r><w:t>a|b</w:t></w:r></w:p></w:tc>'
       + '</w:tr>'
       + '</w:tbl>'
     );
-    const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf);
 
     expect(result.markdown).toContain('a\\|b');
     expect(result.markdown).not.toContain('<table>');
@@ -546,15 +545,13 @@ describe('Pipe table rendering', () => {
   test('already-escaped backslash-pipe in cell content is not double-escaped', async () => {
     // If the rendered text already contains \|, we must not turn it into \\|
     // which would produce an escaped backslash + bare pipe, breaking the cell.
-    const xml = wrapDocumentXml(
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'
       + '<w:tc><w:p><w:r><w:t>a\\|b</w:t></w:r></w:p></w:tc>'
       + '</w:tr>'
       + '</w:tbl>'
     );
-    const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf);
 
     // The backslash should be escaped and pipe should be escaped independently
     expect(result.markdown).toContain('a\\\\\\|b');
@@ -568,7 +565,7 @@ describe('Pipe table rendering', () => {
   // signal, the first row is promoted to header. A round-trip will mark it
   // as a header — this is an accepted trade-off vs falling back to HTML.
   test('table without header row still renders as pipe table', async () => {
-    const xml = wrapDocumentXml(
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'
       + '<w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>'
@@ -580,8 +577,6 @@ describe('Pipe table rendering', () => {
       + '</w:tr>'
       + '</w:tbl>'
     );
-    const buf = await buildSyntheticDocx(xml);
-    const result = await convertDocx(buf);
 
     expect(result.markdown).toContain('| A | B |');
     expect(result.markdown).toContain('| --- | --- |');
@@ -589,7 +584,12 @@ describe('Pipe table rendering', () => {
   });
 
   test('commented run in cell with HTML fallback emits comment body exactly once', async () => {
-    const xml = wrapDocumentXml(
+    const commentsXml =
+      '<?xml version="1.0"?>'
+      + '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+      + '<w:comment w:id="1" w:author="Tester" w:date="2025-06-01T00:00:00Z"><w:p><w:r><w:t>unique review note</w:t></w:r></w:p></w:comment>'
+      + '</w:comments>';
+    const result = await buildAndConvertTable(
       '<w:tbl>'
       + '<w:tr>'
       + '<w:tc><w:p>'
@@ -600,18 +600,10 @@ describe('Pipe table rendering', () => {
       + '<w:p><w:r><w:t>second paragraph</w:t></w:r></w:p>'
       + '</w:tc>'
       + '</w:tr>'
-      + '</w:tbl>'
+      + '</w:tbl>',
+      { alwaysUseCommentIds: true, pipeTableMaxLineWidth: 0 },
+      { 'word/comments.xml': commentsXml },
     );
-    const commentsXml =
-      '<?xml version="1.0"?>'
-      + '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-      + '<w:comment w:id="1" w:author="Tester" w:date="2025-06-01T00:00:00Z"><w:p><w:r><w:t>unique review note</w:t></w:r></w:p></w:comment>'
-      + '</w:comments>';
-    const buf = await buildSyntheticDocx(xml, { 'word/comments.xml': commentsXml });
-    const result = await convertDocx(buf, 'authorYearTitle', {
-      alwaysUseCommentIds: true,
-      pipeTableMaxLineWidth: 0,
-    });
 
     // Multi-paragraph cell forces HTML fallback
     expect(result.markdown).toContain('<table>');
