@@ -181,7 +181,13 @@ Download and install a font on your system first, then type its name directly in
 
 ### Word Wrap
 
-The extension enables word wrap for Markdown files by default, so long lines of prose stay visible without horizontal scrolling. To change this, open **Settings** (`Ctrl+,` / `Cmd+,`), search for `editor.wordWrap`, and set it to your preference.
+The extension enables word wrap for Markdown and BibTeX files by default, so long lines of prose stay visible without horizontal scrolling. To change this globally, open **Settings** (`Ctrl+,` / `Cmd+,`) and search for `editor.wordWrap` — but note that this affects every file type. To change wrapping for Markdown or BibTeX only, type `@lang:markdown editor.wordWrap` (or `@lang:bibtex`) in the Settings search bar, or add a language-specific block to your `settings.json`:
+
+```jsonc
+"[markdown]": {
+  "editor.wordWrap": "off"
+}
+```
 
 ### Previewing Markdown
 

@@ -622,6 +622,9 @@
     "configurationDefaults": {
       "[markdown]": {
         "editor.wordWrap": "on"
+      },
+      "[bibtex]": {
+        "editor.wordWrap": "on"
       }
     },
     "configuration": {
