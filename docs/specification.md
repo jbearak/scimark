@@ -53,6 +53,7 @@ The frontmatter may also include citation-related fields (`csl`, `locale`, `zote
 | `code-font-color` | Code block and inline code text color. A 6-digit hex value (e.g., `2E2E2E`). Default: `2E2E2E`. Alias: `code-color`. |
 | `code-block-inset` | Border width for code blocks in shading mode, in eighths of a point (`w:sz`). A positive integer. Default: `48`. Does not affect inline code. |
 | `blockquote-style` | Word paragraph style for blockquotes: `Quote`, `IntenseQuote`, or `GitHub` (gray left border bar). Case-insensitive. Default: `GitHub`. Overrides the VS Code setting. |
+| `pipe-table-max-line-width` | Maximum line width for GFM pipe tables in DOCX→MD conversion. Tables wider than this fall back to HTML. `0` disables pipe tables entirely. Default: `120`. Overrides the VS Code `pipeTableMaxLineWidth` setting but is itself overridden by the CLI `--pipe-table-max-line-width` flag. |
 
 ### Heading and Title Font Configuration
 
@@ -145,7 +146,7 @@ Manuscript Markdown supports CommonMark plus the implemented [GitHub Flavored Ma
 - **Links**: `[text](url)` plus autolink literals (bare URLs/emails)
 - **Code blocks**: fenced with triple backticks. Optional language annotation (e.g., `` ```stata ``) is preserved on round-trip via the `MANUSCRIPT_CODE_BLOCK_LANGS` custom property in the DOCX. In Word, code blocks use the "Code Block" paragraph style (Consolas, shaded background). Consecutive code blocks are separated by an empty paragraph to prevent merging.
 - **Blockquotes**: `> quoted text`
-- **Tables**: pipe-delimited with alignment support
+- **Tables**: simple tables are emitted as GFM pipe tables (pipe-delimited with alignment support). Tables that contain colspans, rowspans, multi-paragraph cells, or that exceed the configured line width fall back to indented HTML. The line-width threshold is controlled by the `pipe-table-max-line-width` frontmatter field, the VS Code `pipeTableMaxLineWidth` setting, or the CLI `--pipe-table-max-line-width` flag
 
 ### GitHub Flavored Markdown Extension Notes
 

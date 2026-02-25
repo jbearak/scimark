@@ -37,9 +37,12 @@ Text formatting, lists, and structure commands for Markdown editing.
 | | **Task List** | `manuscript-markdown.formatTaskList` |
 | | **Quote Block** | `manuscript-markdown.formatQuoteBlock` |
 | Tables | **Reflow Table** | `manuscript-markdown.reflowTable` |
+| | **Compact Table** | `manuscript-markdown.compactTable` |
 | Heading | **Heading** ▸ | submenu — see below |
 
 > **Reflow Table** re-aligns a Markdown pipe table — the kind you build with `|` and `-` characters — so that the `|` column separators line up neatly. Place your cursor anywhere in the table and run the command.
+>
+> **Compact Table** is the inverse of Reflow Table: it strips padding whitespace from each cell and reduces the separator row to minimal `---` dashes (preserving alignment colons). Useful for keeping tables narrow in version-controlled files.
 
 #### Highlight Color submenu
 
