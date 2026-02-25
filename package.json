@@ -485,7 +485,7 @@
         {
           "command": "manuscript-markdown.formatHighlight",
           "when": "editorLangId == markdown",
-          "group": "1_default@1"
+          "group": "0_default@1"
         },
         {
           "command": "manuscript-markdown.formatHighlight_yellow",
