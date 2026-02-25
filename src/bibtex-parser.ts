@@ -58,26 +58,38 @@ function unescapeBibtex(s: string): string {
 
 export function parseBibtex(input: string): Map<string, BibtexEntry> {
   const entries = new Map<string, BibtexEntry>();
-  
+
   // Find entry boundaries more carefully
   const entryMatches = [...input.matchAll(/@(\w+)\s*\{\s*([^,\s]+)\s*,/g)];
-  
+
+  // Track the end of the last successfully parsed entry so we can skip
+  // spurious @type{key, matches inside field values (e.g. note fields
+  // that reference other entries).
+  let lastEntryEnd = 0;
+
   for (let i = 0; i < entryMatches.length; i++) {
     try {
       const match = entryMatches[i];
+
+      // Skip matches that fall inside a previously parsed entry's body
+      if (match.index! < lastEntryEnd) {
+        continue;
+      }
+
       const [, type, key] = match;
       const startPos = match.index! + match[0].length;
-      
+
       // Find the end of this entry by counting braces
       let braceCount = 1;
       let endPos = startPos;
       let inQuotes = false;
-      
+
       for (let j = startPos; j < input.length && braceCount > 0; j++) {
         const char = input[j];
-        
-        if (char === '\"') {
-          // Toggle quote state only when preceded by an even number of backslashes.
+
+        // Only toggle quote state at brace depth 1 (top-level field values).
+        // Inside {…}-delimited values, " is a literal character in BibTeX.
+        if (char === '\"' && braceCount === 1) {
           let backslashCount = 0;
           const backslash = '\\';
           for (let k = j - 1; k >= 0 && input[k] === backslash; k--) {
@@ -98,7 +110,11 @@ export function parseBibtex(input: string): Map<string, BibtexEntry> {
           }
         }
       }
-      
+
+      // Advance past this entry's body regardless of whether it parsed
+      // successfully, so subsequent matches inside it are skipped.
+      lastEntryEnd = endPos + 1;
+
       // Skip if we couldn't find a proper closing brace
       if (braceCount > 0) {
         continue;

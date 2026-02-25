@@ -187,6 +187,25 @@ describe('BibTeX Parser', () => {
     expect(result).toContain('doi = {10.1000/test_doi}'); // DOI is verbatim (not LaTeX-escaped)
     expect(result).toContain('zotero-key = {ABC_123}'); // Not escaped (alphanumeric identifiers)
   });
+
+  it('skips @type{key, patterns inside field values', () => {
+    const input = [
+      '@article{key1,',
+      '  note = {see @book{ref1, p.5}},',
+      '  year = {2020}',
+      '}',
+      '',
+      '@book{real2021,',
+      '  year = {2021}',
+      '}',
+    ].join('\n');
+    const entries = parseBibtex(input);
+    expect(entries.has('key1')).toBe(true);
+    expect(entries.has('real2021')).toBe(true);
+    // The spurious @book{ref1, inside the note field must not appear
+    expect(entries.has('ref1')).toBe(false);
+    expect(entries.size).toBe(2);
+  });
 });
 
 describe('double-brace fix', () => {
