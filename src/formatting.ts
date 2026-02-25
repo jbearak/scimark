@@ -528,11 +528,12 @@ export function compactTable(text: string): TextTransformation {
     return { newText: text };
   }
 
-  const { rows, alignments } = parsed;
+  const { rows, columnWidths, alignments } = parsed;
+  const columnCount = columnWidths.length;
 
   const formattedRows = rows.map(row => {
     if (row.isSeparator) {
-      const cells = row.cells.map((_, i) => {
+      const cells = Array.from({ length: columnCount }, (_, i) => {
         const a = alignments[i] || 'default';
         switch (a) {
           case 'left': return ':---';
@@ -543,7 +544,8 @@ export function compactTable(text: string): TextTransformation {
       });
       return '| ' + cells.join(' | ') + ' |';
     } else {
-      return '| ' + row.cells.join(' | ') + ' |';
+      const cells = Array.from({ length: columnCount }, (_, i) => row.cells[i] ?? '');
+      return '| ' + cells.join(' | ') + ' |';
     }
   });
 
