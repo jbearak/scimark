@@ -370,7 +370,7 @@ export function isSeparatorRow(line: string): boolean {
   
   // Each cell (between pipes) must contain at least 3 characters that are hyphens or colons
   // and at least one must be a hyphen (standard markdown requirement)
-  const cells = trimmed.slice(1, -1).split('|');
+  const cells = splitOnPipes(trimmed.slice(1, -1));
   return cells.every(cell => {
     const trimmedCell = cell.trim();
     const hyphensAndColons = trimmedCell.match(/[-:]/g);

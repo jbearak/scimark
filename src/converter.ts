@@ -974,8 +974,10 @@ export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Pr
     if (!Array.isArray(children)) continue;
     for (const child of children) {
       if (child['vt:lpwstr'] !== undefined) {
-        const n = parseInt(nodeText(child['vt:lpwstr'] || []), 10);
-        if (Number.isInteger(n) && n >= 0) return n;
+        const raw = nodeText(child['vt:lpwstr'] || []);
+        if (!/^\d+$/.test(raw)) continue;
+        const n = parseInt(raw, 10);
+        if (n >= 0) return n;
       }
     }
   }

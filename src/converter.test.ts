@@ -676,7 +676,7 @@ describe('Pipe table rendering', () => {
 
 describe('Integration: tables.docx fixture', () => {
   test('converts tables.docx and produces three tables (simple one as pipe, complex as HTML)', async () => {
-    const result = await convertDocx(tablesData);
+    const result = await convertDocx(tablesData, 'authorYearTitle', { pipeTableMaxLineWidthDefault: 120 });
     // Simple table becomes pipe table; two complex tables remain HTML
     const htmlTables = result.markdown.match(/<table>/g) || [];
     expect(htmlTables.length).toBe(2);
