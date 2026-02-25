@@ -628,6 +628,14 @@
       "./media/manuscript-markdown-preview.js"
     ],
     "markdown.markdownItPlugins": true,
+    "configurationDefaults": {
+      "[markdown]": {
+        "editor.wordWrap": "on"
+      },
+      "[bibtex]": {
+        "editor.wordWrap": "on"
+      }
+    },
     "configuration": {
       "title": "Manuscript Markdown",
       "properties": {

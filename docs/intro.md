@@ -179,6 +179,16 @@ Download and install a font on your system first, then type its name directly in
 | [IBM Plex Serif](https://github.com/IBM/plex) | Pairs with IBM Plex Mono; polished and contemporary |
 | [Inter](https://github.com/rsms/inter) | Sans-serif; very clean on screen, good for UI-like preview feel |
 
+### Word Wrap
+
+The extension enables word wrap for Markdown and BibTeX files by default, so long lines of prose stay visible without horizontal scrolling. To change this globally, open **Settings** (`Ctrl+,` / `Cmd+,`) and search for `editor.wordWrap` — but note that this affects every file type. To change wrapping for Markdown or BibTeX only, type `@lang:markdown editor.wordWrap` (or `@lang:bibtex`) in the Settings search bar, or add a language-specific block to your `settings.json`:
+
+```jsonc
+"[markdown]": {
+  "editor.wordWrap": "off"
+}
+```
+
 ### Previewing Markdown
 
 - Click the **Open Preview to the Side** icon in the top-right of the editor (it looks like a book with a magnifying glass), or press `Ctrl+K V` (`Cmd+K V` on Mac)
