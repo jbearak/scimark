@@ -48,6 +48,7 @@ import {
 	findCitekeyAtOffset,
 	findUsagesForKey,
 	fsPathToUri,
+	getAccessLinksForEntry,
 	getCompletionContextAtOffset,
 	invalidateCanonicalCache,
 	parseBibDataFromText,
@@ -1002,6 +1003,13 @@ function formatBibEntryHover(entry: BibtexEntry): string {
 
 	if (lines.length === 0) {
 		lines.push(`\`${entry.key}\``);
+	}
+
+	const accessLinks = getAccessLinksForEntry(entry);
+	if (accessLinks.length === 1) {
+		lines.push(`[${accessLinks[0].label}](${accessLinks[0].url})`);
+	} else if (accessLinks.length > 1) {
+		lines.push(accessLinks.map(l => `- [${l.label}](${l.url})`).join('\n'));
 	}
 
 	return lines.join('\n\n');

@@ -452,7 +452,7 @@ export interface BibFieldLink {
 	invalid?: boolean;
 }
 
-const BIB_FIELD_LINK_RE = /^\s*(doi|isbn|issn)\s*=\s*[{"]\s*([^}"]+?)\s*[}"]/i;
+const BIB_FIELD_LINK_RE = /^\s*(doi|isbn|issn|url)\s*=\s*[{"]\s*([^}"]+?)\s*[}"]/i;
 
 // DOIs: digits, letters, dots, slashes, hyphens, underscores, colons, semicolons, parens
 const VALID_DOI_RE = /^10\.\d{4,}[/.][A-Za-z0-9./_\-:;()]+$/;
@@ -461,32 +461,61 @@ const VALID_ISBN_RE = /^[\d-]{9,17}[\dXx]$/;
 // ISSNs: 4 digits, hyphen, 3 digits, check digit (digit or X)
 const VALID_ISSN_RE = /^\d{4}-?\d{3}[\dXx]$/;
 
+const VALID_URL_RE = /^https?:\/\//i;
+
+export function buildBibFieldLink(fieldName: string, rawValue: string): BibFieldLink | undefined {
+	const name = fieldName.toLowerCase();
+	const value = rawValue.trim().replace(/^\{+|\}+$/g, '').trim();
+	if (!value) return undefined;
+
+	switch (name) {
+		case 'doi':
+			if (!VALID_DOI_RE.test(value)) {
+				return { fieldName: name, value, label: `Invalid DOI: ${value}`, invalid: true };
+			}
+			return { fieldName: name, value, url: 'https://doi.org/' + value.replace(/[()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase()), label: 'Access via DOI' };
+		case 'isbn':
+			if (!VALID_ISBN_RE.test(value)) {
+				return { fieldName: name, value, label: `Invalid ISBN: ${value}`, invalid: true };
+			}
+			return { fieldName: name, value, url: 'https://search.worldcat.org/isbn/' + value, label: 'Look up ISBN' };
+		case 'issn':
+			if (!VALID_ISSN_RE.test(value)) {
+				return { fieldName: name, value, label: `Invalid ISSN: ${value}`, invalid: true };
+			}
+			return { fieldName: name, value, url: 'https://portal.issn.org/resource/ISSN/' + value, label: 'Look up ISSN' };
+		case 'url':
+			if (!VALID_URL_RE.test(value)) {
+				return { fieldName: name, value, label: `Invalid URL: ${value}`, invalid: true };
+			}
+			return { fieldName: name, value, url: value, label: 'Access via URL' };
+		default:
+			return undefined;
+	}
+}
+
+export function getAccessLinksForEntry(entry: BibtexEntry): BibFieldLink[] {
+	const links: BibFieldLink[] = [];
+	for (const field of ['doi', 'isbn', 'issn', 'url'] as const) {
+		const value = entry.fields.get(field);
+		if (value) {
+			const link = buildBibFieldLink(field, value);
+			if (link && !link.invalid) {
+				links.push(link);
+			}
+		}
+	}
+	return links;
+}
+
 export function findBibFieldLinkAtLine(lineText: string): BibFieldLink | undefined {
 	const match = BIB_FIELD_LINK_RE.exec(lineText);
 	if (!match) return undefined;
 
 	const fieldName = match[1].toLowerCase();
-	const value = match[2].trim().replace(/^\{+|\}+$/g, '').trim();
+	const value = match[2].trim();
 	if (!value) return undefined;
 
-	switch (fieldName) {
-		case 'doi':
-			if (!VALID_DOI_RE.test(value)) {
-				return { fieldName, value, label: `Invalid DOI: ${value}`, invalid: true };
-			}
-			return { fieldName, value, url: `https://doi.org/${value.replace(/[()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())}`, label: 'Access via DOI' };
-		case 'isbn':
-			if (!VALID_ISBN_RE.test(value)) {
-				return { fieldName, value, label: `Invalid ISBN: ${value}`, invalid: true };
-			}
-			return { fieldName, value, url: `https://search.worldcat.org/isbn/${value}`, label: 'Look up ISBN' };
-		case 'issn':
-			if (!VALID_ISSN_RE.test(value)) {
-				return { fieldName, value, label: `Invalid ISSN: ${value}`, invalid: true };
-			}
-			return { fieldName, value, url: `https://portal.issn.org/resource/ISSN/${value}`, label: 'Look up ISSN' };
-		default:
-			return undefined;
-	}
+	return buildBibFieldLink(fieldName, value);
 }
 

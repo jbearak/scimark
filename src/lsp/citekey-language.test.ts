@@ -3,11 +3,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+	buildBibFieldLink,
 	canonicalizeFsPath,
 	findBibFieldLinkAtLine,
 	findBibKeyAtOffset,
 	findCitekeyAtOffset,
 	fsPathToUri,
+	getAccessLinksForEntry,
 	getCompletionContextAtOffset,
 	isInsideCitationSegmentAtOffset,
 	parseBibDataFromText,
@@ -15,6 +17,7 @@ import {
 	resolveBibliographyPath,
 	scanCitationUsages,
 } from './citekey-language';
+import type { BibtexEntry } from '../bibtex-parser';
 
 describe('scanCitationUsages', () => {
 	test('extracts citekeys from grouped citations with locators', () => {
@@ -386,3 +389,152 @@ describe('code-region filtering', () => {
 		expect(findCitekeyAtOffset(text, offset)).toBe('a');
 	});
 });
+
+function makeEntry(fields: Record<string, string>): BibtexEntry {
+	return { type: 'article', key: 'test2020', fields: new Map(Object.entries(fields)) };
+}
+
+describe('buildBibFieldLink', () => {
+	test('builds DOI link', () => {
+		const result = buildBibFieldLink('doi', '10.1234/test');
+		expect(result).toBeDefined();
+		expect(result!.fieldName).toBe('doi');
+		expect(result!.url).toBe('https://doi.org/10.1234/test');
+		expect(result!.label).toBe('Access via DOI');
+		expect(result!.invalid).toBeUndefined();
+	});
+
+	test('builds ISBN link', () => {
+		const result = buildBibFieldLink('isbn', '978-0-306-40615-7');
+		expect(result).toBeDefined();
+		expect(result!.url).toBe('https://search.worldcat.org/isbn/978-0-306-40615-7');
+		expect(result!.label).toBe('Look up ISBN');
+	});
+
+	test('builds ISSN link', () => {
+		const result = buildBibFieldLink('issn', '0028-0836');
+		expect(result).toBeDefined();
+		expect(result!.url).toBe('https://portal.issn.org/resource/ISSN/0028-0836');
+		expect(result!.label).toBe('Look up ISSN');
+	});
+
+	test('builds URL link for valid http URL', () => {
+		const result = buildBibFieldLink('url', 'https://example.com/paper');
+		expect(result).toBeDefined();
+		expect(result!.fieldName).toBe('url');
+		expect(result!.url).toBe('https://example.com/paper');
+		expect(result!.label).toBe('Access via URL');
+		expect(result!.invalid).toBeUndefined();
+	});
+
+	test('builds URL link for http URL', () => {
+		const result = buildBibFieldLink('url', 'http://example.com');
+		expect(result).toBeDefined();
+		expect(result!.url).toBe('http://example.com');
+	});
+
+	test('returns invalid for non-http URL', () => {
+		const result = buildBibFieldLink('url', 'ftp://example.com');
+		expect(result).toBeDefined();
+		expect(result!.invalid).toBe(true);
+		expect(result!.label).toContain('Invalid URL');
+	});
+
+	test('returns invalid for malformed DOI', () => {
+		const result = buildBibFieldLink('doi', 'not-a-doi');
+		expect(result).toBeDefined();
+		expect(result!.invalid).toBe(true);
+	});
+
+	test('returns undefined for unknown field', () => {
+		expect(buildBibFieldLink('title', 'Some Title')).toBeUndefined();
+	});
+
+	test('returns undefined for empty value', () => {
+		expect(buildBibFieldLink('doi', '')).toBeUndefined();
+		expect(buildBibFieldLink('doi', '  ')).toBeUndefined();
+	});
+
+	test('strips outer braces from value', () => {
+		const result = buildBibFieldLink('doi', '{10.1234/test}');
+		expect(result).toBeDefined();
+		expect(result!.value).toBe('10.1234/test');
+	});
+
+	test('is case-insensitive for field name', () => {
+		const result = buildBibFieldLink('DOI', '10.1234/test');
+		expect(result).toBeDefined();
+		expect(result!.fieldName).toBe('doi');
+	});
+});
+
+describe('getAccessLinksForEntry', () => {
+	test('returns empty array when entry has no link fields', () => {
+		const entry = makeEntry({ title: 'Some Paper', author: 'Smith' });
+		expect(getAccessLinksForEntry(entry)).toEqual([]);
+	});
+
+	test('returns single link for entry with DOI only', () => {
+		const entry = makeEntry({ doi: '10.1234/test' });
+		const links = getAccessLinksForEntry(entry);
+		expect(links).toHaveLength(1);
+		expect(links[0].fieldName).toBe('doi');
+	});
+
+	test('returns multiple links in order: doi, isbn, issn, url', () => {
+		const entry = makeEntry({
+			url: 'https://example.com',
+			issn: '0028-0836',
+			doi: '10.1234/test',
+		});
+		const links = getAccessLinksForEntry(entry);
+		expect(links).toHaveLength(3);
+		expect(links.map(l => l.fieldName)).toEqual(['doi', 'issn', 'url']);
+	});
+
+	test('skips invalid fields', () => {
+		const entry = makeEntry({
+			doi: 'not-a-doi',
+			isbn: '978-0-306-40615-7',
+		});
+		const links = getAccessLinksForEntry(entry);
+		expect(links).toHaveLength(1);
+		expect(links[0].fieldName).toBe('isbn');
+	});
+
+	test('returns all four link types when present', () => {
+		const entry = makeEntry({
+			doi: '10.1234/test',
+			isbn: '978-0-306-40615-7',
+			issn: '0028-0836',
+			url: 'https://example.com',
+		});
+		const links = getAccessLinksForEntry(entry);
+		expect(links).toHaveLength(4);
+		expect(links.map(l => l.fieldName)).toEqual(['doi', 'isbn', 'issn', 'url']);
+	});
+});
+
+describe('findBibFieldLinkAtLine — url field', () => {
+	test('detects url with brace delimiters', () => {
+		const result = findBibFieldLinkAtLine('  url = {https://example.com/paper},');
+		expect(result).toBeDefined();
+		expect(result!.fieldName).toBe('url');
+		expect(result!.url).toBe('https://example.com/paper');
+		expect(result!.label).toBe('Access via URL');
+	});
+
+	test('detects url with quote delimiters', () => {
+		const result = findBibFieldLinkAtLine('  url = "https://example.com/paper",');
+		expect(result).toBeDefined();
+		expect(result!.url).toBe('https://example.com/paper');
+	});
+
+	test('returns invalid for non-http url field', () => {
+		const result = findBibFieldLinkAtLine('  url = {ftp://files.example.com},');
+		expect(result).toBeDefined();
+		expect(result!.invalid).toBe(true);
+		expect(result!.label).toContain('Invalid URL');
+	});
+});
+
