@@ -96,4 +96,31 @@ describe('computeBibEntryRanges', () => {
 		expect(ranges[0].key).toBe('oddquote2020');
 		expect(ranges[0].entryEnd).toBe(text.length);
 	});
+
+	test('@type{key, pattern inside field value is not a spurious match', () => {
+		// A note field referencing another entry should not produce a second range
+		const text = '@article{key1,\n  note = {see @book{ref1, p.5}},\n  year = {2020}\n}';
+		const ranges = computeBibEntryRanges(text);
+		expect(ranges).toHaveLength(1);
+		expect(ranges[0].key).toBe('key1');
+	});
+
+	test('real entry after field containing @type{key, pattern', () => {
+		const text = [
+			'@article{first2020,',
+			'  note = {see @book{ref1, p.5}},',
+			'  year = {2020}',
+			'}',
+			'',
+			'@book{second2021,',
+			'  year = {2021}',
+			'}',
+		].join('\n');
+		const ranges = computeBibEntryRanges(text);
+		expect(ranges).toHaveLength(2);
+		expect(ranges[0].key).toBe('first2020');
+		expect(ranges[1].key).toBe('second2021');
+		// Ranges must not overlap
+		expect(ranges[1].entryStart).toBeGreaterThanOrEqual(ranges[0].entryEnd);
+	});
 });

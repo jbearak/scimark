@@ -519,14 +519,15 @@ connection.onDocumentSymbol(async (params: DocumentSymbolParams): Promise<Docume
 		return [];
 	}
 
-	// Use bibData.text for range computation so offsets stay consistent with
-	// the snapshot that bibData.entries was parsed from (avoids mismatch when
-	// the open document's URI normalizes differently from fsPathToUri).
+	// Always create TextDocument from bibData.text so positionAt() offsets
+	// match the same snapshot that bibData.entries and computeBibEntryRanges
+	// operate on. Using documents.get(params.textDocument.uri) would risk a
+	// mismatch when the URI round-trip (uriToFsPath → fsPathToUri) differs
+	// from the original URI (e.g. drive-letter casing on Windows), since
+	// getBibDataForPath may have read from disk while the editor has unsaved edits.
 	const text = bibData.text;
 	const ranges = computeBibEntryRanges(text);
-	const bibUri = fsPathToUri(fsPath);
-	const doc = documents.get(params.textDocument.uri)
-		?? TextDocument.create(bibUri, 'bibtex', 0, text);
+	const doc = TextDocument.create(params.textDocument.uri, 'bibtex', 0, text);
 	const symbols: DocumentSymbol[] = [];
 
 	for (const r of ranges) {

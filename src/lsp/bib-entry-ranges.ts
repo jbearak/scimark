@@ -7,7 +7,8 @@ export interface BibEntryRange {
 }
 
 /**
- * Scan raw .bib text and return the byte ranges of each entry.
+ * Scan raw .bib text and return character offset ranges (UTF-16 code unit
+ * offsets into the JS string, matching TextDocument.positionAt) for each entry.
  * Uses brace-counting to find closing `}`, mirroring parseBibtex in bibtex-parser.ts.
  */
 export function computeBibEntryRanges(text: string): BibEntryRange[] {
@@ -50,6 +51,10 @@ export function computeBibEntryRanges(text: string): BibEntryRange[] {
 				}
 			}
 		}
+
+		// Advance regex past the entry body so the next exec() doesn't
+		// match @type{key, patterns inside field values.
+		entryRe.lastIndex = entryEnd;
 
 		if (braceCount > 0) {
 			continue; // malformed entry, skip
