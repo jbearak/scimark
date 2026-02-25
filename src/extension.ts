@@ -52,7 +52,7 @@ let languageClient: LanguageClient | undefined;
 let languageClientDisposables: vscode.Disposable[] = [];
 let cslCacheDir: string = '';
 let previewMd: any;
-function syncPreviewColors(scheme: string) {
+function syncPreviewColors(scheme: ColorScheme) {
 	if (previewMd) previewMd.manuscriptColors = scheme;
 }
 

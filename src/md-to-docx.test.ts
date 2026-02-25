@@ -2124,13 +2124,18 @@ describe('colors frontmatter', () => {
     for (const color of Object.values(GUTTMACHER_ALERT_COLORS)) {
       expect(xml).toContain(color);
     }
-    expect(xml).not.toContain(GITHUB_ALERT_COLORS.note);
+    for (const color of Object.values(GITHUB_ALERT_COLORS)) {
+      expect(xml).not.toContain(color);
+    }
   });
 
   it('stylesXml uses guttmacher colors by default', () => {
     const xml = stylesXml();
     for (const color of Object.values(GUTTMACHER_ALERT_COLORS)) {
       expect(xml).toContain(color);
+    }
+    for (const color of Object.values(GITHUB_ALERT_COLORS)) {
+      expect(xml).not.toContain(color);
     }
   });
 
