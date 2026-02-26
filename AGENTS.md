@@ -12,6 +12,7 @@ LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 ## Cross-cutting learnings
 
 - Template literal corruption: never use `$$` in code touched by tool text-replacement operations — `$` is special in replacement strings and `$$` gets corrupted. Use string concatenation instead.
+- Word-save blockquotes: Word may rewrite `GitHub` style paragraphs to `GitHubBlockquote` and split hidden `\u200B_bqgN` metadata across multiple hidden runs. Keep blockquote style detection and hidden-run parsing robust to that rewrite.
 
 Per-module learnings live as comments in the corresponding source files.
 

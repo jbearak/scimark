@@ -417,14 +417,15 @@ export function parseBlockquoteLevel(pPrChildren: any[]): number | undefined {
   if (!pStyleElement) return undefined;
   const val = getAttr(pStyleElement, 'val').toLowerCase();
   const isAlertStyle = ALERT_STYLE_TO_TYPE[val] !== undefined;
-  if (val !== 'quote' && val !== 'intensequote' && val !== 'github' && !isAlertStyle) return undefined;
+  const isGithubBlockquoteStyle = val === 'github' || val === 'githubblockquote';
+  if (val !== 'quote' && val !== 'intensequote' && !isGithubBlockquoteStyle && !isAlertStyle) return undefined;
 
   // Extract left indent to determine nesting level
   const indElement = pPrChildren.find(child => child['w:ind'] !== undefined);
   if (indElement) {
     const left = parseInt(getAttr(indElement, 'left'), 10);
     if (!isNaN(left) && left > 0) {
-      const unit = (val === 'github' || isAlertStyle) ? 240 : 720;
+      const unit = (isGithubBlockquoteStyle || isAlertStyle) ? 240 : 720;
       return Math.max(1, Math.round(left / unit));
     }
   }
@@ -1989,8 +1990,9 @@ export async function extractDocumentContent(
                 runText += '\n';
               }
             }
-            if (runText.startsWith('\u200B') && runText.substring(1).trimStart().startsWith('<!--')) {
-              const payload = runText.substring(1);
+            const hiddenPayload = runText.replace(/^\u200B+/, '');
+            if (hiddenPayload.trimStart().startsWith('<!--')) {
+              const payload = hiddenPayload;
               target.push({
                 type: 'html_comment',
                 text: payload,
@@ -2000,8 +2002,8 @@ export async function extractDocumentContent(
             }
             // Extract blockquote group index from hidden tag (encoded by md→docx
             // for gap metadata correlation) and attach to the most recent para item.
-            if (runText.startsWith('\u200B_bqg')) {
-              const idx = parseInt(runText.slice('\u200B_bqg'.length), 10);
+            if (hiddenPayload.startsWith('_bqg')) {
+              const idx = parseInt(hiddenPayload.slice('_bqg'.length), 10);
               if (!isNaN(idx)) {
                 for (let ti = target.length - 1; ti >= 0; ti--) {
                   if (target[ti].type === 'para') {
@@ -2012,6 +2014,9 @@ export async function extractDocumentContent(
               }
               continue;
             }
+            // Hidden metadata markers are not user-visible content. This avoids
+            // leaking internal sentinels when Word splits \u200B-prefixed runs.
+            continue;
           }
 
           walk(runChildren, runFormatting, target, inTableCell, currentRevision);
@@ -2258,6 +2263,19 @@ function revisionsEqual(a: RevisionInfo | undefined, b: RevisionInfo | undefined
 // Avoid literal '$$' — tool text-replacement corrupts '$' in replacement
 // strings. See CLAUDE.md "Template literal corruption" rule.
 const MATH_FENCE = '$'.repeat(2);
+function canonicalizeDisplayMathLatex(latex: string): string {
+  const trimmed = latex.trim();
+  const envMatch = trimmed.match(/^\\begin\{([a-zA-Z*]+)\}\s*([\s\S]*?)\s*\\end\{\1\}$/);
+  if (!envMatch) return trimmed;
+  const envName = envMatch[1];
+  const multilineEnvs = new Set(['aligned', 'align', 'align*', 'gathered', 'cases']);
+  if (!multilineEnvs.has(envName)) return trimmed;
+  const inner = envMatch[2].trim();
+  if (!inner) return `\\begin{${envName}}\n\\end{${envName}}`;
+  const rows = inner.split(/\\\\/).map(row => row.trim()).filter(row => row.length > 0);
+  if (rows.length === 0) return `\\begin{${envName}}\n\\end{${envName}}`;
+  return `\\begin{${envName}}\n${rows.join(' \\\\\n')}\n\\end{${envName}}`;
+}
 
 function wrapWithRevision(text: string, rev?: RevisionInfo): string {
   if (!rev) return text;
@@ -2293,7 +2311,9 @@ function tryRenderSubstitution(
       ? (precedingText.endsWith(' ') ? '' : ' ') + '[' + deletion.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
       : deletion.text;
   } else if (deletion.type === 'math') {
-    oldText = deletion.display ? MATH_FENCE + '\n' + deletion.latex + '\n' + MATH_FENCE : '$' + deletion.latex + '$';
+    oldText = deletion.display
+      ? MATH_FENCE + '\n' + canonicalizeDisplayMathLatex(deletion.latex) + '\n' + MATH_FENCE
+      : '$' + deletion.latex + '$';
   }
 
   let newText = '';
@@ -2305,7 +2325,9 @@ function tryRenderSubstitution(
       ? (oldText.endsWith(' ') ? '' : ' ') + '[' + addition.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
       : addition.text;
   } else if (addition.type === 'math') {
-    newText = addition.display ? MATH_FENCE + '\n' + addition.latex + '\n' + MATH_FENCE : '$' + addition.latex + '$';
+    newText = addition.display
+      ? MATH_FENCE + '\n' + canonicalizeDisplayMathLatex(addition.latex) + '\n' + MATH_FENCE
+      : '$' + addition.latex + '$';
   }
 
   if (oldText && newText) {
@@ -3753,7 +3775,7 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      const mathBlock = MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE;
+      const mathBlock = MATH_FENCE + '\n' + canonicalizeDisplayMathLatex(item.latex) + '\n' + MATH_FENCE;
       output.push(item.revision ? wrapWithRevision(mathBlock, item.revision) : mathBlock);
       // A display math block breaks list flow; reset list continuation state.
       lastListType = undefined;
@@ -3859,7 +3881,7 @@ export function buildMarkdown(
             bodyParts.push(part.text);
             deferredAll.push(...part.deferredComments);
           }
-          const mathBlock = MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE;
+          const mathBlock = MATH_FENCE + '\n' + canonicalizeDisplayMathLatex(item.latex) + '\n' + MATH_FENCE;
           bodyParts.push(item.revision ? wrapWithRevision(mathBlock, item.revision) : mathBlock);
           partStart = bi + 1;
         } else if (item.type === 'table') {

@@ -515,7 +515,6 @@ describe('alerts integration: md -> docx -> md', () => {
     expect(rt.markdown).toBe([
       '> [!NOTE]',
       '> alpha alpha',
-      '',
       'alpha alpha',
       '',
     ].join('\n'));

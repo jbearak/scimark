@@ -2159,8 +2159,7 @@ describe('Integration: DOCX equation conversion', () => {
     const buf = await buildSyntheticDocx(xml);
     const result = await convertDocx(buf);
     const md = result.markdown;
-
-    const displayBlock = '$$' + '\n' + '\\mathrm{E=mc^2}' + '\n' + '$$';
+    const displayBlock = '$$' + '\n' + 'E=mc^2' + '\n' + '$$';
     expect(md).toContain(displayBlock);
 
     // Verify blank line before display block
@@ -2790,7 +2789,7 @@ describe('DOCX footnote extraction', () => {
     const buf = await buildSyntheticDocx(docXml, { 'word/footnotes.xml': footnotesXml });
     const result = await convertDocx(buf);
 
-    expect(result.markdown).toContain('[^1]:\n\n    $$\n    \\mathrm{E=mc^2}\n    $$');
+    expect(result.markdown).toContain('[^1]:\n\n    $$\n    E=mc^2\n    $$');
   });
 
   test('footnote body with text then display math does not duplicate equation', async () => {
@@ -2808,7 +2807,7 @@ describe('DOCX footnote extraction', () => {
     const result = await convertDocx(buf);
 
     // Should contain exactly one instance of the display math block
-    const displayMathBlock = '$$\n    \\mathrm{x^2}\n    $$';
+    const displayMathBlock = '$$\n    x^2\n    $$';
     const occurrences = (result.markdown.match(/\$\$[\s\S]*?x\^2[\s\S]*?\$\$/g) || []).length;
     expect(occurrences).toBe(1);
     expect(result.markdown).toContain('[^1]: Here is an equation:');
@@ -2957,6 +2956,10 @@ describe('parseBlockquoteLevel', () => {
 
   test('returns 1 for GitHub style without explicit indent', () => {
     const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHub' } }];
+    expect(parseBlockquoteLevel(children)).toBe(1);
+  });
+  test('returns 1 for GitHubBlockquote style (Word-saved)', () => {
+    const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHubBlockquote' } }];
     expect(parseBlockquoteLevel(children)).toBe(1);
   });
 
