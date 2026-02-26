@@ -6,7 +6,7 @@ import { wrapColoredHighlight } from './formatting';
 import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
 import { gfmAlertTitle, parseGfmAlertMarker, toGfmAlertMarker, type GfmAlertType } from './gfm';
 import { emuToPixels, isSupportedImageFormat, resolveImageFilename } from './image-utils';
-import { parseBibtex } from './bibtex-parser';
+import { parseBibtex, mergeBibtex } from './bibtex-parser';
 
 // --- Implementation notes ---
 // Table parsing:
@@ -4464,8 +4464,7 @@ export async function convertDocx(
   // Layered .bib restoration:
   // Layer 1: raw .bib stored in ZIP (perfect fidelity, may be stripped by Word)
   // Layer 2: key order in custom properties (survives Word editing)
-  // Layer 3: existing .bib from caller (e.g. on-disk file next to output .md)
-  // Layer 4: regenerate from Zotero citations (backward compatible)
+  // Layer 3: regenerate from Zotero citations (backward compatible)
   let bibtex: string;
   if (storedBibtex) {
     // Layer 1: use stored .bib verbatim, append only genuinely new entries.
@@ -4479,14 +4478,14 @@ export async function convertDocx(
   } else if (bibKeyOrder) {
     // Layer 2: regenerate but sort to match original key order
     bibtex = generateBibTeX(zoteroCitations, keyMap, null, bibKeyOrder);
-  } else if (options?.existingBibtex && options.existingBibtex.length > 0) {
-    // Layer 3: existing .bib from disk — verbatim + append new entries
-    const existingKeys = new Set(parseBibtex(options.existingBibtex).keys());
-    const newEntries = generateBibTeX(zoteroCitations, keyMap, existingKeys);
-    bibtex = newEntries ? options.existingBibtex.trimEnd() + '\n\n' + newEntries : options.existingBibtex;
   } else {
-    // Layer 4: backward compatible — generate from Zotero citations
+    // Layer 3: backward compatible — generate from Zotero citations
     bibtex = generateBibTeX(zoteroCitations, keyMap);
+  }
+
+  // Post-processing: merge with on-disk .bib — preserves all existing entries/fields
+  if (options?.existingBibtex && options.existingBibtex.length > 0) {
+    bibtex = mergeBibtex(options.existingBibtex, bibtex);
   }
 
   // Extract image binaries from the ZIP

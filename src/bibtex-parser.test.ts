@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { parseBibtex, serializeBibtex, stripOuterBraces, BibtexEntry } from './bibtex-parser';
+import { parseBibtex, serializeBibtex, stripOuterBraces, mergeBibtex, BibtexEntry } from './bibtex-parser';
 
 describe('BibTeX Parser', () => {
   it('parses basic entry', () => {
@@ -259,5 +259,61 @@ describe('double-brace fix', () => {
     // double-brace stripping (braceValue is "Caf\'{e}", which does not start with '{').
     const result = parseBibtex("@article{k, title = {Caf\\'{e}}}");
     expect(result.get('k')?.fields.get('title')).toBe("Caf\\'{e}");
+  });
+});
+
+describe('mergeBibtex', () => {
+  it('preserves existing-only entries verbatim', () => {
+    const existing = '@article{onlyExisting,\n  title = {{Only Existing}},\n  year = {2020}\n}';
+    const produced = '@article{onlyProduced,\n  title = {Only Produced},\n  year = {2021}\n}';
+    const result = mergeBibtex(existing, produced);
+    // Existing-only entry appears first (existing order), produced-only appended
+    expect(result).toContain('@article{onlyExisting,');
+    expect(result).toContain('{{Only Existing}}');
+    expect(result).toContain('@article{onlyProduced,');
+    expect(result.indexOf('onlyExisting')).toBeLessThan(result.indexOf('onlyProduced'));
+  });
+
+  it('appends produced-only entries after existing entries', () => {
+    const existing = '@article{key1,\n  title = {Existing},\n  year = {2020}\n}';
+    const produced = '@article{key1,\n  title = {Updated},\n  year = {2020}\n}\n\n@article{key2,\n  title = {New Entry},\n  year = {2021}\n}';
+    const result = mergeBibtex(existing, produced);
+    expect(result).toContain('@article{key2,');
+    expect(result).toContain('New Entry');
+  });
+
+  it('uses produced field values when both have the same field', () => {
+    const existing = '@article{key1,\n  title = {Old Title},\n  year = {2020}\n}';
+    const produced = '@article{key1,\n  title = {New Title},\n  year = {2020}\n}';
+    const result = mergeBibtex(existing, produced);
+    expect(result).toContain('New Title');
+    expect(result).not.toContain('Old Title');
+  });
+
+  it('preserves existing-only fields when produced is missing them', () => {
+    const existing = '@article{key1,\n  title = {Title},\n  abstract = {An abstract},\n  year = {2020}\n}';
+    const produced = '@article{key1,\n  title = {Title},\n  year = {2020}\n}';
+    const result = mergeBibtex(existing, produced);
+    expect(result).toContain('abstract');
+    expect(result).toContain('An abstract');
+  });
+
+  it('preserves double-brace title formatting in existing-only entries', () => {
+    const existing = '@article{key1,\n  title = {{Double Braced Title}},\n  year = {2020}\n}';
+    const produced = '';
+    const result = mergeBibtex(existing, produced);
+    expect(result).toContain('{{Double Braced Title}}');
+  });
+
+  it('returns existing when produced is empty', () => {
+    const existing = '@article{key1,\n  title = {Title},\n  year = {2020}\n}';
+    const result = mergeBibtex(existing, '');
+    expect(result).toBe(existing);
+  });
+
+  it('returns produced when existing is empty', () => {
+    const produced = '@article{key1,\n  title = {Title},\n  year = {2020}\n}';
+    const result = mergeBibtex('', produced);
+    expect(result).toBe(produced);
   });
 });

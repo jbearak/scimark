@@ -3799,7 +3799,7 @@ describe('extractBibKeyOrder', () => {
   });
 });
 
-describe('convertDocx existingBibtex (Layer 3)', () => {
+describe('convertDocx existingBibtex (post-processing merge)', () => {
   const EXISTING_BIB = `@article{smith2020,
   author = {Smith, Alice},
   title = {{Effects of climate on agriculture}},
@@ -3824,19 +3824,22 @@ describe('convertDocx existingBibtex (Layer 3)', () => {
     expect(result.bibtex).toContain('@article{smith2020,');
   });
 
-  test('prefers stored .bib (Layer 1) over existingBibtex (Layer 3)', async () => {
+  test('merges stored .bib (Layer 1) with existingBibtex', async () => {
     const storedBib = '@article{stored1,\n  author = {Stored, Author},\n  title = {{From stored bib}},\n  year = {2024},\n}';
     const md = 'Some text [@stored1].\n';
     const { docx } = await convertMdToDocx(md, { bibtex: storedBib });
-    // Now convert back with existingBibtex — Layer 1 should win
+    // Now convert back with existingBibtex — both should be present
     const result = await convertDocx(docx, 'authorYearTitle', {
       existingBibtex: EXISTING_BIB,
     });
+    // Layer 1 entry is present
     expect(result.bibtex).toContain('From stored bib');
-    expect(result.bibtex).not.toContain('uncitedEntry');
+    // Existing-only entries are also preserved (merge, not preference)
+    expect(result.bibtex).toContain('uncitedEntry');
+    expect(result.bibtex).toContain('Not cited anywhere');
   });
 
-  test('prefers key order (Layer 2) over existingBibtex (Layer 3)', async () => {
+  test('merges key order (Layer 2) with existingBibtex', async () => {
     // key2 is uncited but included in stored .bib so key-order metadata covers both keys
     const storedBib = '@article{key1,\n  author = {A, X},\n  title = {{Title A}},\n  year = {2020},\n}\n\n@article{key2,\n  author = {B, Y},\n  title = {{Title B}},\n  year = {2021},\n}';
     const md = 'Some text [@key1].\n';
@@ -3852,9 +3855,9 @@ describe('convertDocx existingBibtex (Layer 3)', () => {
     });
     // Layer 2 regenerates from Zotero metadata — should contain the cited key
     expect(result.bibtex).toContain('key1');
-    // …but should NOT contain existingBibtex-only content
-    expect(result.bibtex).not.toContain('uncitedEntry');
-    expect(result.bibtex).not.toContain('Not cited anywhere');
+    // Existing-only entries are also preserved (merge, not preference)
+    expect(result.bibtex).toContain('uncitedEntry');
+    expect(result.bibtex).toContain('Not cited anywhere');
   });
 
   test('appends new Zotero entries not in existing .bib', async () => {
