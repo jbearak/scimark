@@ -203,9 +203,11 @@ async function runDocxToMd(options: CliOptions) {
   // Check output conflicts up-front so dual conflicts are reported together.
   assertNoDocxToMdConflicts(mdPath, bibPath, options.force);
 
+  const existingBibtex = fs.existsSync(bibPath) ? fs.readFileSync(bibPath, 'utf-8') : undefined;
   const result = await convertDocx(data, options.citationKeyFormat, {
     tableIndent: options.tableIndent,
     alwaysUseCommentIds: options.alwaysUseCommentIds,
+    existingBibtex,
     ...(options.pipeTableMaxLineWidthExplicit
       ? { pipeTableMaxLineWidth: options.pipeTableMaxLineWidth }
       : { pipeTableMaxLineWidthDefault: options.pipeTableMaxLineWidth }),

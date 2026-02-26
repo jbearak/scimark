@@ -4255,7 +4255,7 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
 export async function convertDocx(
   data: Uint8Array,
   format: CitationKeyFormat = 'authorYearTitle',
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number; existingBibtex?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
   const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, storedBibtex, bibKeyOrder] = await Promise.all([
@@ -4464,7 +4464,8 @@ export async function convertDocx(
   // Layered .bib restoration:
   // Layer 1: raw .bib stored in ZIP (perfect fidelity, may be stripped by Word)
   // Layer 2: key order in custom properties (survives Word editing)
-  // Layer 3: regenerate from Zotero citations (backward compatible)
+  // Layer 3: existing .bib from caller (e.g. on-disk file next to output .md)
+  // Layer 4: regenerate from Zotero citations (backward compatible)
   let bibtex: string;
   if (storedBibtex) {
     // Layer 1: use stored .bib verbatim, append only genuinely new entries.
@@ -4478,8 +4479,13 @@ export async function convertDocx(
   } else if (bibKeyOrder) {
     // Layer 2: regenerate but sort to match original key order
     bibtex = generateBibTeX(zoteroCitations, keyMap, null, bibKeyOrder);
+  } else if (options?.existingBibtex) {
+    // Layer 3: existing .bib from disk — verbatim + append new entries
+    const existingKeys = new Set(parseBibtex(options.existingBibtex).keys());
+    const newEntries = generateBibTeX(zoteroCitations, keyMap, existingKeys);
+    bibtex = newEntries ? options.existingBibtex.trimEnd() + '\n\n' + newEntries : options.existingBibtex;
   } else {
-    // Layer 3: backward compatible — generate from Zotero citations
+    // Layer 4: backward compatible — generate from Zotero citations
     bibtex = generateBibTeX(zoteroCitations, keyMap);
   }
 

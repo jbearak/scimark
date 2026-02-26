@@ -292,13 +292,17 @@ export function activate(context: vscode.ExtensionContext) {
 				const tableIndentSpaces = config.get<number>('tableIndent', 2);
 				const alwaysUseCommentIds = config.get<boolean>('alwaysUseCommentIds', false);
 				const pipeTableMaxLineWidth = config.get<number>('pipeTableMaxLineWidth', 120);
+				const basePath = uri.fsPath.replace(/\.docx$/i, '');
+				const existingBibUri = vscode.Uri.file(basePath + '.bib');
+				const existingBibtex = await fileExists(existingBibUri)
+					? new TextDecoder().decode(await vscode.workspace.fs.readFile(existingBibUri))
+					: undefined;
 				const result = await convertDocx(new Uint8Array(data), format, {
 					tableIndent: ' '.repeat(tableIndentSpaces),
 					alwaysUseCommentIds,
+					existingBibtex,
 					pipeTableMaxLineWidthDefault: pipeTableMaxLineWidth,
 				});
-
-				const basePath = uri.fsPath.replace(/\.docx$/i, '');
 				let mdUri = vscode.Uri.file(basePath + '.md');
 				let bibUri = vscode.Uri.file(basePath + '.bib');
 				const hasBibtex = Boolean(result.bibtex);

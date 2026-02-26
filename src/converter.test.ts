@@ -3799,3 +3799,55 @@ describe('extractBibKeyOrder', () => {
   });
 });
 
+describe('convertDocx existingBibtex (Layer 3)', () => {
+  const EXISTING_BIB = `@article{smith2020,
+  author = {Smith, Alice},
+  title = {{Effects of climate on agriculture}},
+  year = {2020},
+}
+
+@article{uncitedEntry,
+  author = {Nobody, X},
+  title = {{Not cited anywhere}},
+  year = {2000},
+}`;
+
+  test('uses existingBibtex when no stored .bib in ZIP', async () => {
+    // sampleData has Zotero citations but no stored .bib or key order
+    const result = await convertDocx(sampleData, 'authorYearTitle', {
+      existingBibtex: EXISTING_BIB,
+    });
+    // Should contain the existing .bib content verbatim (including uncited entry)
+    expect(result.bibtex).toContain('uncitedEntry');
+    expect(result.bibtex).toContain('Not cited anywhere');
+    // The existing smith2020 entry should be from the existing .bib, not regenerated
+    expect(result.bibtex).toContain('@article{smith2020,');
+  });
+
+  test('prefers stored .bib (Layer 1) over existingBibtex (Layer 3)', async () => {
+    const storedBib = '@article{stored1,\n  author = {Stored, Author},\n  title = {{From stored bib}},\n  year = {2024},\n}';
+    const md = 'Some text [@stored1].\n';
+    const { docx } = await convertMdToDocx(md, { bibtex: storedBib });
+    // Now convert back with existingBibtex — Layer 1 should win
+    const result = await convertDocx(docx, 'authorYearTitle', {
+      existingBibtex: EXISTING_BIB,
+    });
+    expect(result.bibtex).toContain('From stored bib');
+    expect(result.bibtex).not.toContain('uncitedEntry');
+  });
+
+  test('appends new Zotero entries not in existing .bib', async () => {
+    // sampleData has smith2020, jones2019, davis2021 Zotero citations.
+    // Provide existing .bib with only smith2020 — jones2019 and davis2021 should be appended.
+    const partialBib = '@article{smith2020effects,\n  author = {Smith, Alice},\n  title = {{Effects}},\n  year = {2020},\n}';
+    const result = await convertDocx(sampleData, 'authorYearTitle', {
+      existingBibtex: partialBib,
+    });
+    // Existing entry preserved
+    expect(result.bibtex).toContain('@article{smith2020effects,');
+    // New entries appended (jones and davis keys from Zotero regeneration)
+    expect(result.bibtex).toContain('jones2019');
+    expect(result.bibtex).toContain('davis2021');
+  });
+});
+
