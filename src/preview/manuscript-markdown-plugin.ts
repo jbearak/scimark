@@ -4,6 +4,7 @@ import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import { VALID_COLOR_IDS, getDefaultHighlightColor } from '../highlight-colors';
 import { PARA_PLACEHOLDER, preprocessCriticMarkup, findMatchingClose } from '../critic-markup';
 import { wrapBareLatexEnvironments } from '../latex-env-preprocess';
+import { preprocessGridTables, GRID_TABLE_PLACEHOLDER_PREFIX } from '../grid-table-preprocess';
 import { isGfmDisallowedRawHtml, escapeHtmlText, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from '../gfm';
 import { parseFrontmatter, type ColorScheme } from '../frontmatter';
 import { getDefaultColorScheme } from '../alert-colors';
@@ -908,6 +909,76 @@ function paraPlaceholderRule(state: StateInline, silent: boolean): boolean {
   return true;
 }
 
+
+/**
+ * Block rule that detects grid table placeholder comments and emits
+ * standard markdown-it table tokens. Runs before the built-in paragraph
+ * rule so placeholders are consumed before they become paragraphs.
+ */
+function gridTableBlockRule(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
+  const pos = state.bMarks[startLine] + state.tShift[startLine];
+  const max = state.eMarks[startLine];
+  const lineText = state.src.slice(pos, max);
+
+  if (!lineText.startsWith(GRID_TABLE_PLACEHOLDER_PREFIX)) return false;
+  if (!lineText.endsWith(' -->')) return false;
+
+  if (silent) return true;
+
+  const b64 = lineText.slice(GRID_TABLE_PLACEHOLDER_PREFIX.length, -4);
+  let gridData: { rows: Array<{ cells: string[]; header: boolean }> };
+  try {
+    const jsonStr = Buffer.from(b64, 'base64').toString();
+    gridData = JSON.parse(jsonStr);
+  } catch {
+    return false;
+  }
+
+  // Split into header and body rows
+  const headerRows = gridData.rows.filter(r => r.header);
+  const bodyRows = gridData.rows.filter(r => !r.header);
+
+  const tableOpen = state.push('table_open', 'table', 1);
+  tableOpen.map = [startLine, startLine + 1];
+
+  if (headerRows.length > 0) {
+    state.push('thead_open', 'thead', 1);
+    for (const row of headerRows) {
+      state.push('tr_open', 'tr', 1);
+      for (const cellText of row.cells) {
+        state.push('th_open', 'th', 1);
+        const inlineTok = state.push('inline', '', 0);
+        inlineTok.content = cellText;
+        inlineTok.children = [];
+        state.push('th_close', 'th', -1);
+      }
+      state.push('tr_close', 'tr', -1);
+    }
+    state.push('thead_close', 'thead', -1);
+  }
+
+  if (bodyRows.length > 0) {
+    state.push('tbody_open', 'tbody', 1);
+    for (const row of bodyRows) {
+      state.push('tr_open', 'tr', 1);
+      for (const cellText of row.cells) {
+        const tag = headerRows.length === 0 && bodyRows.indexOf(row) === 0 ? 'th' : 'td';
+        state.push(tag + '_open', tag, 1);
+        const inlineTok = state.push('inline', '', 0);
+        inlineTok.content = cellText;
+        inlineTok.children = [];
+        state.push(tag + '_close', tag, -1);
+      }
+      state.push('tr_close', 'tr', -1);
+    }
+    state.push('tbody_close', 'tbody', -1);
+  }
+
+  state.push('table_close', 'table', -1);
+  state.line = startLine + 1;
+  return true;
+}
+
 /**
  * Main plugin function that registers Manuscript Markdown parsing with markdown-it
  * @param md - The MarkdownIt instance to extend
@@ -920,8 +991,11 @@ export function manuscriptMarkdownPlugin(md: MarkdownIt): void {
     const { metadata } = parseFrontmatter(state.src);
     const defaultScheme: ColorScheme = (md as any).manuscriptColors || getDefaultColorScheme();
     state.env.colorScheme = metadata.colors || defaultScheme;
-    state.src = preprocessCriticMarkup(wrapBareLatexEnvironments(state.src));
+    state.src = preprocessCriticMarkup(wrapBareLatexEnvironments(preprocessGridTables(state.src)));
   });
+
+  // Register grid table block rule before heading to intercept placeholders
+  md.block.ruler.before('heading', 'manuscript_grid_table_block', gridTableBlockRule);
 
   // Register the block-level rule to handle multi-line patterns with empty lines
   // This must run very early, before heading and paragraph parsing

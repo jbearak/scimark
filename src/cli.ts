@@ -203,9 +203,14 @@ async function runDocxToMd(options: CliOptions) {
   // Check output conflicts up-front so dual conflicts are reported together.
   assertNoDocxToMdConflicts(mdPath, bibPath, options.force);
 
+  // When --force is set and a .bib already exists, read it so Layer 3
+  // can preserve uncited entries and original ordering during overwrite.
+  // (Without --force, assertNoDocxToMdConflicts above would have thrown.)
+  const existingBibtex = fs.existsSync(bibPath) ? fs.readFileSync(bibPath, 'utf-8') : undefined;
   const result = await convertDocx(data, options.citationKeyFormat, {
     tableIndent: options.tableIndent,
     alwaysUseCommentIds: options.alwaysUseCommentIds,
+    existingBibtex,
     ...(options.pipeTableMaxLineWidthExplicit
       ? { pipeTableMaxLineWidth: options.pipeTableMaxLineWidth }
       : { pipeTableMaxLineWidthDefault: options.pipeTableMaxLineWidth }),

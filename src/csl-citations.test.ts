@@ -400,14 +400,14 @@ describe('MD→DOCX with CSL frontmatter', () => {
 });
 
 describe('MD→DOCX without CSL frontmatter', () => {
-  test('does not generate custom.xml when no CSL specified', async () => {
+  test('generates custom.xml with bib key order even without CSL', async () => {
     const md = 'Some text [@smith2020effects].\n';
     const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
 
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(result.docx);
-    const customXml = zip.file('docProps/custom.xml');
-    expect(customXml).toBeNull();
+    const customXml = await zip.file('docProps/custom.xml')?.async('string');
+    expect(customXml).toContain('MANUSCRIPT_BIB_KEY_ORDER');
   });
 
   test('does not generate ZOTERO_BIBL when no CSL specified', async () => {
@@ -447,6 +447,16 @@ describe('DOCX→MD→DOCX roundtrip', () => {
     expect(mdResult.markdown).toMatch(/@smith2020effects/);
     // Should not contain "Sources" heading either
     expect(mdResult.markdown).not.toMatch(/^#+\s*Sources/m);
+  });
+
+  test('bibliography does not add trailing blank lines on round-trip', async () => {
+    const md = '---\ncsl: apa\n---\n\nHello [@smith2020effects].\n\n<!-- end -->';
+    const docxResult = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+
+    const mdResult = await convertDocx(docxResult.docx);
+    // Should end with exactly one trailing newline (POSIX), not two
+    expect(mdResult.markdown).toMatch(/<!-- end -->\n$/);
+    expect(mdResult.markdown).not.toMatch(/<!-- end -->\n\n$/);
   });
 });
 

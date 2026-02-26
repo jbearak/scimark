@@ -6,6 +6,7 @@ import { wrapColoredHighlight } from './formatting';
 import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
 import { gfmAlertTitle, parseGfmAlertMarker, toGfmAlertMarker, type GfmAlertType } from './gfm';
 import { emuToPixels, isSupportedImageFormat, resolveImageFilename } from './image-utils';
+import { parseBibtex, mergeBibtex } from './bibtex-parser';
 
 // --- Implementation notes ---
 // Table parsing:
@@ -61,6 +62,7 @@ export interface Comment {
   date: string;
   paraId?: string;         // w14:paraId from <w:p> in comments.xml
   replies?: CommentReply[];
+  consecutiveReplies?: boolean; // true when original MD used consecutive {>>...<<} format for replies
 }
 
 const ALERT_STYLE_TO_TYPE: Record<string, GfmAlertType> = {
@@ -843,25 +845,40 @@ export async function extractZoteroPrefs(data: Uint8Array | JSZip): Promise<Zote
     }
   }
 }
-export async function extractBlockquoteAlertStyleMapping(data: Uint8Array | JSZip): Promise<Map<number, boolean> | null> {
+/**
+ * Read chunked custom property values from a DOCX ZIP and join them into a single string.
+ * Handles two naming conventions:
+ * - Strict: PREFIX_1, PREFIX_2, … (prefix ends with '_')
+ * - Flexible: PREFIX (index 1), PREFIX_2, PREFIX_3, … (prefix without trailing '_')
+ * Returns null if no matching properties are found.
+ */
+async function extractChunkedCustomProp(data: Uint8Array | JSZip, propPrefix: string): Promise<string | null> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
   const parsed = await readZipXml(zip, 'docProps/custom.xml');
   if (!parsed) return null;
 
-  const propPrefix = 'MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE';
+  const strict = propPrefix.endsWith('_');
   const parts: Array<{ index: number; value: string }> = [];
   const propertyNodes = findAllDeep(parsed, 'property');
   for (const propNode of propertyNodes) {
     const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
     if (!name.startsWith(propPrefix)) continue;
 
-    let idx = 1;
-    if (name !== propPrefix) {
-      if (!name.startsWith(propPrefix + '_')) continue;
-      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
+    let idx: number;
+    if (strict) {
+      const chunkMatch = name.slice(propPrefix.length).match(/^(\d+)$/);
       if (!chunkMatch) continue;
       idx = parseInt(chunkMatch[1], 10);
       if (isNaN(idx)) continue;
+    } else {
+      idx = 1;
+      if (name !== propPrefix) {
+        if (!name.startsWith(propPrefix + '_')) continue;
+        const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
+        if (!chunkMatch) continue;
+        idx = parseInt(chunkMatch[1], 10);
+        if (isNaN(idx)) continue;
+      }
     }
 
     const children = propNode['property'];
@@ -875,9 +892,13 @@ export async function extractBlockquoteAlertStyleMapping(data: Uint8Array | JSZi
   }
 
   if (parts.length === 0) return null;
-
   parts.sort((a, b) => a.index - b.index);
-  const mappingJson = parts.map(p => p.value).join('');
+  return parts.map(p => p.value).join('');
+}
+
+export async function extractBlockquoteAlertStyleMapping(data: Uint8Array | JSZip): Promise<Map<number, boolean> | null> {
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE');
+  if (!mappingJson) return null;
   try {
     const parsedJson = JSON.parse(mappingJson);
     if (!parsedJson || typeof parsedJson !== 'object') return null;
@@ -897,39 +918,8 @@ async function extractIdMappingFromCustomXml(
   data: Uint8Array | JSZip,
   propPrefix: string,
 ): Promise<Map<string, string> | null> {
-  const zip = data instanceof JSZip ? data : await loadZip(data);
-  const parsed = await readZipXml(zip, 'docProps/custom.xml');
-  if (!parsed) return null;
-
-  const parts: Array<{ index: number; value: string }> = [];
-  const propertyNodes = findAllDeep(parsed, 'property');
-  for (const propNode of propertyNodes) {
-    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
-    if (!name.startsWith(propPrefix)) continue;
-
-    let idx = 1;
-    if (name !== propPrefix) {
-      if (!name.startsWith(propPrefix + '_')) continue;
-      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
-      if (!chunkMatch) continue;
-      idx = parseInt(chunkMatch[1], 10);
-      if (isNaN(idx)) continue;
-    }
-
-    const children = propNode['property'];
-    if (!Array.isArray(children)) continue;
-    for (const child of children) {
-      if (child['vt:lpwstr'] !== undefined) {
-        const val = nodeText(child['vt:lpwstr'] || []);
-        parts.push({ index: idx, value: val });
-      }
-    }
-  }
-
-  if (parts.length === 0) return null;
-
-  parts.sort((a, b) => a.index - b.index);
-  const mappingJson = parts.map(p => p.value).join('');
+  const mappingJson = await extractChunkedCustomProp(data, propPrefix);
+  if (!mappingJson) return null;
   try {
     const parsedJson = JSON.parse(mappingJson);
     if (!parsedJson || typeof parsedJson !== 'object') return null;
@@ -961,6 +951,89 @@ export async function extractCodeBlockStyling(data: Uint8Array | JSZip): Promise
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_CODE_BLOCK_STYLING');
 }
 
+export async function extractTableFormatMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_TABLE_FORMATS');
+}
+
+export async function extractListIndent(data: Uint8Array | JSZip): Promise<'tab' | 'spaces' | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_LIST_INDENT') continue;
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
+        if (raw === 'tab') return 'tab';
+      }
+    }
+  }
+  return null;
+}
+
+export async function extractConsecutiveReplyParaIds(data: Uint8Array | JSZip): Promise<Set<string> | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_CONSECUTIVE_REPLY_COMMENTS') continue;
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
+        if (raw) return new Set(raw.split(',').map(id => id.trim()).filter(Boolean));
+      }
+    }
+  }
+  return null;
+}
+
+export async function extractFrontmatterBlankLines(data: Uint8Array | JSZip): Promise<number | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_FRONTMATTER_BLANK_LINES') continue;
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
+        const n = parseInt(raw, 10);
+        if (!isNaN(n) && n >= 0) return n;
+      }
+    }
+  }
+  return null;
+}
+
+/** Layer 2: read comma-separated bib key order from chunked MANUSCRIPT_BIB_KEY_ORDER_* custom props. */
+export async function extractBibKeyOrder(data: Uint8Array | JSZip): Promise<string[] | null> {
+  const csv = await extractChunkedCustomProp(data, 'MANUSCRIPT_BIB_KEY_ORDER_');
+  if (!csv) return null;
+  const keys = csv.split(',').map(k => k.trim()).filter(Boolean);
+  return keys.length > 0 ? keys : null;
+}
+
+/** Layer 1: read full .bib text from chunked MANUSCRIPT_BIB_DATA_* custom props. */
+export async function extractBibData(data: Uint8Array | JSZip): Promise<string | null> {
+  const text = await extractChunkedCustomProp(data, 'MANUSCRIPT_BIB_DATA_');
+  if (!text) return null;
+  return text.trim().length > 0 ? text : null;
+}
+
 export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Promise<number | null> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
   const parsed = await readZipXml(zip, 'docProps/custom.xml');
@@ -988,48 +1061,36 @@ export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Pr
 // that group and the next.  Uses the same chunked-JSON pattern as code block
 // language props, with key prefix MANUSCRIPT_BLOCKQUOTE_GAPS.
 export async function extractBlockquoteGapMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
-  const zip = data instanceof JSZip ? data : await loadZip(data);
-  const parsed = await readZipXml(zip, 'docProps/custom.xml');
-  if (!parsed) return null;
-
-  const propPrefix = 'MANUSCRIPT_BLOCKQUOTE_GAPS';
-  const parts: Array<{ index: number; value: string }> = [];
-  const propertyNodes = findAllDeep(parsed, 'property');
-  for (const propNode of propertyNodes) {
-    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
-    if (!name.startsWith(propPrefix)) continue;
-
-    let idx = 1;
-    if (name !== propPrefix) {
-      if (!name.startsWith(propPrefix + '_')) continue;
-      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
-      if (!chunkMatch) continue;
-      idx = parseInt(chunkMatch[1], 10);
-      if (isNaN(idx)) continue;
-    }
-
-    const children = propNode['property'];
-    if (!Array.isArray(children)) continue;
-    for (const child of children) {
-      if (child['vt:lpwstr'] !== undefined) {
-        const val = nodeText(child['vt:lpwstr'] || []);
-        parts.push({ index: idx, value: val });
-      }
-    }
-  }
-
-  if (parts.length === 0) return null;
-
-  parts.sort((a, b) => a.index - b.index);
-  const mappingJson = parts.map(p => p.value).join('');
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_BLOCKQUOTE_GAPS');
+  if (!mappingJson) return null;
   try {
     const parsedJson = JSON.parse(mappingJson);
     if (!parsedJson || typeof parsedJson !== 'object') return null;
     const mapping = new Map<number, number>();
     for (const [key, count] of Object.entries(parsedJson)) {
       const groupIdx = parseInt(key, 10);
-      if (isNaN(groupIdx) || typeof count !== 'number') continue;
+      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) continue;
       mapping.set(groupIdx, count);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
+
+// Extract HTML comment gap metadata from custom XML properties.
+// Returns a Map<number, number> mapping HTML comment index → blank-line-before count.
+export async function extractHtmlCommentGapMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_HTML_COMMENT_GAPS');
+  if (!mappingJson) return null;
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<number, number>();
+    for (const [key, count] of Object.entries(parsedJson)) {
+      const commentIdx = parseInt(key, 10);
+      if (isNaN(commentIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) continue;
+      mapping.set(commentIdx, count);
     }
     return mapping.size > 0 ? mapping : null;
   } catch {
@@ -1705,6 +1766,7 @@ export async function extractDocumentContent(
 
   const content: ContentItem[] = [];
   const activeComments = new Set<string>();
+  const commentStartTargetIndex = new Map<string, { target: ContentItem[], index: number }>();
   let inField = false;
   let inCitationField = false;
   let inBibliographyField = false;
@@ -1781,10 +1843,32 @@ export async function extractDocumentContent(
           if (Array.isArray(node[key])) walk(node[key], currentFormatting, target, inTableCell, rev);
         } else if (key === 'w:commentRangeStart') {
           const id = getAttr(node, 'id');
-          if (!replyIds?.has(id)) activeComments.add(id);
+          if (!replyIds?.has(id)) {
+            activeComments.add(id);
+            commentStartTargetIndex.set(id, { target, index: target.length });
+          }
         } else if (key === 'w:commentRangeEnd') {
           const id = getAttr(node, 'id');
-          if (!replyIds?.has(id)) activeComments.delete(id);
+          if (!replyIds?.has(id)) {
+            // Check if any content item was created with this comment ID
+            const startInfo = commentStartTargetIndex.get(id);
+            if (startInfo && startInfo.target === target) {
+              let found = false;
+              for (let ci = startInfo.index; ci < target.length; ci++) {
+                const item = target[ci];
+                if ('commentIds' in item && item.commentIds?.has(id)) {
+                  found = true;
+                  break;
+                }
+              }
+              if (!found) {
+                // Zero-width comment range: emit a synthetic empty text item
+                target.push({ type: 'text', text: '', formatting: currentFormatting, commentIds: new Set(activeComments), href: undefined });
+              }
+            }
+            commentStartTargetIndex.delete(id);
+            activeComments.delete(id);
+          }
         } else if (key === 'w:footnoteReference') {
           const noteId = getAttr(node, 'id');
           if (noteId && noteId !== '0' && noteId !== '-1') {
@@ -1983,6 +2067,14 @@ export async function extractDocumentContent(
             continue; // skip spacer paragraph entirely
           }
 
+          // Skip paragraphs inside bibliography field — text is already suppressed,
+          // but we must also suppress the para markers to avoid trailing blank lines.
+          if (inBibliographyField) {
+            // Still need to walk children so field end markers are processed
+            walk(paraChildren, paraFormatting, target, inTableCell, currentRevision);
+            continue;
+          }
+
           // Always push a new para when heading/list/title/blockquote/codeblock metadata is present (so metadata
           // isn't silently dropped after empty paragraphs).  For plain paragraphs,
           // push only when the previous item isn't already a plain para separator.
@@ -2001,6 +2093,7 @@ export async function extractDocumentContent(
             ? true
             : target.length > 0 && (prevItem!.type !== 'para' || prevIsCodeBlockPara || prevIsStructuralPara);
 
+          const targetLenBeforePara = target.length;
           if (needsPara) {
             const paraItem: ContentItem = { type: 'para' };
             if (headingLevel) paraItem.headingLevel = headingLevel;
@@ -2012,6 +2105,12 @@ export async function extractDocumentContent(
             target.push(paraItem);
           }
           walk(paraChildren, paraFormatting, target, inTableCell, currentRevision);
+          // If walking this paragraph's children entered a bibliography field
+          // (i.e. the field-begin + separate markers were in this paragraph),
+          // remove the para we just pushed — it would become a trailing blank line.
+          if (inBibliographyField && needsPara && target.length > targetLenBeforePara) {
+            target.splice(targetLenBeforePara, 1);
+          }
         } else if (key === 'm:oMathPara') {
           // Display equation — extract m:oMath children from within
           const mathParaChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
@@ -2295,6 +2394,14 @@ function formatDateSuffix(date: string | undefined): string {
 }
 
 function formatCommentBody(_cid: string, c: Comment): string {
+  if (c.consecutiveReplies && c.replies && c.replies.length > 0) {
+    // Consecutive format: each reply is a separate {>>...<<} block
+    let body = `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+    for (const reply of c.replies) {
+      body += `{>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+    }
+    return body;
+  }
   let body = `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
   if (c.replies && c.replies.length > 0) {
     for (const reply of c.replies) {
@@ -2308,6 +2415,14 @@ function formatCommentBody(_cid: string, c: Comment): string {
 }
 
 function formatCommentBodyWithId(cid: string, c: Comment): string {
+  if (c.consecutiveReplies && c.replies && c.replies.length > 0) {
+    // Consecutive format: each reply is a separate {>>...<<} block
+    let body = `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+    for (const reply of c.replies) {
+      body += `{>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+    }
+    return body;
+  }
   let body = `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
   if (c.replies && c.replies.length > 0) {
     for (const reply of c.replies) {
@@ -2482,7 +2597,10 @@ function renderInlineRange(
         j++;
       }
 
-      out += `{==${groupedCommentText.join('')}==}`;
+      const anchorText = groupedCommentText.join('');
+      if (anchorText) {
+        out += `{==${anchorText}==}`;
+      }
       for (const cid of [...commentSet].sort()) {
         const c = comments.get(cid);
         if (!c) { continue; }
@@ -2761,7 +2879,7 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
   return lines.join('\n');
 }
 
-type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> };
+type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string>; tableFormatMapping?: Map<string, string> };
 
 // East Asian Wide / Fullwidth code-point ranges (UAX #11).  Characters in
 // these ranges occupy two terminal columns; everything else is treated as
@@ -2843,7 +2961,15 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
     const rowCells: { text: string; deferred: string[] }[] = [];
     for (const cell of row.cells) {
       if (cell.paragraphs.length > 0) {
-        const r = renderInlineSegment(mergeConsecutiveRuns(cell.paragraphs[0]), comments, renderOpts);
+        // Strip auto-bold from header row cells — md-to-docx forces bold on
+        // header cells, so we undo it here to avoid spurious **...** on round-trip.
+        const items = row.isHeader
+          ? cell.paragraphs[0].map(item =>
+              item.type === 'text' && item.formatting?.bold
+                ? { ...item, formatting: { ...item.formatting, bold: false } }
+                : item)
+          : cell.paragraphs[0];
+        const r = renderInlineSegment(mergeConsecutiveRuns(items), comments, renderOpts);
         if (r.text.includes('\n')) { rollback(); return null; }
         // Escape pipes for GFM table cells: \| in source must become \\\| (escaped
         // backslash + escaped pipe); bare | must become \|. Single-pass callback
@@ -2947,14 +3073,153 @@ function stripAlertLeadPrefix(text: string, alertType: GfmAlertType): string {
 }
 
 
-/** Render a table as a GFM pipe table if possible, otherwise fall back to HTML. */
+/** Render a table as a grid table if possible; returns null if not feasible. */
+function tryRenderGridTable(
+  table: { rows: TableRow[] },
+  comments: Map<string, Comment>,
+  renderOpts?: RenderOpts,
+): string | null {
+  const rows = table.rows;
+  if (rows.length === 0) return null;
+
+  // Grid tables don't support colspan/rowspan
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if (cell.colspan && cell.colspan > 1) return null;
+      if (cell.rowspan && cell.rowspan > 1) return null;
+    }
+  }
+
+  const numCols = Math.max(...rows.map(r => r.cells.length));
+
+  // Snapshot emittedIdCommentBodies for rollback
+  const emittedSnapshot = renderOpts?.emittedIdCommentBodies
+    ? new Set(renderOpts.emittedIdCommentBodies) : undefined;
+  const rollback = () => {
+    if (emittedSnapshot && renderOpts?.emittedIdCommentBodies) {
+      renderOpts.emittedIdCommentBodies.clear();
+      for (const v of emittedSnapshot) renderOpts.emittedIdCommentBodies.add(v);
+    }
+  };
+
+  // Render all cells: each cell may have multiple paragraphs → multiple lines
+  const rendered: { lines: string[]; deferred: string[] }[][] = [];
+  for (const row of rows) {
+    const rowCells: { lines: string[]; deferred: string[] }[] = [];
+    for (const cell of row.cells) {
+      const cellLines: string[] = [];
+      const cellDeferred: string[] = [];
+      for (const para of cell.paragraphs) {
+        // Strip auto-bold from header row cells — md-to-docx forces bold on
+        // header cells, so we undo it here to avoid spurious **...** on round-trip.
+        const items = row.isHeader
+          ? para.map(item =>
+              item.type === 'text' && item.formatting?.bold
+                ? { ...item, formatting: { ...item.formatting, bold: false } }
+                : item)
+          : para;
+        const r = renderInlineSegment(mergeConsecutiveRuns(items), comments, renderOpts);
+        // Split on newlines within a paragraph (e.g. hard breaks)
+        cellLines.push(...r.text.split('\n'));
+        cellDeferred.push(...r.deferredComments);
+      }
+      if (cellLines.length === 0) cellLines.push('');
+      rowCells.push({ lines: cellLines, deferred: cellDeferred });
+    }
+    // Pad to numCols
+    while (rowCells.length < numCols) {
+      rowCells.push({ lines: [''], deferred: [] });
+    }
+    rendered.push(rowCells);
+  }
+
+  // Compute column widths (minimum 3 for separator dashes)
+  const colWidths: number[] = Array(numCols).fill(3);
+  for (const rowCells of rendered) {
+    for (let c = 0; c < numCols; c++) {
+      for (const line of rowCells[c].lines) {
+        const w = getDisplayWidth(line);
+        if (w > colWidths[c]) colWidths[c] = w;
+      }
+    }
+  }
+
+  // Build separator line
+  const makeSep = (ch: string) =>
+    '+' + colWidths.map(w => ch.repeat(w + 2)).join('+') + '+';
+
+  const normalSep = makeSep('-');
+  const headerSep = makeSep('=');
+
+  // Find header boundary
+  const headerEnd = rows.findIndex(r => !r.isHeader);
+  const hasHeader = headerEnd > 0;
+
+  // Build output lines
+  const lines: string[] = [];
+  const deferredAll: string[] = [];
+
+  lines.push(normalSep);
+
+  for (let ri = 0; ri < rendered.length; ri++) {
+    const rowCells = rendered[ri];
+    // Number of content lines in this row
+    const rowHeight = Math.max(...rowCells.map(c => c.lines.length));
+
+    for (let li = 0; li < rowHeight; li++) {
+      let line = '|';
+      for (let c = 0; c < numCols; c++) {
+        const text = rowCells[c].lines[li] || '';
+        const pad = colWidths[c] - getDisplayWidth(text);
+        line += ' ' + text + ' '.repeat(pad + 1) + '|';
+      }
+      lines.push(line);
+    }
+
+    for (const cell of rowCells) {
+      deferredAll.push(...cell.deferred);
+    }
+
+    // Separator after row
+    if (hasHeader && ri === headerEnd - 1) {
+      lines.push(headerSep);
+    } else {
+      lines.push(normalSep);
+    }
+  }
+
+  // If something went wrong with rendering, rollback
+  if (lines.length <= 2) {
+    rollback();
+    return null;
+  }
+
+  let result = lines.join('\n');
+  if (deferredAll.length > 0) {
+    result += '\n' + deferredAll.join('\n');
+  }
+  return result;
+}
+
+/** Render a table as a grid table, GFM pipe table, or HTML fallback, depending on feasibility and stored format. */
 function renderTableOrFallback(
   item: { rows: TableRow[] },
   comments: Map<string, Comment>,
   options?: { pipeTableMaxLineWidth?: number; tableIndent?: string },
   renderOpts?: RenderOpts,
+  storedFormat?: string,
 ): string {
-  const pipeMax = options?.pipeTableMaxLineWidth ?? 120;
+  // If the original format was HTML, emit HTML directly
+  if (storedFormat === 'html') {
+    return renderHtmlTable(item, comments, options?.tableIndent, renderOpts);
+  }
+  // If original was grid, try grid first to preserve format
+  if (storedFormat === 'grid') {
+    const gridResult = tryRenderGridTable(item, comments, renderOpts);
+    if (gridResult !== null) return gridResult;
+  }
+  // When the original was a pipe table, skip the width check to preserve format
+  const pipeMax = storedFormat === 'pipe' ? Infinity : (options?.pipeTableMaxLineWidth ?? 120);
   const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts);
   if (pipeResult !== null) {
     return pipeResult;
@@ -2965,7 +3230,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3080,10 +3345,12 @@ export function buildMarkdown(
     emittedIdCommentBodies,
     noteLabels,
     imageFormatMapping: options?.imageFormatMapping ?? undefined,
+    tableFormatMapping: options?.tableFormatMapping ?? undefined,
   };
 
   const output: string[] = [];
   let i = 0;
+  let tableIndex = 0;
   let lastListType: 'bullet' | 'ordered' | undefined;
   let codeBlockGroupIndex = 0;
   let lastAlertParagraphKey: string | undefined;
@@ -3102,6 +3369,8 @@ export function buildMarkdown(
   const codeBlockLangs = options?.codeBlockLangs;
   const blockquoteGaps = options?.blockquoteGaps;
   const blockquoteAlertInlineByGroup = options?.blockquoteAlertInlineByGroup;
+  const htmlCommentGaps = options?.htmlCommentGaps;
+  let htmlCommentIndex = 0;
 
   while (i < mergedContent.length) {
     const item = mergedContent[i];
@@ -3253,6 +3522,26 @@ export function buildMarkdown(
           } else {
             output.push('\n\n');
           }
+        } else if (
+          htmlCommentGaps &&
+          !item.headingLevel &&
+          !item.listMeta &&
+          !item.blockquoteLevel &&
+          !item.isCodeBlock
+        ) {
+          // Check if this paragraph is an HTML comment paragraph
+          const nextItem = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
+          if (nextItem && nextItem.type === 'html_comment') {
+            const gapCount = htmlCommentGaps.get(htmlCommentIndex);
+            if (gapCount !== undefined) {
+              // gapCount blank lines = gapCount+1 newline characters
+              output.push('\n' + '\n'.repeat(gapCount));
+            } else {
+              output.push('\n\n');
+            }
+          } else {
+            output.push('\n\n');
+          }
         } else {
           output.push('\n\n');
         }
@@ -3292,10 +3581,15 @@ export function buildMarkdown(
         lastAlertParagraphKey = undefined;
         pendingAlertPrefixStrip = undefined;
         pendingAlertInlineLevelForHardBreak = undefined;
-        const indent = item.listMeta.type === 'bullet'
-          ? ' '.repeat(2 * item.listMeta.level)
-          : ' '.repeat(3 * item.listMeta.level);
-        const marker = item.listMeta.type === 'bullet' ? '- ' : '1. ';
+        const useTab = options?.listIndent === 'tab';
+        const indent = useTab
+          ? '\t'.repeat(item.listMeta.level)
+          : item.listMeta.type === 'bullet'
+            ? ' '.repeat(2 * item.listMeta.level)
+            : ' '.repeat(3 * item.listMeta.level);
+        const marker = item.listMeta.type === 'bullet'
+          ? (useTab ? '-\t' : '- ')
+          : (useTab ? '1.\t' : '1. ');
         output.push(indent + marker);
       } else if (item.blockquoteLevel) {
         output.push('> '.repeat(item.blockquoteLevel));
@@ -3367,7 +3661,9 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      output.push(renderTableOrFallback(item, comments, options, renderOpts));
+      const storedFormat = renderOpts?.tableFormatMapping?.get(String(tableIndex));
+      output.push(renderTableOrFallback(item, comments, options, renderOpts, storedFormat));
+      tableIndex++;
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
       pendingAlertPrefixStrip = undefined;
@@ -3376,6 +3672,11 @@ export function buildMarkdown(
       lastBlockquoteLevel = undefined;
       i++;
       continue;
+    }
+
+    // Track HTML comment paragraph index for gap metadata
+    if (item.type === 'html_comment') {
+      htmlCommentIndex++;
     }
 
     const rendered = renderInlineRange(mergedContent, i, comments, { stopBeforeDisplayMath: true }, renderOpts);
@@ -3505,8 +3806,7 @@ export function formatLocalIsoMinute(ts: string): string {
     throw new Error(`Invalid timestamp: ${ts}`);
   }
   const pad = (n: number) => String(n).padStart(2, '0');
-  const offsetMinutes = -dt.getTimezoneOffset();
-  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}${formatOffsetString(offsetMinutes)}`;
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 }
 
 export function getLocalTimezoneOffset(): string {
@@ -3576,9 +3876,11 @@ const CSL_TO_BIBTEX: Record<string, string> = {
 
 export function generateBibTeX(
   zoteroCitations: ZoteroCitation[],
-  keyMap: Map<string, string>
+  keyMap: Map<string, string>,
+  originalKeyOrder?: string[] | null,
 ): string {
   const entries: string[] = [];
+  const entryByKey = originalKeyOrder ? new Map<string, string>() : null;
   const emitted = new Set<string>();
 
   for (const citation of zoteroCitations) {
@@ -3637,8 +3939,28 @@ export function generateBibTeX(
       if (meta.zoteroKey) { fields.push(`  zotero-key = {${meta.zoteroKey}}`); }
       if (meta.zoteroUri) { fields.push(`  zotero-uri = {${escapeBibtex(meta.zoteroUri)}}`); }
 
-      entries.push(`@${entryType}{${key},\n${fields.join(',\n')},\n}`);
+      const entryStr = `@${entryType}{${key},\n${fields.join(',\n')},\n}`;
+      entries.push(entryStr);
+      if (entryByKey) entryByKey.set(key, entryStr);
     }
+  }
+
+  // Reorder output to match original key order when provided (used by Layer 2 caller)
+  if (originalKeyOrder && originalKeyOrder.length > 0 && entryByKey) {
+    const ordered: string[] = [];
+    const remaining = new Map(entryByKey);
+    for (const key of originalKeyOrder) {
+      const entry = remaining.get(key);
+      if (entry) {
+        ordered.push(entry);
+        remaining.delete(key);
+      }
+    }
+    // Append any entries not in the original order (new citations added in Word)
+    for (const entry of remaining.values()) {
+      ordered.push(entry);
+    }
+    return ordered.join('\n\n');
   }
 
   return entries.join('\n\n');
@@ -3829,10 +4151,10 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
 export async function convertDocx(
   data: Uint8Array,
   format: CitationKeyFormat = 'authorYearTitle',
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number; existingBibtex?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, storedPipeTableMaxLineWidth] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -3845,7 +4167,14 @@ export async function convertDocx(
     extractBlockquoteGapMapping(zip),
     extractBlockquoteAlertStyleMapping(zip),
     extractImageFormatMapping(zip),
+    extractTableFormatMapping(zip),
     extractPipeTableMaxLineWidth(zip),
+    extractListIndent(zip),
+    extractConsecutiveReplyParaIds(zip),
+    extractFrontmatterBlankLines(zip),
+    extractHtmlCommentGapMapping(zip),
+    extractBibKeyOrder(zip),
+    extractBibData(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -3859,6 +4188,15 @@ export async function convertDocx(
 
   // Group reply comments under their parents and get IDs to exclude from ranges
   const replyIds = groupCommentThreads(comments, threads);
+
+  // Mark parent comments whose replies were originally in consecutive format
+  if (consecutiveReplyParaIds && consecutiveReplyParaIds.size > 0) {
+    for (const comment of comments.values()) {
+      if (comment.paraId && consecutiveReplyParaIds.has(comment.paraId) && comment.replies && comment.replies.length > 0) {
+        comment.consecutiveReplies = true;
+      }
+    }
+  }
 
   const keyMap = buildCitationKeyMap(zoteroCitations, format);
 
@@ -3954,6 +4292,9 @@ export async function convertDocx(
     blockquoteGaps: blockquoteGapMapping,
     blockquoteAlertInlineByGroup: blockquoteAlertStyleMapping,
     imageFormatMapping,
+    tableFormatMapping,
+    listIndent: storedListIndent ?? 'spaces',
+    htmlCommentGaps: htmlCommentGapMapping,
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
@@ -3961,7 +4302,7 @@ export async function convertDocx(
     const lines = markdown.split('\n');
     const sourcesIdx = lines.findIndex(l => SOURCES_HEADING_RE.test(l.trim()));
     if (sourcesIdx >= 0) {
-      markdown = lines.slice(0, sourcesIdx).join('\n').trimEnd();
+      markdown = lines.slice(0, sourcesIdx).join('\n');
     }
   }
 
@@ -3975,17 +4316,18 @@ export async function convertDocx(
   }
   if (zoteroPrefs) {
     fm.csl = zoteroStyleShortName(zoteroPrefs.styleId);
-    fm.locale = zoteroPrefs.locale;
+    // Only emit locale when it differs from the default (en-US)
+    if (zoteroPrefs.locale && zoteroPrefs.locale !== 'en-US') {
+      fm.locale = zoteroPrefs.locale;
+    }
     fm.zoteroNotes = zoteroPrefs.noteType !== undefined ? noteTypeFromNumber(zoteroPrefs.noteType) : undefined;
   }
   if (detectedNotesMode === 'endnotes') {
     fm.notes = 'endnotes';
   }
-  // Store the local timezone so md→docx can reconstruct UTC dates
-  const hasCommentDates = [...comments.values()].some(c => !!c.date);
-  if (hasCommentDates) {
-    fm.timezone = getLocalTimezoneOffset();
-  }
+  // Note: timezone is intentionally omitted from frontmatter to avoid injecting
+  // fields that weren't in the original. Dates without explicit offsets are
+  // interpreted in the system timezone by normalizeToUtcIso, which is correct.
   // Extract heading/title font overrides from styles.xml for round-trip
   const stylesFile = zip.file('word/styles.xml');
   if (stylesFile) {
@@ -4009,10 +4351,45 @@ export async function convertDocx(
   }
   const frontmatterStr = serializeFrontmatter(fm);
   if (frontmatterStr) {
-    markdown = frontmatterStr + '\n' + markdown;
+    // Restore the original number of blank lines after frontmatter.
+    // Default to 1 blank line (conventional) when no stored value exists.
+    const blankLines = storedFrontmatterBlankLines ?? 1;
+    markdown = frontmatterStr + '\n'.repeat(blankLines) + markdown;
   }
 
-  const bibtex = generateBibTeX(zoteroCitations, keyMap);
+  // Layered .bib restoration:
+  // Layer 1: full .bib stored in custom properties (survives Word editing)
+  // Layer 2: key order in custom properties — regenerate with original order
+  // Layer 3: regenerate from Zotero citations (backward compatible)
+  let bibtex: string;
+  if (storedBibData) {
+    // Layer 1: stored .bib is authoritative — preserve verbatim.
+    // Only append genuinely new Zotero entries (citations added in Word).
+    const storedKeys = new Set(parseBibtex(storedBibData).keys());
+    const generated = generateBibTeX(zoteroCitations, keyMap);
+    // generateBibTeX joins entries with '\n\n'; split to filter by key.
+    const newEntries = generated
+      .split(/\n\n+/)
+      .filter(entry => {
+        const m = entry.match(/@\w+\{([^,\s]+)/);
+        return m && !storedKeys.has(m[1]);
+      });
+    bibtex = newEntries.length > 0
+      ? storedBibData.trimEnd() + '\n\n' + newEntries.join('\n\n')
+      : storedBibData;
+  } else if (bibKeyOrder) {
+    // Layer 2: regenerate but sort to match original key order
+    bibtex = generateBibTeX(zoteroCitations, keyMap, bibKeyOrder);
+  } else {
+    // Layer 3: backward compatible — generate from Zotero citations
+    bibtex = generateBibTeX(zoteroCitations, keyMap);
+  }
+
+  // Post-processing: merge with on-disk .bib — preserves all existing entries/fields.
+  // Length check is a fast-path skip; mergeBibtex handles whitespace-only gracefully.
+  if (options?.existingBibtex && options.existingBibtex.length > 0) {
+    bibtex = mergeBibtex(options.existingBibtex, bibtex);
+  }
 
   // Extract image binaries from the ZIP
   let images: Map<string, Uint8Array> | undefined;
@@ -4035,6 +4412,9 @@ export async function convertDocx(
     }
     if (images.size === 0) images = undefined;
   }
+
+  // Ensure the output ends with exactly one newline (POSIX convention)
+  markdown = markdown.replace(/\n*$/, '\n');
 
   return { markdown, bibtex, zoteroPrefs, zoteroBiblData, images };
 }

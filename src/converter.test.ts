@@ -23,9 +23,10 @@ import {
   parseCodeBlockStyle,
   parseRunProperties,
   formatLocalIsoMinute,
-  getLocalTimezoneOffset,
   citationPandocKeys,
   ZoteroCitation,
+  extractBibKeyOrder,
+  extractBibData,
 } from './converter';
 import { convertMdToDocx } from './md-to-docx';
 
@@ -674,6 +675,24 @@ describe('Pipe table rendering', () => {
   });
 });
 
+test('pipe table headers round-trip without spurious bold', async () => {
+  const md = [
+    '| Header 1 | Header 2 |',
+    '| --- | --- |',
+    '| cell A | cell B |',
+    '',
+  ].join('\n');
+
+  const { docx } = await convertMdToDocx(md);
+  const result = await convertDocx(docx);
+
+  // Headers should not gain **bold** markers on round-trip
+  expect(result.markdown).not.toContain('**Header 1**');
+  expect(result.markdown).not.toContain('**Header 2**');
+  expect(result.markdown).toContain('| Header 1 |');
+  expect(result.markdown).toContain('| Header 2 |');
+});
+
 describe('Integration: tables.docx fixture', () => {
   test('converts tables.docx and produces three tables (simple one as pipe, complex as HTML)', async () => {
     const result = await convertDocx(tablesData, 'authorYearTitle', { pipeTableMaxLineWidthDefault: 120 });
@@ -724,6 +743,183 @@ describe('Integration: tables.docx fixture', () => {
     expect(secondPass.markdown).toContain('Row 1 Cols 2-4');
     expect(secondPass.markdown).toContain('Rows 3-4 Col 3');
     expect(secondPass.markdown).toContain('Rows 3-4 Col 5');
+  });
+});
+
+describe('Table format metadata round-trip', () => {
+  test('HTML table format is preserved through MD→DOCX→MD', async () => {
+    const htmlTableMd = '<table>\n<tr><th>H1</th><th>H2</th></tr>\n<tr><td>A</td><td>B</td></tr>\n</table>';
+    const { docx } = await convertMdToDocx(htmlTableMd);
+    const result = await convertDocx(docx);
+    // HTML-sourced table should remain HTML on round-trip
+    expect(result.markdown).toContain('<table>');
+    expect(result.markdown).toContain('H1');
+  });
+
+  test('pipe table format is preserved through MD→DOCX→MD', async () => {
+    const pipeMd = '| H1 | H2 |\n| --- | --- |\n| A | B |';
+    const { docx } = await convertMdToDocx(pipeMd);
+    const result = await convertDocx(docx);
+    // Pipe-sourced table should remain pipe on round-trip
+    expect(result.markdown).toContain('| --- |');
+    expect(result.markdown).toContain('| A |');
+    expect(result.markdown).not.toContain('<table>');
+  });
+});
+
+describe('Grid table renderer', () => {
+  test('grid table is produced for multi-line cells when format is grid', async () => {
+    // Build a table with multi-line cells using HTML (which supports multiple paragraphs)
+    const htmlMd = [
+      '<table>',
+      '<tr><th>Header 1</th><th>Header 2</th></tr>',
+      '<tr><td><p>Line 1</p><p>Line 2</p></td><td>Single</td></tr>',
+      '</table>',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(htmlMd);
+    // Override the stored format to 'grid' for this test
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    // Replace the stored table format from 'html' to 'grid'
+    const customXml = await zip.file('docProps/custom.xml')?.async('string') || '';
+    const updatedXml = customXml.replace(
+      '&quot;html&quot;',
+      '&quot;grid&quot;'
+    );
+    zip.file('docProps/custom.xml', updatedXml);
+    const modifiedDocx = await zip.generateAsync({ type: 'uint8array' });
+
+    const result = await convertDocx(modifiedDocx);
+    // Grid table should have + separators and | cell boundaries
+    expect(result.markdown).toContain('+');
+    expect(result.markdown).toContain('|');
+    // Multi-line cell should appear
+    expect(result.markdown).toContain('Line 1');
+    expect(result.markdown).toContain('Line 2');
+    // Should NOT be an HTML table
+    expect(result.markdown).not.toContain('<table>');
+  });
+
+  test('buildMarkdown renders grid table with header separator', () => {
+    const content: ContentItem[] = [
+      {
+        type: 'table',
+        rows: [
+          { isHeader: true, cells: [{ paragraphs: [[{ type: 'text', text: 'H1', commentIds: new Set(), formatting: DEFAULT_FORMATTING }]] }, { paragraphs: [[{ type: 'text', text: 'H2', commentIds: new Set(), formatting: DEFAULT_FORMATTING }]] }] },
+          { isHeader: false, cells: [{ paragraphs: [[{ type: 'text', text: 'A', commentIds: new Set(), formatting: DEFAULT_FORMATTING }], [{ type: 'text', text: 'B', commentIds: new Set(), formatting: DEFAULT_FORMATTING }]] }, { paragraphs: [[{ type: 'text', text: 'C', commentIds: new Set(), formatting: DEFAULT_FORMATTING }]] }] },
+        ],
+      },
+    ];
+    // Force grid format via tableFormatMapping
+    const tableFormatMapping = new Map([['0', 'grid']]);
+    const md = buildMarkdown(content, new Map(), { pipeTableMaxLineWidth: 0, tableFormatMapping });
+    // Should have grid separators
+    expect(md).toContain('+');
+    expect(md).toContain('| H1');
+    expect(md).toContain('| A');
+    expect(md).toContain('| B');
+    // Header row should use = separator
+    expect(md).toMatch(/\+=+\+/);
+    // Body rows should use - separator
+    expect(md).toMatch(/\+-+\+/);
+  });
+});
+
+describe('Grid table round-trip', () => {
+  test('grid table with multi-line cells round-trips through MD→DOCX→MD', async () => {
+    const gridMd = [
+      '+----------+----------+',
+      '| Header 1 | Header 2 |',
+      '+==========+==========+',
+      '| Cell 1   | Cell 2   |',
+      '|          | line 2   |',
+      '+----------+----------+',
+      '| Cell 3   | Cell 4   |',
+      '+----------+----------+',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(gridMd);
+    const result = await convertDocx(docx);
+    // Should produce a grid table (not HTML)
+    expect(result.markdown).toContain('+');
+    expect(result.markdown).toContain('Header 1');
+    expect(result.markdown).toContain('Cell 2');
+    expect(result.markdown).toContain('line 2');
+    expect(result.markdown).not.toContain('<table>');
+  });
+
+  test('simple grid table without multi-line cells preserves grid format', async () => {
+    const gridMd = [
+      '+------+------+',
+      '| H1   | H2   |',
+      '+======+======+',
+      '| A    | B    |',
+      '+------+------+',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(gridMd);
+    const result = await convertDocx(docx);
+    // Grid format is preserved even when cells are simple enough for pipe
+    expect(result.markdown).toContain('+');
+    expect(result.markdown).toContain('|');
+  });
+});
+
+describe('List indent round-trip', () => {
+  test('tab-indented lists round-trip with tabs', async () => {
+    const md = '- item 1\n\t- nested\n\t\t- deep';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // The converter normalizes space-after-marker to tab-after-marker for
+    // tab-indented lists, so input `\t- nested` becomes `\t-\tnested`.
+    expect(result.markdown).toContain('\t-\tnested');
+  });
+
+  test('space-indented lists round-trip with spaces', async () => {
+    const md = '- item 1\n  - nested\n    - deep';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('  - nested');
+    expect(result.markdown).not.toContain('\t');
+  });
+});
+
+describe('Dateless comment round-trip', () => {
+  test('standalone comment without date round-trips without gaining a date', async () => {
+    const md = 'Some text.\n\n{>>This is a comment without a date<<}';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('{>>');
+    // Should NOT contain a parenthesized date like (2026-02-25 23:12)
+    expect(result.markdown).not.toMatch(/\(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\)/);
+  });
+});
+
+describe('Tab-after-marker list round-trip', () => {
+  test('dash-tab list items round-trip with tabs', async () => {
+    const md = '-\tItem one\n-\tItem two\n-\tItem three';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('-\tItem one');
+    expect(result.markdown).toContain('-\tItem two');
+  });
+});
+
+describe('HTML comment blank line round-trip', () => {
+  test('blank lines before HTML comment are preserved', async () => {
+    const md = 'Paragraph one.\n\n\n\n<!-- A comment -->\n\nParagraph two.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // Should have 3 blank lines (4 newlines) before the comment, not 1
+    expect(result.markdown).toContain('Paragraph one.\n\n\n\n<!-- A comment -->');
+  });
+
+  test('zero extra blank lines before HTML comment are preserved', async () => {
+    const md = 'Paragraph one.\n\n<!-- A comment -->\n\nParagraph two.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // Default 1 blank line preserved
+    expect(result.markdown).toContain('Paragraph one.\n\n<!-- A comment -->');
+    // Should NOT have extra blank lines
+    expect(result.markdown).not.toContain('Paragraph one.\n\n\n<!-- A comment -->');
   });
 });
 
@@ -1034,7 +1230,7 @@ describe('extractDocumentContent', () => {
 </w:document>`);
     const buf = await zip.generateAsync({ type: 'uint8array' });
     const result = await convertDocx(buf);
-    expect(result.markdown).toBe('**Bold **Plain');
+    expect(result.markdown).toBe('**Bold **Plain\n');
   });
 });
 
@@ -1042,7 +1238,6 @@ describe('convertDocx (end-to-end)', () => {
   test('produces expected markdown', async () => {
     const result = await convertDocx(sampleData);
     const expectedMdLocal = expectedMd
-      .replace('{{TZ}}', getLocalTimezoneOffset())
       .replace('{{TS1}}', formatLocalIsoMinute('2025-01-15T10:30:00Z'))
       .replace('{{TS2}}', formatLocalIsoMinute('2025-01-16T14:00:00Z'))
       .replace('{{TS3}}', formatLocalIsoMinute('2025-01-17T09:15:00Z'));
@@ -2097,6 +2292,42 @@ describe('Zotero citation roundtrip', () => {
     const keyMap = buildCitationKeyMap(citations);
     const bib = generateBibTeX(citations, keyMap);
     expect(bib).toContain('doi = {10.1/some_thing_test}');
+  });
+
+  test('generateBibTeX with originalKeyOrder reorders output', () => {
+    const citations: ZoteroCitation[] = [{
+      plainCitation: '(A; B; C)',
+      items: [
+        { authors: [{ family: 'Alpha', given: 'A' }], title: 'Alpha Title', year: '2020', journal: 'J', volume: '1', pages: '1', doi: '', type: 'article-journal', fullItemData: {} },
+        { authors: [{ family: 'Beta', given: 'B' }], title: 'Beta Title', year: '2021', journal: 'J', volume: '2', pages: '2', doi: '', type: 'article-journal', fullItemData: {} },
+        { authors: [{ family: 'Gamma', given: 'G' }], title: 'Gamma Title', year: '2022', journal: 'J', volume: '3', pages: '3', doi: '', type: 'article-journal', fullItemData: {} },
+      ],
+    }];
+    const keyMap = buildCitationKeyMap(citations);
+    const keys = [...keyMap.values()];
+    const alphaKey = keys.find(k => k.includes('alpha'))!;
+    const betaKey = keys.find(k => k.includes('beta'))!;
+    const gammaKey = keys.find(k => k.includes('gamma'))!;
+    // Request reversed order
+    const bib = generateBibTeX(citations, keyMap, [gammaKey, betaKey, alphaKey]);
+    const entryOrder = [...bib.matchAll(/@article\{([^,]+),/g)].map(m => m[1]);
+    expect(entryOrder).toEqual([gammaKey, betaKey, alphaKey]);
+  });
+
+  test('generateBibTeX with null originalKeyOrder preserves current behavior', () => {
+    const citations: ZoteroCitation[] = [{
+      plainCitation: '(Test)',
+      items: [{
+        authors: [{ family: 'Test', given: 'A' }],
+        title: 'Test Title', year: '2020', journal: 'J', volume: '1',
+        pages: '1-2', doi: '10.1/test', type: 'article-journal',
+        fullItemData: {},
+      }],
+    }];
+    const keyMap = buildCitationKeyMap(citations);
+    const bib1 = generateBibTeX(citations, keyMap);
+    const bib2 = generateBibTeX(citations, keyMap, null);
+    expect(bib2).toBe(bib1);
   });
 
   test('citationPandocKeys includes locator suffix', () => {
@@ -3487,6 +3718,131 @@ describe('Track changes (CriticMarkup)', () => {
       expect(result.markdown).toContain('{++added cell++}');
       expect(result.markdown).toContain('{--removed cell--}');
     });
+  });
+});
+
+describe('extractBibKeyOrder', () => {
+  // Key order includes all entries from the .bib, not just cited ones.
+  // This preserves uncited entries across round-trips.
+  test('reads chunked MANUSCRIPT_BIB_KEY_ORDER_* from DOCX ZIP (includes uncited keys)', async () => {
+    const bib = '@article{key1,\n  author = {A},\n}\n\n@article{key2,\n  author = {B},\n}';
+    // Only key1 is cited, but key2 is still in the bib — both keys should be stored
+    const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: bib });
+    const result = await extractBibKeyOrder(docx);
+    expect(result).toEqual(['key1', 'key2']);
+  });
+
+  test('returns null when no bib key order is stored', async () => {
+    const { docx } = await convertMdToDocx('Hello world.');
+    const result = await extractBibKeyOrder(docx);
+    expect(result).toBeNull();
+  });
+});
+
+describe('extractBibData', () => {
+  test('reads .bib data from DOCX custom properties (round-trip)', async () => {
+    const bib = '@article{key1,\n  author = {A},\n}\n\n@article{key2,\n  author = {B},\n}';
+    const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: bib });
+    const result = await extractBibData(docx);
+    expect(result).not.toBeNull();
+    expect(result).toContain('@article{key1,');
+    expect(result).toContain('@article{key2,');
+  });
+
+  test('returns null when no .bib was provided', async () => {
+    const { docx } = await convertMdToDocx('Hello world.');
+    const result = await extractBibData(docx);
+    expect(result).toBeNull();
+  });
+
+  test('uncited entries survive round-trip via stored .bib data', async () => {
+    const bib = '@article{cited1,\n  author = {A},\n  title = {{Title A}},\n  year = {2020},\n}\n\n@article{uncited1,\n  author = {B},\n  title = {{Uncited Entry}},\n  year = {2021},\n}';
+    const md = 'Some text [@cited1].\n';
+    const { docx } = await convertMdToDocx(md, { bibtex: bib });
+    // Round-trip: convert DOCX back to markdown
+    const result = await convertDocx(docx, 'authorYearTitle');
+    // Layer 1 (stored .bib data) should preserve the uncited entry
+    expect(result.bibtex).toContain('@article{uncited1,');
+    expect(result.bibtex).toContain('Uncited Entry');
+  });
+
+  test('new Zotero entries (added in Word) are appended to stored .bib', async () => {
+    // Use sampleData which has Zotero citations (smith2020, jones2019, davis2021)
+    // but no stored .bib data — add stored .bib data manually
+    const storedBib = '@article{myentry,\n  author = {Custom, Author},\n  title = {{My Custom Entry}},\n  year = {2022},\n}';
+    const { docx } = await convertMdToDocx('Text [@myentry].', { bibtex: storedBib });
+    const result = await convertDocx(docx, 'authorYearTitle');
+    // Stored entry preserved via Layer 1
+    expect(result.bibtex).toContain('@article{myentry,');
+    expect(result.bibtex).toContain('My Custom Entry');
+  });
+
+  test('XML-special characters in .bib survive chunked property round-trip', async () => {
+    const bib = '@article{special1,\n  author = {O\'Brien, J. & Partners},\n  title = {{Results for x < 50 & y > 100}},\n  year = {2020},\n}';
+    const { docx } = await convertMdToDocx('Text [@special1].', { bibtex: bib });
+    const result = await extractBibData(docx);
+    expect(result).toBe(bib);
+  });
+});
+
+describe('convertDocx existingBibtex (post-processing merge)', () => {
+  const EXISTING_BIB = `@article{smith2020,
+  author = {Smith, Alice},
+  title = {{Effects of climate on agriculture}},
+  year = {2020},
+}
+
+@article{uncitedEntry,
+  author = {Nobody, X},
+  title = {{Not cited anywhere}},
+  year = {2000},
+}`;
+
+  test('uses existingBibtex when no stored .bib in ZIP', async () => {
+    // sampleData has Zotero citations but no stored .bib or key order
+    const result = await convertDocx(sampleData, 'authorYearTitle', {
+      existingBibtex: EXISTING_BIB,
+    });
+    // Should contain the existing .bib content verbatim (including uncited entry)
+    expect(result.bibtex).toContain('uncitedEntry');
+    expect(result.bibtex).toContain('Not cited anywhere');
+    // The existing smith2020 entry should be from the existing .bib, not regenerated
+    expect(result.bibtex).toContain('@article{smith2020,');
+  });
+
+  test('merges key order (Layer 2) with existingBibtex', async () => {
+    const storedBib = '@article{key1,\n  author = {A, X},\n  title = {{Title A}},\n  year = {2020},\n}\n\n@article{key2,\n  author = {B, Y},\n  title = {{Title B}},\n  year = {2021},\n}';
+    const md = 'Some text [@key1].\n';
+    const { docx } = await convertMdToDocx(md, { bibtex: storedBib });
+    // Strip MANUSCRIPT_BIB_DATA_* props so Layer 1 is unavailable and Layer 2 kicks in
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const customXml = await zip.file('docProps/custom.xml')!.async('string');
+    const stripped = customXml.replace(/<property[^>]*name="MANUSCRIPT_BIB_DATA_[^"]*"[^>]*>[\s\S]*?<\/property>/g, '');
+    zip.file('docProps/custom.xml', stripped);
+    const modifiedDocx = new Uint8Array(await zip.generateAsync({ type: 'uint8array' }));
+    const result = await convertDocx(modifiedDocx, 'authorYearTitle', {
+      existingBibtex: EXISTING_BIB,
+    });
+    // Layer 2 regenerates from Zotero metadata — should contain the cited key
+    expect(result.bibtex).toContain('key1');
+    // Existing-only entries are also preserved (merge, not preference)
+    expect(result.bibtex).toContain('uncitedEntry');
+    expect(result.bibtex).toContain('Not cited anywhere');
+  });
+
+  test('appends new Zotero entries not in existing .bib', async () => {
+    // sampleData has smith2020, jones2019, davis2021 Zotero citations.
+    // Provide existing .bib with only smith2020 — jones2019 and davis2021 should be appended.
+    const partialBib = '@article{smith2020effects,\n  author = {Smith, Alice},\n  title = {{Effects}},\n  year = {2020},\n}';
+    const result = await convertDocx(sampleData, 'authorYearTitle', {
+      existingBibtex: partialBib,
+    });
+    // Existing entry preserved
+    expect(result.bibtex).toContain('@article{smith2020effects,');
+    // New entries appended (jones and davis keys from Zotero regeneration)
+    expect(result.bibtex).toContain('jones2019');
+    expect(result.bibtex).toContain('davis2021');
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { parseBibtex, serializeBibtex, stripOuterBraces, BibtexEntry } from './bibtex-parser';
+import { parseBibtex, serializeBibtex, stripOuterBraces, mergeBibtex, extractRawField, spliceFieldsIntoEntry, BibtexEntry } from './bibtex-parser';
 
 describe('BibTeX Parser', () => {
   it('parses basic entry', () => {
@@ -259,5 +259,183 @@ describe('double-brace fix', () => {
     // double-brace stripping (braceValue is "Caf\'{e}", which does not start with '{').
     const result = parseBibtex("@article{k, title = {Caf\\'{e}}}");
     expect(result.get('k')?.fields.get('title')).toBe("Caf\\'{e}");
+  });
+});
+
+describe('mergeBibtex', () => {
+  it('preserves existing-only entries verbatim', () => {
+    const existing = '@article{onlyExisting,\n  title = {{Only Existing}},\n  year = {2020}\n}';
+    const produced = '@article{onlyProduced,\n  title = {Only Produced},\n  year = {2021}\n}';
+    const result = mergeBibtex(existing, produced);
+    // Existing-only entry appears first (existing order), produced-only appended
+    expect(result).toContain('@article{onlyExisting,');
+    expect(result).toContain('{{Only Existing}}');
+    expect(result).toContain('@article{onlyProduced,');
+    expect(result.indexOf('onlyExisting')).toBeLessThan(result.indexOf('onlyProduced'));
+  });
+
+  it('appends produced-only entries after existing entries', () => {
+    const existing = '@article{key1,\n  title = {Existing},\n  year = {2020}\n}';
+    const produced = '@article{key1,\n  title = {Updated},\n  year = {2020}\n}\n\n@article{key2,\n  title = {New Entry},\n  year = {2021}\n}';
+    const result = mergeBibtex(existing, produced);
+    expect(result).toContain('@article{key2,');
+    expect(result).toContain('New Entry');
+  });
+
+  it('uses produced field values when both have the same field', () => {
+    const existing = '@article{key1,\n  title = {Old Title},\n  year = {2020}\n}';
+    const produced = '@article{key1,\n  title = {New Title},\n  year = {2020}\n}';
+    const result = mergeBibtex(existing, produced);
+    expect(result).toContain('New Title');
+    expect(result).not.toContain('Old Title');
+  });
+
+  it('preserves existing-only fields when produced is missing them', () => {
+    const existing = '@article{key1,\n  title = {Title},\n  abstract = {An abstract},\n  year = {2020}\n}';
+    const produced = '@article{key1,\n  title = {Title},\n  year = {2020}\n}';
+    const result = mergeBibtex(existing, produced);
+    expect(result).toContain('abstract');
+    expect(result).toContain('An abstract');
+  });
+
+  it('preserves double-brace title formatting in existing-only entries', () => {
+    const existing = '@article{key1,\n  title = {{Double Braced Title}},\n  year = {2020}\n}';
+    const produced = '';
+    const result = mergeBibtex(existing, produced);
+    expect(result).toContain('{{Double Braced Title}}');
+  });
+
+  it('returns existing when produced is empty', () => {
+    const existing = '@article{key1,\n  title = {Title},\n  year = {2020}\n}';
+    const result = mergeBibtex(existing, '');
+    expect(result).toBe(existing);
+  });
+
+  it('returns produced when existing is empty', () => {
+    const produced = '@article{key1,\n  title = {Title},\n  year = {2020}\n}';
+    const result = mergeBibtex('', produced);
+    expect(result).toBe(produced);
+  });
+});
+
+describe('extractRawField', () => {
+  it('extracts double-braced value', () => {
+    const entry = '@article{k,\n  title = {{My Title}},\n  year = {2020}\n}';
+    const result = extractRawField(entry, 'title');
+    expect(result).toBe('  title = {{My Title}},');
+  });
+
+  it('extracts quoted value', () => {
+    const entry = '@article{k,\n  title = "My Title",\n  year = {2020}\n}';
+    const result = extractRawField(entry, 'title');
+    expect(result).toBe('  title = "My Title",');
+  });
+
+  it('extracts bare numeric value', () => {
+    const entry = '@article{k,\n  title = {Title},\n  year = 2020,\n  author = {Doe}\n}';
+    const result = extractRawField(entry, 'year');
+    expect(result).toBe('  year = 2020,');
+  });
+
+  it('returns null when field is not present', () => {
+    const entry = '@article{k,\n  title = {Title},\n  year = {2020}\n}';
+    expect(extractRawField(entry, 'abstract')).toBeNull();
+  });
+
+  it('extracts multi-line brace-delimited value', () => {
+    const entry = '@article{k,\n  abstract = {Line one\nLine two\nLine three},\n  year = {2020}\n}';
+    const result = extractRawField(entry, 'abstract');
+    expect(result).toBe('  abstract = {Line one\nLine two\nLine three},');
+  });
+
+  it('handles escaped braces in brace-delimited value', () => {
+    const entry = '@article{k,\n  title = {A \\{special\\} title},\n  year = {2020}\n}';
+    const result = extractRawField(entry, 'title');
+    expect(result).toBe('  title = {A \\{special\\} title},');
+  });
+});
+
+describe('spliceFieldsIntoEntry', () => {
+  it('splices a single field before closing brace', () => {
+    const entry = '@article{k,\n  title = {Title}\n}';
+    const result = spliceFieldsIntoEntry(entry, ['  year = {2020}']);
+    expect(result).toContain('title = {Title}');
+    expect(result).toContain('year = {2020}');
+    expect(result).toEndWith('\n}');
+  });
+
+  it('adds trailing comma to last produced field when missing', () => {
+    const entry = '@article{k,\n  title = {Title}\n}';
+    const result = spliceFieldsIntoEntry(entry, ['  year = {2020}']);
+    // The produced entry's last field "title = {Title}" should get a comma added
+    expect(result).toContain('title = {Title},');
+  });
+
+  it('is a no-op when fieldTexts is empty', () => {
+    const entry = '@article{k,\n  title = {Title}\n}';
+    expect(spliceFieldsIntoEntry(entry, [])).toBe(entry);
+  });
+
+  it('handles entry with trailing comma on last field', () => {
+    const entry = '@article{k,\n  title = {Title},\n}';
+    const result = spliceFieldsIntoEntry(entry, ['  year = {2020}']);
+    expect(result).toContain('year = {2020}');
+    expect(result).toEndWith('\n}');
+  });
+
+  it('strips trailing comma from last spliced field', () => {
+    const entry = '@article{k,\n  title = {Title}\n}';
+    const result = spliceFieldsIntoEntry(entry, ['  abstract = {An abstract},', '  year = {2020},']);
+    // Last spliced field should not end with comma
+    expect(result).toContain('year = {2020}\n}');
+  });
+});
+
+describe('parseBibtex via parseBibtexWithRaw parity', () => {
+  // parseBibtex delegates to parseBibtexWithRaw — verify parsed output
+  // matches expectations on a non-trivial multi-entry input so drift in
+  // the single implementation is caught.
+  it('produces identical results for complex input', () => {
+    const input = [
+      '@article{Smith2020,',
+      '  title = {{A Complex Title}},',
+      '  author = {{World Health Organization}},',
+      '  year = {2020},',
+      '  doi = {10.1000/test}',
+      '}',
+      '',
+      '@book{Jones2021,',
+      '  title = "Quoted Book Title",',
+      '  editor = {Jane Doe},',
+      '  year = 2021',
+      '}',
+      '',
+      '@inproceedings{malformed,',
+      '  title = {Missing closing brace',
+      '',
+      '@misc{Valid2022,',
+      '  note = {see @article{ref, p.5}},',
+      '  year = {2022}',
+      '}',
+    ].join('\n');
+
+    const result = parseBibtex(input);
+
+    // Should parse 3 valid entries, skip malformed
+    expect(result.size).toBe(3);
+    expect(result.has('Smith2020')).toBe(true);
+    expect(result.has('Jones2021')).toBe(true);
+    expect(result.has('Valid2022')).toBe(true);
+    expect(result.has('malformed')).toBe(false);
+
+    // Verify field-level parsing
+    expect(result.get('Smith2020')!.fields.get('title')).toBe('A Complex Title');
+    expect(result.get('Smith2020')!.fields.get('author')).toBe('{World Health Organization}');
+    expect(result.get('Jones2021')!.fields.get('title')).toBe('Quoted Book Title');
+    expect(result.get('Jones2021')!.fields.get('year')).toBe('2021');
+    expect(result.get('Valid2022')!.fields.get('year')).toBe('2022');
+
+    // Spurious @article{ref inside note must not appear
+    expect(result.has('ref')).toBe(false);
   });
 });

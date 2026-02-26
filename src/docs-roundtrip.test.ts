@@ -213,10 +213,8 @@ describe('docs round-trip: md -> docx -> md', () => {
 
       // --- Bibtex preservation ---
       if (fixture.bibtex) {
-        expect(mdResult.bibtex.length).toBeGreaterThan(0);
-        const originalEntries = (fixture.bibtex.match(/^@\w+\{/gm) || []).length;
-        const roundTrippedEntries = (mdResult.bibtex.match(/^@\w+\{/gm) || []).length;
-        expect(roundTrippedEntries).toBe(originalEntries);
+        // Layer 1 stores full .bib in custom properties — exact equality.
+        expect(mdResult.bibtex).toBe(fixture.bibtex);
       }
 
       // --- Word preservation ---
@@ -294,6 +292,8 @@ describe('CriticMarkup round-trip: md -> docx -> md', () => {
   }
 });
 
+const draftBib = readFileSync(join(repoRoot, 'test/fixtures/draft.bib'), 'utf-8');
+
 describe('double round-trip: md -> docx -> md -> docx -> md', () => {
   it('sample.md reaches a fixpoint after one round-trip', async () => {
     const originalMd = readFileSync(join(repoRoot, 'sample.md'), 'utf-8');
@@ -302,6 +302,9 @@ describe('double round-trip: md -> docx -> md -> docx -> md', () => {
     const r1 = await convertMdToDocx(originalMd, { bibtex: sampleBib });
     expect(r1.warnings).toEqual([]);
     const m1 = await convertDocx(r1.docx);
+
+    // RT1 output .bib should be identical to original (Layer 1: stored in custom props)
+    expect(m1.bibtex).toBe(sampleBib);
 
     // RT2: md -> docx -> md (using RT1 output)
     const r2 = await convertMdToDocx(m1.markdown, { bibtex: m1.bibtex });
@@ -321,6 +324,55 @@ describe('double round-trip: md -> docx -> md -> docx -> md', () => {
     // Key structural elements survived both round-trips
     expect(countHeadings(m2.markdown)).toBe(countHeadings(originalMd));
     expect(countCodeBlocks(m2.markdown)).toBe(countCodeBlocks(originalMd));
+  }, 60_000);
+
+  it('draft.md reaches a fixpoint after one round-trip (with bib)', async () => {
+    const draftMd = readFileSync(join(repoRoot, 'test/fixtures/draft.md'), 'utf-8');
+
+    // RT1: md -> docx -> md
+    const r1 = await convertMdToDocx(draftMd, { bibtex: draftBib });
+    expect(r1.warnings).toEqual([]);
+    const m1 = await convertDocx(r1.docx);
+
+    // RT1 output .bib should be identical to original (Layer 1: stored in custom props)
+    expect(m1.bibtex).toBe(draftBib);
+
+    // RT2: md -> docx -> md (using RT1 output)
+    const r2 = await convertMdToDocx(m1.markdown, { bibtex: m1.bibtex });
+    expect(r2.warnings).toEqual([]);
+    const m2 = await convertDocx(r2.docx);
+
+    // Fixpoint: RT1 and RT2 should produce identical markdown
+    expect(m2.markdown.trimEnd()).toBe(m1.markdown.trimEnd());
+
+    // Bib entries preserved through both round-trips
+    expect(m2.bibtex).toBe(m1.bibtex);
+
+    // Key structural elements survived both round-trips
+    expect(countHeadings(m2.markdown)).toBe(countHeadings(draftMd));
+  }, 60_000);
+
+  it('draft.md reaches a fixpoint after one round-trip (without bib)', async () => {
+    const draftMd = readFileSync(join(repoRoot, 'test/fixtures/draft.md'), 'utf-8');
+
+    // RT1: md -> docx -> md (no bib file)
+    const r1 = await convertMdToDocx(draftMd);
+    // Without a .bib file, citation-key-not-found warnings are expected
+    expect(r1.warnings.length).toBeGreaterThan(0);
+    expect(r1.warnings.every((w: string) => w.includes('Citation key not found'))).toBe(true);
+    const m1 = await convertDocx(r1.docx);
+
+    // RT2: md -> docx -> md (using RT1 output, still no bib)
+    const r2 = await convertMdToDocx(m1.markdown);
+    expect(r2.warnings.length).toBeGreaterThan(0);
+    expect(r2.warnings.every((w: string) => w.includes('Citation key not found'))).toBe(true);
+    const m2 = await convertDocx(r2.docx);
+
+    // Fixpoint: RT1 and RT2 should produce identical markdown
+    expect(m2.markdown.trimEnd()).toBe(m1.markdown.trimEnd());
+
+    // Key structural elements survived both round-trips
+    expect(countHeadings(m2.markdown)).toBe(countHeadings(draftMd));
   }, 60_000);
 });
 
@@ -416,7 +468,7 @@ describe('alerts integration: md -> docx -> md', () => {
 
     const { docx } = await convertMdToDocx(md);
     const rt = await convertDocx(docx);
-    expect(rt.markdown).toBe(md);
+    expect(rt.markdown).toBe(md + '\n');
   });
 
   it('preserves inline authored alert marker style', async () => {
@@ -426,7 +478,7 @@ describe('alerts integration: md -> docx -> md', () => {
 
     const { docx } = await convertMdToDocx(md);
     const rt = await convertDocx(docx);
-    expect(rt.markdown).toBe(md);
+    expect(rt.markdown).toBe(md + '\n');
   });
 
   it('round-trips multi-paragraph alert blocks and preserves only one marker per alert block', async () => {
@@ -465,6 +517,7 @@ describe('alerts integration: md -> docx -> md', () => {
       '> alpha alpha',
       '',
       'alpha alpha',
+      '',
     ].join('\n'));
   });
 

@@ -9,6 +9,8 @@ import { alertColorsByScheme, getDefaultColorScheme } from './alert-colors';
 import { ZoteroBiblData, zoteroStyleFullId } from './converter';
 import { isGfmDisallowedRawHtml, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from './gfm';
 import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDimensions, computeMissingDimension, IMAGE_WARNINGS } from './image-utils';
+import { preprocessGridTables, GRID_TABLE_PLACEHOLDER_PREFIX, type GridTableData } from './grid-table-preprocess';
+export { preprocessGridTables } from './grid-table-preprocess';
 
 // --- Implementation notes ---
 // - decodeHtmlEntities(): decode &amp; after other named entities to avoid over-decoding
@@ -19,6 +21,8 @@ import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDime
 //   inner runs on MdRun (innerRuns / oldRuns / newRuns)
 
 // Types for the parsed token stream
+export type TableFormat = 'pipe' | 'html' | 'grid';
+
 export interface MdToken {
   type: 'paragraph' | 'heading' | 'list_item' | 'blockquote' | 'code_block' | 'table' | 'hr';
   level?: number;           // heading level 1-6, blockquote nesting, list nesting
@@ -30,9 +34,12 @@ export interface MdToken {
   alertLast?: boolean;      // last paragraph in an alert block (for spacing)
   blockquoteGroupIndex?: number; // sequential index of the blockquote group this token belongs to
   trailingBlankLine?: boolean;   // for code blocks: blank line follows in source markdown
+  blankLinesBefore?: number;     // for HTML comments: blank lines before this token in source
+  htmlCommentIndex?: number;     // sequential index of HTML comment paragraphs
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
+  sourceFormat?: TableFormat; // original table format for round-trip
 }
 
 export interface MdTableCell {
@@ -715,6 +722,15 @@ function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
 // Learning: within a contiguous run of '>' lines, a line matching
 // '> [!TYPE]' (where TYPE is a GFM alert keyword) starts a new group —
 // this handles zero-gap same-type alerts that have no blank line between them.
+/** Detect whether the markdown source uses tab-based list indentation. */
+export function detectListIndent(markdown: string): 'tab' | 'spaces' {
+  // Look for nested list items (lines starting with tab followed by - or *)
+  const tabIndented = /^\t+[-*+] /m.test(markdown) || /^\t+\d+\. /m.test(markdown);
+  // Also detect tab after marker at top-level: `-\t` or `1.\t`
+  const tabAfterMarker = /^[-*+]\t/m.test(markdown) || /^\d+\.\t/m.test(markdown);
+  return (tabIndented || tabAfterMarker) ? 'tab' : 'spaces';
+}
+
 export function computeBlockquoteGaps(markdown: string): Map<number, number> {
   const gaps = new Map<number, number>();
   const lines = markdown.split('\n');
@@ -938,16 +954,7 @@ export function blockquoteGapProps(gaps: Map<number, number>): CustomPropEntry[]
   for (const [index, count] of gaps) {
     mapping[String(index)] = count;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_BLOCKQUOTE_GAPS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_GAPS_', JSON.stringify(mapping));
 }
 export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boolean>): CustomPropEntry[] {
   if (inlineByGroup.size === 0) return [];
@@ -955,16 +962,7 @@ export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boole
   for (const [index, isInline] of inlineByGroup) {
     mapping[String(index)] = isInline ? 1 : 0;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE_', JSON.stringify(mapping));
 }
 
 export function imageFormatProps(imageFormats: Map<string, string>): CustomPropEntry[] {
@@ -973,16 +971,16 @@ export function imageFormatProps(imageFormats: Map<string, string>): CustomPropE
   for (const [rId, syntax] of imageFormats) {
     mapping[rId] = syntax;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_IMAGE_FORMATS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
+  return chunkCustomProps('MANUSCRIPT_IMAGE_FORMATS_', JSON.stringify(mapping));
+}
+
+export function tableFormatProps(tableFormats: Map<number, TableFormat>): CustomPropEntry[] {
+  if (tableFormats.size === 0) return [];
+  const mapping: Record<string, string> = {};
+  for (const [idx, fmt] of tableFormats) {
+    mapping[String(idx)] = fmt;
   }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_TABLE_FORMATS_', JSON.stringify(mapping));
 }
 
 
@@ -992,7 +990,8 @@ export function parseMd(markdown: string): MdToken[] {
   // lazy continuation behavior (where a non-`>` line can be absorbed into a
   // preceding blockquote paragraph). For roundtrip fidelity we treat a missing
   // `>` as a hard blockquote boundary
-  const deLazified = deLazifyBlockquotes(markdown);
+  const gridProcessed = preprocessGridTables(markdown);
+  const deLazified = deLazifyBlockquotes(gridProcessed);
   const wrapped = wrapBareLatexEnvironments(deLazified);
   const processed = preprocessCriticMarkup(wrapped);
   const tokens = md.parse(processed, {});
@@ -1061,6 +1060,7 @@ function deLazifyBlockquotes(markdown: string): string {
 
   return out.join('\n');
 }
+
 
 function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; runs: MdRun[] } {
   const firstTextIdx = runs.findIndex(run => run.type === 'text' && run.text.length > 0);
@@ -1250,16 +1250,57 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         result.push({
           type: 'table',
           runs: [],
-          rows: tableData
+          rows: tableData,
+          sourceFormat: 'pipe',
         });
         i = tableClose + 1;
         break;
       
       case 'html_block': {
         const htmlContent = token.content || '';
+        if (htmlContent.trim().startsWith(GRID_TABLE_PLACEHOLDER_PREFIX)) {
+          const b64 = htmlContent.trim().slice(GRID_TABLE_PLACEHOLDER_PREFIX.length, -4); // strip prefix and ' -->'
+          try {
+            const jsonStr = Buffer.from(b64, 'base64').toString();
+            const gridData: GridTableData = JSON.parse(jsonStr);
+            const md = createMarkdownIt();
+            const gridRows: MdTableRow[] = gridData.rows.map(row => ({
+              cells: row.cells.map(cellText => ({
+                runs: cellText ? convertInlineTokens(md.parseInline(cellText, {})) : [],
+              })),
+              header: row.header,
+            }));
+            result.push({
+              type: 'table',
+              runs: [],
+              rows: gridRows,
+              sourceFormat: 'grid',
+            });
+          } catch {
+            // Invalid JSON — emit as regular HTML comment
+            result.push({
+              type: 'paragraph',
+              runs: [{ type: 'html_comment' as const, text: htmlContent.replace(/\n$/, '') }]
+            });
+          }
+          i++;
+          break;
+        }
         if (/^<!--[\s\S]*?-->\s*$/.test(htmlContent.trim())) {
+          // Compute blank lines before this HTML comment using token.map
+          const thisStart = token.map?.[0] ?? 0;
+          // Find previous token's end line — scan backwards through markdown-it tokens
+          let prevEnd = 0;
+          for (let pi = i - 1; pi >= 0; pi--) {
+            if (tokens[pi].map) {
+              prevEnd = tokens[pi].map[1];
+              break;
+            }
+          }
+          const blankLines = Math.max(0, thisStart - prevEnd);
           result.push({
             type: 'paragraph',
+            blankLinesBefore: blankLines,
             runs: [{ type: 'html_comment' as const, text: htmlContent.replace(/\n$/, '') }]
           });
         } else if (isGfmDisallowedRawHtml(htmlContent)) {
@@ -1300,7 +1341,8 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
                 result.push({
                   type: 'table',
                   runs: [],
-                  rows
+                  rows,
+                  sourceFormat: 'html',
                 });
               }
             }
@@ -2036,6 +2078,11 @@ export interface DocxGenState {
   imageFormats: Map<string, string>; // rId -> syntax ("md" | "html")
   imageExtensions: Set<string>; // collected extensions for content types
   nextImageDocPrId: number;
+  tableIndex: number;
+  tableFormats: Map<number, TableFormat>; // table index -> source format
+  listIndent: 'tab' | 'spaces'; // indentation style for nested list items
+  consecutiveReplyParaIds: Set<string>; // parent paraIds whose replies were in consecutive format
+  htmlCommentGaps: Map<number, number>; // blank-line-before count per HTML comment index (non-default only)
 }
 
 interface CommentEntry {
@@ -2056,10 +2103,10 @@ interface CommentEntry {
  * - Already UTC ISO: returned as-is
  */
 export function normalizeToUtcIso(dateStr: string, fallbackTz?: string): string {
-  if (!dateStr) return stripMillis(new Date().toISOString());
+  if (!dateStr) return '';
 
   // If the string already has a timezone offset (+ or - after time, or trailing Z), parse directly
-  const hasOffset = /T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})/.test(dateStr);
+  const hasOffset = /[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})/.test(dateStr);
   if (hasOffset) {
     const dt = new Date(dateStr);
     if (!isNaN(dt.getTime())) return stripMillis(dt.toISOString());
@@ -2085,7 +2132,19 @@ function stripMillis(iso: string): string {
   return iso.replace(/\.\d{3}Z$/, 'Z');
 }
 
-function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageExtensions?: Set<string>): string {
+interface ContentTypesOptions {
+  hasList: boolean;
+  hasComments: boolean;
+  hasTheme?: boolean;
+  hasCustomProps?: boolean;
+  hasFootnotes?: boolean;
+  hasEndnotes?: boolean;
+  hasCommentsExtended?: boolean;
+  imageExtensions?: Set<string>;
+}
+
+function contentTypesXml(opts: ContentTypesOptions): string {
+  const { hasList, hasComments, hasTheme, hasCustomProps, hasFootnotes, hasEndnotes, hasCommentsExtended, imageExtensions } = opts;
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n';
   xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n';
@@ -2807,6 +2866,18 @@ interface CustomPropEntry {
   value: string;
 }
 
+/** Chunk a string value into numbered custom properties: PREFIX_1, PREFIX_2, … */
+function chunkCustomProps(prefix: string, data: string, chunkSize = 240): CustomPropEntry[] {
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < data.length; i += chunkSize) {
+    props.push({
+      name: prefix + (props.length + 1),
+      value: data.slice(i, i + chunkSize),
+    });
+  }
+  return props;
+}
+
 function customPropsXml(properties: CustomPropEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">\n';
@@ -2855,16 +2926,7 @@ function commentIdMappingProps(commentIdMap: Map<string, number>): CustomPropEnt
   for (const [mdId, numericId] of commentIdMap) {
     mapping[String(numericId)] = mdId;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_COMMENT_IDS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_COMMENT_IDS_', JSON.stringify(mapping));
 }
 
 function footnoteIdMappingProps(footnoteLabelToId: Map<string, number>): CustomPropEntry[] {
@@ -2883,16 +2945,7 @@ function footnoteIdMappingProps(footnoteLabelToId: Map<string, number>): CustomP
   for (const [label, numericId] of footnoteLabelToId) {
     mapping[String(numericId)] = label;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_FOOTNOTE_IDS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_FOOTNOTE_IDS_', JSON.stringify(mapping));
 }
 
 function codeBlockLanguageProps(codeBlockLanguages: Map<number, string>): CustomPropEntry[] {
@@ -2901,16 +2954,7 @@ function codeBlockLanguageProps(codeBlockLanguages: Map<number, string>): Custom
   for (const [index, language] of codeBlockLanguages) {
     mapping[String(index)] = language;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_CODE_BLOCK_LANGS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_CODE_BLOCK_LANGS_', JSON.stringify(mapping));
 }
 
 function codeBlockStylingProps(fm: Frontmatter): CustomPropEntry[] {
@@ -2927,7 +2971,76 @@ function pipeTableMaxLineWidthProps(fm: Frontmatter): CustomPropEntry[] {
   return [{ name: 'MANUSCRIPT_PIPE_TABLE_MAX_LINE_WIDTH', value: String(fm.pipeTableMaxLineWidth) }];
 }
 
-function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageRelationships?: Map<string, { rId: string; mediaPath: string }>): string {
+function listIndentProps(state: DocxGenState): CustomPropEntry[] {
+  if (state.listIndent === 'tab') {
+    return [{ name: 'MANUSCRIPT_LIST_INDENT', value: 'tab' }];
+  }
+  return [];
+}
+
+function consecutiveReplyProps(state: DocxGenState): CustomPropEntry[] {
+  if (state.consecutiveReplyParaIds.size === 0) return [];
+  return [{ name: 'MANUSCRIPT_CONSECUTIVE_REPLY_COMMENTS', value: [...state.consecutiveReplyParaIds].join(',') }];
+}
+
+function frontmatterBlankLineProps(count: number): CustomPropEntry[] {
+  if (count < 0) return []; // no frontmatter
+  return [{ name: 'MANUSCRIPT_FRONTMATTER_BLANK_LINES', value: String(count) }];
+}
+
+function bibKeyOrderProps(bibEntries: Map<string, BibtexEntry> | undefined): CustomPropEntry[] {
+  if (!bibEntries || bibEntries.size === 0) return [];
+  return chunkCustomProps('MANUSCRIPT_BIB_KEY_ORDER_', [...bibEntries.keys()].join(','));
+}
+
+function bibDataProps(bibtex: string | undefined): CustomPropEntry[] {
+  if (!bibtex || bibtex.trim().length === 0) return [];
+  // Larger chunk size: .bib data can be 10–50+ KB (vs 240 for small metadata).
+  return chunkCustomProps('MANUSCRIPT_BIB_DATA_', bibtex, 4000);
+}
+
+/** Assign sequential htmlCommentIndex to each HTML comment token and return
+ *  a map from index → blankLinesBefore count (only for non-default values). */
+export function annotateHtmlCommentIndices(tokens: MdToken[]): Map<number, number> {
+  const gaps = new Map<number, number>();
+  let idx = 0;
+  for (const token of tokens) {
+    const isHtmlComment = token.type === 'paragraph'
+      && token.runs.length === 1
+      && token.runs[0].type === 'html_comment';
+    if (isHtmlComment) {
+      token.htmlCommentIndex = idx;
+      if (token.blankLinesBefore !== undefined && token.blankLinesBefore !== 1) {
+        gaps.set(idx, token.blankLinesBefore);
+      }
+      idx++;
+    }
+  }
+  return gaps;
+}
+
+function htmlCommentGapProps(gaps: Map<number, number>): CustomPropEntry[] {
+  if (gaps.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, count] of gaps) {
+    mapping[String(index)] = count;
+  }
+  return chunkCustomProps('MANUSCRIPT_HTML_COMMENT_GAPS_', JSON.stringify(mapping));
+}
+
+interface DocumentRelsOptions {
+  relationships: Map<string, string>;
+  hasList: boolean;
+  hasComments: boolean;
+  hasTheme?: boolean;
+  hasFootnotes?: boolean;
+  hasEndnotes?: boolean;
+  hasCommentsExtended?: boolean;
+  imageRelationships?: Map<string, { rId: string; mediaPath: string }>;
+}
+
+function documentRelsXml(opts: DocumentRelsOptions): string {
+  const { relationships, hasList, hasComments, hasTheme, hasFootnotes, hasEndnotes, hasCommentsExtended, imageRelationships } = opts;
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
   xml += '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
@@ -3099,20 +3212,23 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
     } else if (run.type === 'critic_add') {
       const author = run.author || options?.authorName || 'Unknown';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
+      const dateAttr = date ? ' w:date="' + escapeXml(date) + '"' : '';
       const contentXml = generateInlineCriticContent(run.innerRuns, run.text, run, state, options, bibEntries, citeprocEngine);
-      xml += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + contentXml + '</w:ins>';
+      xml += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + contentXml + '</w:ins>';
     } else if (run.type === 'critic_del') {
       const author = run.author || options?.authorName || 'Unknown';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
+      const dateAttr = date ? ' w:date="' + escapeXml(date) + '"' : '';
       const deletedXml = generateDeletedCriticContent(run.innerRuns, run.text, run);
-      xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + deletedXml + '</w:del>';
+      xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + deletedXml + '</w:del>';
     } else if (run.type === 'critic_sub') {
       const author = run.author || options?.authorName || 'Unknown';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
+      const dateAttr = date ? ' w:date="' + escapeXml(date) + '"' : '';
       const deletedXml = generateDeletedCriticContent(run.oldRuns, run.text, run);
       const insertedXml = generateInlineCriticContent(run.newRuns, run.newText || '', run, state, options, bibEntries, citeprocEngine);
-      xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + deletedXml + '</w:del>';
-      xml += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + insertedXml + '</w:ins>';
+      xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + deletedXml + '</w:del>';
+      xml += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + insertedXml + '</w:ins>';
     } else if (run.type === 'critic_highlight') {
       if (nextRun?.type === 'critic_comment') {
         const commentId = state.commentId++;
@@ -3146,7 +3262,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           options,
           bibEntries,
           citeprocEngine,
-          { highlight: true, highlightColor: run.highlightColor }
+          run.highlight ? { highlight: true, highlightColor: run.highlightColor } : {}
         );
         for (const re of replyEntries) {
           xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
@@ -3155,6 +3271,21 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
         xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
         ri++; // skip the comment run
+        // Absorb additional consecutive {>>...<<} as replies to this comment
+        let absorbedConsecutiveReply = false;
+        while (ri + 1 < inputRuns.length && inputRuns[ri + 1].type === 'critic_comment') {
+          const replyRun = inputRuns[ri + 1];
+          const replyId = state.commentId++;
+          const replyParaId = generateParaId(state);
+          const replyAuthor = replyRun.author || options?.authorName || 'Unknown';
+          const replyDate = normalizeToUtcIso(replyRun.date || '', state.timezone);
+          state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: replyRun.commentText || '', paraId: replyParaId, parentParaId });
+          absorbedConsecutiveReply = true;
+          ri++;
+        }
+        if (absorbedConsecutiveReply) {
+          state.consecutiveReplyParaIds.add(parentParaId);
+        }
       } else {
         xml += generateInlineCriticContent(
           run.innerRuns,
@@ -3190,11 +3321,11 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         }
       }
 
+      xml += '<w:commentRangeStart w:id="' + commentId + '"/>';
+      for (const re of replyEntries) {
+        xml += '<w:commentRangeStart w:id="' + re.replyId + '"/>';
+      }
       if (run.text) {
-        xml += '<w:commentRangeStart w:id="' + commentId + '"/>';
-        for (const re of replyEntries) {
-          xml += '<w:commentRangeStart w:id="' + re.replyId + '"/>';
-        }
         xml += generateInlineCriticContent(
           run.innerRuns,
           run.text,
@@ -3203,14 +3334,14 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           options,
           bibEntries,
           citeprocEngine,
-          { highlight: true }
+          run.highlight ? { highlight: true, highlightColor: run.highlightColor } : {}
         );
-        for (const re of replyEntries) {
-          xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
-          xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + re.replyId + '"/></w:r>';
-        }
-        xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
       }
+      for (const re of replyEntries) {
+        xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
+        xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + re.replyId + '"/></w:r>';
+      }
+      xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
       xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
     } else if (run.type === 'footnote_ref') {
       const label = run.footnoteLabel || '';
@@ -3642,7 +3773,8 @@ function commentsXml(comments: CommentEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   xml += '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">';
   for (const c of comments) {
-    xml += '<w:comment w:id="' + c.id + '" w:author="' + escapeXml(c.author) + '" w:date="' + escapeXml(c.date) + '">';
+    const dateAttr = c.date ? ' w:date="' + escapeXml(c.date) + '"' : '';
+    xml += '<w:comment w:id="' + c.id + '" w:author="' + escapeXml(c.author) + '"' + dateAttr + '>';
     // Split on \n\n for paragraph breaks within the comment
     const paragraphs = c.text.split('\n\n');
     for (let pi = 0; pi < paragraphs.length; pi++) {
@@ -3782,6 +3914,10 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
       }
     }
     if (token.type === 'table') {
+      if (token.sourceFormat) {
+        state.tableFormats.set(state.tableIndex, token.sourceFormat);
+      }
+      state.tableIndex++;
       body += generateTable(token, state, options, bibEntries, citeprocEngine);
     } else {
       body += generateParagraph(token, state, options, bibEntries, citeprocEngine);
@@ -3832,6 +3968,12 @@ export async function convertMdToDocx(
 ): Promise<MdToDocxResult> {
   // Parse frontmatter for CSL style and other metadata
   const { metadata: frontmatter, body } = parseFrontmatter(markdown);
+  // Count blank lines between frontmatter closing --- and body content.
+  // parseFrontmatter strips one \n; remaining leading \n's = blank lines.
+  const hadFrontmatter = markdown.trimStart().startsWith('---');
+  const frontmatterBlankLines = hadFrontmatter
+    ? (body.match(/^\n*/) || [''])[0].length
+    : -1; // -1 means no frontmatter present
   const fontOverrides = resolveFontOverrides(frontmatter);
   const isInsetMode = frontmatter.codeBackgroundColor === 'none' || frontmatter.codeBackgroundColor === 'transparent';
   const codeBlockConfig: CodeBlockConfig = {
@@ -3840,8 +3982,17 @@ export async function convertMdToDocx(
     codeFontColor: frontmatter.codeFontColor,
     codeBlockInset: frontmatter.codeBlockInset,
   };
+  // Strip previously-generated "Citation data for @key was not found" paragraphs
+  // so they don't accumulate on successive round-trips. The missing-key mechanism
+  // regenerates these from the actual unresolved citation keys.
+  const MISSING_KEY_LINE = /^Citation data for @\S+ was not found in the bibliography file\.$/;
+  const bodyStripped = body.split('\n')
+    .filter(line => !MISSING_KEY_LINE.test(line))
+    .join('\n')
+    .replace(/\n{3,}$/, '\n'); // trim trailing excess blank lines from removed block
+
   // Extract footnote definitions before markdown parsing
-  const { cleaned: bodyWithoutFootnotes, definitions: footnoteDefs } = extractFootnoteDefinitions(body);
+  const { cleaned: bodyWithoutFootnotes, definitions: footnoteDefs } = extractFootnoteDefinitions(bodyStripped);
   const tokens = parseMd(bodyWithoutFootnotes);
 
   // Compute inter-blockquote-group gap metadata from the original markdown
@@ -3850,6 +4001,7 @@ export async function convertMdToDocx(
   const blockquotePostContentBlankLines = computeBlockquotePostContentBlankLines(bodyWithoutFootnotes);
   const blockquoteAlertMarkerInlineByGroup = computeBlockquoteAlertMarkerInlineByGroup(bodyWithoutFootnotes);
   annotateBlockquoteGroupIndices(tokens);
+  const htmlCommentGaps = annotateHtmlCommentIndices(tokens);
 
   // Parse BibTeX if provided
   let bibEntries: Map<string, BibtexEntry> | undefined;
@@ -3967,6 +4119,11 @@ export async function convertMdToDocx(
     imageFormats: new Map(),
     imageExtensions: new Set(),
     nextImageDocPrId: 1,
+    tableIndex: 0,
+    tableFormats: new Map(),
+    listIndent: detectListIndent(bodyWithoutFootnotes),
+    consecutiveReplyParaIds: new Set(),
+    htmlCommentGaps,
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -4129,6 +4286,13 @@ export async function convertMdToDocx(
   customProps.push(...blockquoteGapProps(state.blockquoteGaps));
   customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
   customProps.push(...imageFormatProps(state.imageFormats));
+  customProps.push(...tableFormatProps(state.tableFormats));
+  customProps.push(...listIndentProps(state));
+  customProps.push(...consecutiveReplyProps(state));
+  customProps.push(...htmlCommentGapProps(state.htmlCommentGaps));
+  customProps.push(...frontmatterBlankLineProps(frontmatterBlankLines));
+  customProps.push(...bibKeyOrderProps(bibEntries));
+  customProps.push(...bibDataProps(options?.bibtex));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));
@@ -4139,9 +4303,27 @@ export async function convertMdToDocx(
     zip.file('word/' + mediaPath, data);
   }
 
-  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageExtensions.size > 0 ? state.imageExtensions : undefined));
+  zip.file('[Content_Types].xml', contentTypesXml({
+    hasList: state.hasList,
+    hasComments: state.hasComments,
+    hasTheme,
+    hasCustomProps,
+    hasFootnotes: state.hasFootnotes,
+    hasEndnotes: state.hasEndnotes,
+    hasCommentsExtended,
+    imageExtensions: state.imageExtensions.size > 0 ? state.imageExtensions : undefined,
+  }));
   zip.file('_rels/.rels', relsXml(hasCustomProps));
-  zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageRelationships.size > 0 ? state.imageRelationships : undefined));
+  zip.file('word/_rels/document.xml.rels', documentRelsXml({
+    relationships: state.relationships,
+    hasList: state.hasList,
+    hasComments: state.hasComments,
+    hasTheme,
+    hasFootnotes: state.hasFootnotes,
+    hasEndnotes: state.hasEndnotes,
+    hasCommentsExtended,
+    imageRelationships: state.imageRelationships.size > 0 ? state.imageRelationships : undefined,
+  }));
 
   // Check for comment range markers without corresponding bodies
   for (const [mdId, numericId] of state.commentIdMap) {

@@ -49,11 +49,11 @@ describe('getLocalTimezoneOffset', () => {
     expect(tz).toMatch(/^[+-]\d{2}:\d{2}$/);
   });
 
-  test('matches formatLocalIsoMinute offset', () => {
-    const tz = getLocalTimezoneOffset();
+  test('formatLocalIsoMinute omits offset', () => {
     const now = new Date().toISOString();
     const formatted = formatLocalIsoMinute(now);
-    expect(formatted.slice(-6)).toBe(tz);
+    // Should end with HH:MM (no offset suffix)
+    expect(formatted).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   });
 });
 
@@ -83,13 +83,12 @@ describe('normalizeToUtcIso', () => {
     expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   });
 
-  test('returns current time for empty string', () => {
-    const before = Date.now();
-    const result = normalizeToUtcIso('');
-    const after = Date.now();
-    const resultMs = new Date(result).getTime();
-    expect(resultMs).toBeGreaterThanOrEqual(before - 1000);
-    expect(resultMs).toBeLessThanOrEqual(after + 1000);
+  test('returns empty string for empty input', () => {
+    expect(normalizeToUtcIso('')).toBe('');
+  });
+
+  test('converts space-separated date with offset to UTC', () => {
+    expect(normalizeToUtcIso('2025-11-04 12:26-05:00')).toBe('2025-11-04T17:26:00Z');
   });
 
   test('returns original for unparseable date', () => {

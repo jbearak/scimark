@@ -292,13 +292,21 @@ export function activate(context: vscode.ExtensionContext) {
 				const tableIndentSpaces = config.get<number>('tableIndent', 2);
 				const alwaysUseCommentIds = config.get<boolean>('alwaysUseCommentIds', false);
 				const pipeTableMaxLineWidth = config.get<number>('pipeTableMaxLineWidth', 120);
+				const basePath = uri.fsPath.replace(/\.docx$/i, '');
+				// Read existing .bib before conversion so Layer 3 can preserve
+				// uncited entries and original ordering. This happens before the
+				// conflict dialog, but the cost is a single file read and the
+				// .bib content is needed to produce the best conversion result.
+				const existingBibUri = vscode.Uri.file(basePath + '.bib');
+				const existingBibtex = await fileExists(existingBibUri)
+					? new TextDecoder().decode(await vscode.workspace.fs.readFile(existingBibUri))
+					: undefined;
 				const result = await convertDocx(new Uint8Array(data), format, {
 					tableIndent: ' '.repeat(tableIndentSpaces),
 					alwaysUseCommentIds,
+					existingBibtex,
 					pipeTableMaxLineWidthDefault: pipeTableMaxLineWidth,
 				});
-
-				const basePath = uri.fsPath.replace(/\.docx$/i, '');
 				let mdUri = vscode.Uri.file(basePath + '.md');
 				let bibUri = vscode.Uri.file(basePath + '.bib');
 				const hasBibtex = Boolean(result.bibtex);
