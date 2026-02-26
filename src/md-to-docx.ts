@@ -9,6 +9,8 @@ import { alertColorsByScheme, getDefaultColorScheme } from './alert-colors';
 import { ZoteroBiblData, zoteroStyleFullId } from './converter';
 import { isGfmDisallowedRawHtml, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from './gfm';
 import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDimensions, computeMissingDimension, IMAGE_WARNINGS } from './image-utils';
+import { preprocessGridTables, GRID_TABLE_PLACEHOLDER_PREFIX, type GridTableData } from './grid-table-preprocess';
+export { preprocessGridTables } from './grid-table-preprocess';
 
 // --- Implementation notes ---
 // - decodeHtmlEntities(): decode &amp; after other named entities to avoid over-decoding
@@ -19,6 +21,8 @@ import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDime
 //   inner runs on MdRun (innerRuns / oldRuns / newRuns)
 
 // Types for the parsed token stream
+export type TableFormat = 'pipe' | 'html' | 'grid';
+
 export interface MdToken {
   type: 'paragraph' | 'heading' | 'list_item' | 'blockquote' | 'code_block' | 'table' | 'hr';
   level?: number;           // heading level 1-6, blockquote nesting, list nesting
@@ -35,7 +39,7 @@ export interface MdToken {
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
-  sourceFormat?: 'pipe' | 'html' | 'grid'; // original table format for round-trip
+  sourceFormat?: TableFormat; // original table format for round-trip
 }
 
 export interface MdTableCell {
@@ -970,7 +974,7 @@ export function imageFormatProps(imageFormats: Map<string, string>): CustomPropE
   return chunkCustomProps('MANUSCRIPT_IMAGE_FORMATS_', JSON.stringify(mapping));
 }
 
-export function tableFormatProps(tableFormats: Map<number, string>): CustomPropEntry[] {
+export function tableFormatProps(tableFormats: Map<number, TableFormat>): CustomPropEntry[] {
   if (tableFormats.size === 0) return [];
   const mapping: Record<string, string> = {};
   for (const [idx, fmt] of tableFormats) {
@@ -1057,134 +1061,6 @@ function deLazifyBlockquotes(markdown: string): string {
   return out.join('\n');
 }
 
-const GRID_TABLE_SEPARATOR_RE = /^\+[-=]+(\+[-=]+)*\+$/;
-const GRID_TABLE_PLACEHOLDER_PREFIX = '<!-- MANUSCRIPT_GRID_TABLE:';
-
-interface GridTableData {
-  rows: Array<{ cells: string[]; header: boolean }>;
-}
-
-/**
- * Detect Pandoc-style grid tables in markdown and replace them with
- * HTML-comment placeholders carrying JSON-encoded table data.
- * This runs before markdown-it tokenization so the grid table blocks
- * don't confuse the parser.
- */
-export function preprocessGridTables(markdown: string): string {
-  const lines = markdown.split('\n');
-  const result: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    if (GRID_TABLE_SEPARATOR_RE.test(lines[i].trim())) {
-      // Potential grid table start — collect all lines until we leave the table
-      const tableLines: string[] = [];
-      const start = i;
-      while (i < lines.length) {
-        const trimmed = lines[i].trim();
-        if (GRID_TABLE_SEPARATOR_RE.test(trimmed) || (trimmed.startsWith('|') && trimmed.endsWith('|'))) {
-          tableLines.push(lines[i]);
-          i++;
-        } else {
-          break;
-        }
-      }
-
-      // Validate: must start and end with separator, have at least 3 lines
-      if (tableLines.length >= 3 && GRID_TABLE_SEPARATOR_RE.test(tableLines[tableLines.length - 1].trim())) {
-        const parsed = parseGridTable(tableLines);
-        if (parsed && parsed.rows.length > 0) {
-          const json = JSON.stringify(parsed);
-          // Base64-encode to prevent cell content containing '-->' from
-          // breaking the HTML comment wrapper.
-          const encoded = Buffer.from(json).toString('base64');
-          // Ensure blank lines around the placeholder so markdown-it treats
-          // it as an html_block (Type 2: HTML comment).
-          if (result.length > 0 && result[result.length - 1].trim() !== '') {
-            result.push('');
-          }
-          result.push(GRID_TABLE_PLACEHOLDER_PREFIX + encoded + ' -->');
-          result.push('');
-          continue;
-        }
-      }
-
-      // Not a valid grid table — emit lines as-is
-      for (let j = start; j < i; j++) {
-        result.push(lines[j]);
-      }
-    } else {
-      result.push(lines[i]);
-      i++;
-    }
-  }
-
-  return result.join('\n');
-}
-
-/**
- * Parse a block of grid table lines into structured data.
- * Returns null if the lines don't form a valid grid table.
- */
-function parseGridTable(lines: string[]): GridTableData | null {
-  // Find column boundaries from the first separator line.
-  // Compute leading indent so we offset boundary indices when slicing
-  // content from untrimmed lines.
-  const indent = lines[0].length - lines[0].trimStart().length;
-  const firstSep = lines[0].trim();
-  const colBoundaries: number[] = [];
-  for (let c = 0; c < firstSep.length; c++) {
-    if (firstSep[c] === '+') {
-      colBoundaries.push(c);
-    }
-  }
-  if (colBoundaries.length < 2) return null;
-  const numCols = colBoundaries.length - 1;
-
-  // Collect rows: content lines between separator lines form a logical row.
-  // The '=' separator marks all rows above it as header rows.
-  const rows: Array<{ cells: string[]; header: boolean }> = [];
-  let currentContent: string[] = [];
-
-  for (let li = 1; li < lines.length; li++) {
-    const trimmed = lines[li].trim();
-    if (GRID_TABLE_SEPARATOR_RE.test(trimmed)) {
-      // This separator ends the current row
-      if (currentContent.length > 0) {
-        const cells: string[] = [];
-        for (let col = 0; col < numCols; col++) {
-          const left = colBoundaries[col] + 1 + indent;
-          const right = colBoundaries[col + 1] + indent;
-          const cellLines: string[] = [];
-          for (const contentLine of currentContent) {
-            const raw = contentLine.length >= right
-              ? contentLine.slice(left, right)
-              : contentLine.slice(left);
-            cellLines.push(raw.replace(/^\s*\|?\s*/, '').replace(/\s*$/, ''));
-          }
-          while (cellLines.length > 0 && cellLines[0].trim() === '') cellLines.shift();
-          while (cellLines.length > 0 && cellLines[cellLines.length - 1].trim() === '') cellLines.pop();
-          cells.push(cellLines.join('\n'));
-        }
-        // header=false initially; we'll retroactively mark header rows below
-        rows.push({ cells, header: false });
-      }
-      // If this separator uses '=', all rows above it are header rows
-      if (/=/.test(trimmed)) {
-        for (const row of rows) {
-          row.header = true;
-        }
-      }
-      currentContent = [];
-    } else if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-      currentContent.push(lines[li]);
-    } else {
-      return null;
-    }
-  }
-
-  return rows.length > 0 ? { rows } : null;
-}
 
 function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; runs: MdRun[] } {
   const firstTextIdx = runs.findIndex(run => run.type === 'text' && run.text.length > 0);
@@ -1387,9 +1263,10 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
           try {
             const jsonStr = Buffer.from(b64, 'base64').toString();
             const gridData: GridTableData = JSON.parse(jsonStr);
+            const md = createMarkdownIt();
             const gridRows: MdTableRow[] = gridData.rows.map(row => ({
               cells: row.cells.map(cellText => ({
-                runs: cellText ? convertInlineTokens(createMarkdownIt().parseInline(cellText, {})) : [],
+                runs: cellText ? convertInlineTokens(md.parseInline(cellText, {})) : [],
               })),
               header: row.header,
             }));
@@ -2202,7 +2079,7 @@ export interface DocxGenState {
   imageExtensions: Set<string>; // collected extensions for content types
   nextImageDocPrId: number;
   tableIndex: number;
-  tableFormats: Map<number, string>; // table index -> source format ("pipe" | "html" | "grid")
+  tableFormats: Map<number, TableFormat>; // table index -> source format
   listIndent: 'tab' | 'spaces'; // indentation style for nested list items
   consecutiveReplyParaIds: Set<string>; // parent paraIds whose replies were in consecutive format
   htmlCommentGaps: Map<number, number>; // blank-line-before count per HTML comment index (non-default only)

@@ -1069,7 +1069,7 @@ export async function extractBlockquoteGapMapping(data: Uint8Array | JSZip): Pro
     const mapping = new Map<number, number>();
     for (const [key, count] of Object.entries(parsedJson)) {
       const groupIdx = parseInt(key, 10);
-      if (isNaN(groupIdx) || typeof count !== 'number') continue;
+      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) continue;
       mapping.set(groupIdx, count);
     }
     return mapping.size > 0 ? mapping : null;
@@ -3110,7 +3110,15 @@ function tryRenderGridTable(
       const cellLines: string[] = [];
       const cellDeferred: string[] = [];
       for (const para of cell.paragraphs) {
-        const r = renderInlineSegment(mergeConsecutiveRuns(para), comments, renderOpts);
+        // Strip auto-bold from header row cells — md-to-docx forces bold on
+        // header cells, so we undo it here to avoid spurious **...** on round-trip.
+        const items = row.isHeader
+          ? para.map(item =>
+              item.type === 'text' && item.formatting?.bold
+                ? { ...item, formatting: { ...item.formatting, bold: false } }
+                : item)
+          : para;
+        const r = renderInlineSegment(mergeConsecutiveRuns(items), comments, renderOpts);
         // Split on newlines within a paragraph (e.g. hard breaks)
         cellLines.push(...r.text.split('\n'));
         cellDeferred.push(...r.deferredComments);

@@ -582,7 +582,7 @@ function parseGridTable(text: string): ParsedGridTable | null {
     }
   }
 
-  const columnWidths: number[] = new Array(columnCount).fill(0);
+  const columnWidths: number[] = new Array(columnCount).fill(1);
   for (const row of rows) {
     for (let i = 0; i < columnCount; i++) {
       columnWidths[i] = Math.max(columnWidths[i], row[i].length);

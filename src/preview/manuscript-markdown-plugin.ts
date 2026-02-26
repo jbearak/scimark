@@ -4,7 +4,7 @@ import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import { VALID_COLOR_IDS, getDefaultHighlightColor } from '../highlight-colors';
 import { PARA_PLACEHOLDER, preprocessCriticMarkup, findMatchingClose } from '../critic-markup';
 import { wrapBareLatexEnvironments } from '../latex-env-preprocess';
-import { preprocessGridTables } from '../md-to-docx';
+import { preprocessGridTables, GRID_TABLE_PLACEHOLDER_PREFIX } from '../grid-table-preprocess';
 import { isGfmDisallowedRawHtml, escapeHtmlText, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from '../gfm';
 import { parseFrontmatter, type ColorScheme } from '../frontmatter';
 import { getDefaultColorScheme } from '../alert-colors';
@@ -909,7 +909,6 @@ function paraPlaceholderRule(state: StateInline, silent: boolean): boolean {
   return true;
 }
 
-const GRID_TABLE_PLACEHOLDER_PREFIX = '<!-- MANUSCRIPT_GRID_TABLE:';
 
 /**
  * Block rule that detects grid table placeholder comments and emits
