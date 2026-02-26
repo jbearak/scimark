@@ -6,6 +6,7 @@ import { wrapColoredHighlight } from './formatting';
 import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
 import { gfmAlertTitle, parseGfmAlertMarker, toGfmAlertMarker, type GfmAlertType } from './gfm';
 import { emuToPixels, isSupportedImageFormat, resolveImageFilename } from './image-utils';
+import { parseBibtex } from './bibtex-parser';
 
 // --- Implementation notes ---
 // Table parsing:
@@ -1028,6 +1029,54 @@ export async function extractFrontmatterBlankLines(data: Uint8Array | JSZip): Pr
     }
   }
   return null;
+}
+
+/** Layer 1: read raw .bib stored verbatim at word/bibliography.bib in the DOCX ZIP. */
+export async function extractStoredBibtex(data: Uint8Array | JSZip): Promise<string | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const file = zip.file('word/bibliography.bib');
+  if (!file) return null;
+  const text = await file.async('string');
+  return text || null;
+}
+
+/** Layer 2: read comma-separated bib key order from chunked MANUSCRIPT_BIB_KEY_ORDER_* custom props. */
+export async function extractBibKeyOrder(data: Uint8Array | JSZip): Promise<string[] | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propPrefix = 'MANUSCRIPT_BIB_KEY_ORDER';
+  const parts: Array<{ index: number; value: string }> = [];
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (!name.startsWith(propPrefix)) continue;
+
+    let idx = 1;
+    if (name !== propPrefix) {
+      if (!name.startsWith(propPrefix + '_')) continue;
+      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
+      if (!chunkMatch) continue;
+      idx = parseInt(chunkMatch[1], 10);
+      if (isNaN(idx)) continue;
+    }
+
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const val = nodeText(child['vt:lpwstr'] || []);
+        parts.push({ index: idx, value: val });
+      }
+    }
+  }
+
+  if (parts.length === 0) return null;
+  parts.sort((a, b) => a.index - b.index);
+  const csv = parts.map(p => p.value).join('');
+  const keys = csv.split(',').map(k => k.trim()).filter(Boolean);
+  return keys.length > 0 ? keys : null;
 }
 
 export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Promise<number | null> {
@@ -3931,9 +3980,12 @@ const CSL_TO_BIBTEX: Record<string, string> = {
 
 export function generateBibTeX(
   zoteroCitations: ZoteroCitation[],
-  keyMap: Map<string, string>
+  keyMap: Map<string, string>,
+  skipKeys?: Set<string> | null,
+  originalKeyOrder?: string[] | null,
 ): string {
   const entries: string[] = [];
+  const entryByKey = new Map<string, string>();
   const emitted = new Set<string>();
 
   for (const citation of zoteroCitations) {
@@ -3944,6 +3996,9 @@ export function generateBibTeX(
 
       const key = keyMap.get(id);
       if (!key) { continue; }
+
+      // Layer 1: skip entries already present in the stored .bib
+      if (skipKeys && skipKeys.has(key)) { continue; }
 
       const authorStr = meta.authors.map(serializeAuthor).join(' and ');
 
@@ -3992,8 +4047,28 @@ export function generateBibTeX(
       if (meta.zoteroKey) { fields.push(`  zotero-key = {${meta.zoteroKey}}`); }
       if (meta.zoteroUri) { fields.push(`  zotero-uri = {${escapeBibtex(meta.zoteroUri)}}`); }
 
-      entries.push(`@${entryType}{${key},\n${fields.join(',\n')},\n}`);
+      const entryStr = `@${entryType}{${key},\n${fields.join(',\n')},\n}`;
+      entries.push(entryStr);
+      entryByKey.set(key, entryStr);
     }
+  }
+
+  // Layer 2: reorder output to match original key order when provided
+  if (originalKeyOrder && originalKeyOrder.length > 0) {
+    const ordered: string[] = [];
+    const remaining = new Map(entryByKey);
+    for (const key of originalKeyOrder) {
+      const entry = remaining.get(key);
+      if (entry) {
+        ordered.push(entry);
+        remaining.delete(key);
+      }
+    }
+    // Append any entries not in the original order (new citations added in Word)
+    for (const entry of remaining.values()) {
+      ordered.push(entry);
+    }
+    return ordered.join('\n\n');
   }
 
   return entries.join('\n\n');
@@ -4187,7 +4262,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, storedBibtex, bibKeyOrder] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4206,6 +4281,8 @@ export async function convertDocx(
     extractConsecutiveReplyParaIds(zip),
     extractFrontmatterBlankLines(zip),
     extractHtmlCommentGapMapping(zip),
+    extractStoredBibtex(zip),
+    extractBibKeyOrder(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -4388,7 +4465,23 @@ export async function convertDocx(
     markdown = frontmatterStr + '\n'.repeat(blankLines) + markdown;
   }
 
-  const bibtex = generateBibTeX(zoteroCitations, keyMap);
+  // Layered .bib restoration:
+  // Layer 1: raw .bib stored in ZIP (perfect fidelity, may be stripped by Word)
+  // Layer 2: key order in custom properties (survives Word editing)
+  // Layer 3: regenerate from Zotero citations (backward compatible)
+  let bibtex: string;
+  if (storedBibtex) {
+    // Layer 1: use stored .bib verbatim, append only genuinely new entries
+    const storedKeys = new Set(parseBibtex(storedBibtex).keys());
+    const newEntries = generateBibTeX(zoteroCitations, keyMap, storedKeys);
+    bibtex = newEntries ? storedBibtex + '\n\n' + newEntries : storedBibtex;
+  } else if (bibKeyOrder) {
+    // Layer 2: regenerate but sort to match original key order
+    bibtex = generateBibTeX(zoteroCitations, keyMap, null, bibKeyOrder);
+  } else {
+    // Layer 3: backward compatible — generate from Zotero citations
+    bibtex = generateBibTeX(zoteroCitations, keyMap);
+  }
 
   // Extract image binaries from the ZIP
   let images: Map<string, Uint8Array> | undefined;

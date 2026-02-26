@@ -2289,6 +2289,70 @@ describe('Zotero citation roundtrip', () => {
     expect(bib).toContain('doi = {10.1/some_thing_test}');
   });
 
+  test('generateBibTeX with skipKeys omits entries in the set', () => {
+    const citations: ZoteroCitation[] = [{
+      plainCitation: '(A; B)',
+      items: [
+        { authors: [{ family: 'Alpha', given: 'A' }], title: 'Alpha Title', year: '2020', journal: 'J', volume: '1', pages: '1-2', doi: '', type: 'article-journal', fullItemData: {} },
+        { authors: [{ family: 'Beta', given: 'B' }], title: 'Beta Title', year: '2021', journal: 'J', volume: '2', pages: '3-4', doi: '', type: 'article-journal', fullItemData: {} },
+      ],
+    }];
+    const keyMap = buildCitationKeyMap(citations);
+    const alphaKey = [...keyMap.values()].find(k => k.includes('alpha'))!;
+    const bib = generateBibTeX(citations, keyMap, new Set([alphaKey]));
+    expect(bib).not.toContain('Alpha Title');
+    expect(bib).toContain('Beta Title');
+  });
+
+  test('generateBibTeX with skipKeys returns empty string when all skipped', () => {
+    const citations: ZoteroCitation[] = [{
+      plainCitation: '(A)',
+      items: [
+        { authors: [{ family: 'Alpha', given: 'A' }], title: 'Alpha Title', year: '2020', journal: 'J', volume: '1', pages: '1-2', doi: '', type: 'article-journal', fullItemData: {} },
+      ],
+    }];
+    const keyMap = buildCitationKeyMap(citations);
+    const alphaKey = [...keyMap.values()][0];
+    const bib = generateBibTeX(citations, keyMap, new Set([alphaKey]));
+    expect(bib).toBe('');
+  });
+
+  test('generateBibTeX with originalKeyOrder reorders output', () => {
+    const citations: ZoteroCitation[] = [{
+      plainCitation: '(A; B; C)',
+      items: [
+        { authors: [{ family: 'Alpha', given: 'A' }], title: 'Alpha Title', year: '2020', journal: 'J', volume: '1', pages: '1', doi: '', type: 'article-journal', fullItemData: {} },
+        { authors: [{ family: 'Beta', given: 'B' }], title: 'Beta Title', year: '2021', journal: 'J', volume: '2', pages: '2', doi: '', type: 'article-journal', fullItemData: {} },
+        { authors: [{ family: 'Gamma', given: 'G' }], title: 'Gamma Title', year: '2022', journal: 'J', volume: '3', pages: '3', doi: '', type: 'article-journal', fullItemData: {} },
+      ],
+    }];
+    const keyMap = buildCitationKeyMap(citations);
+    const keys = [...keyMap.values()];
+    const alphaKey = keys.find(k => k.includes('alpha'))!;
+    const betaKey = keys.find(k => k.includes('beta'))!;
+    const gammaKey = keys.find(k => k.includes('gamma'))!;
+    // Request reversed order
+    const bib = generateBibTeX(citations, keyMap, null, [gammaKey, betaKey, alphaKey]);
+    const entryOrder = [...bib.matchAll(/@article\{([^,]+),/g)].map(m => m[1]);
+    expect(entryOrder).toEqual([gammaKey, betaKey, alphaKey]);
+  });
+
+  test('generateBibTeX with neither skipKeys nor originalKeyOrder preserves current behavior', () => {
+    const citations: ZoteroCitation[] = [{
+      plainCitation: '(Test)',
+      items: [{
+        authors: [{ family: 'Test', given: 'A' }],
+        title: 'Test Title', year: '2020', journal: 'J', volume: '1',
+        pages: '1-2', doi: '10.1/test', type: 'article-journal',
+        fullItemData: {},
+      }],
+    }];
+    const keyMap = buildCitationKeyMap(citations);
+    const bib1 = generateBibTeX(citations, keyMap);
+    const bib2 = generateBibTeX(citations, keyMap, null, null);
+    expect(bib2).toBe(bib1);
+  });
+
   test('citationPandocKeys includes locator suffix', () => {
     const citation: ZoteroCitation = {
       plainCitation: '(Test)',

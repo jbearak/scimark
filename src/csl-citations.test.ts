@@ -400,14 +400,14 @@ describe('MD→DOCX with CSL frontmatter', () => {
 });
 
 describe('MD→DOCX without CSL frontmatter', () => {
-  test('does not generate custom.xml when no CSL specified', async () => {
+  test('generates custom.xml with bib key order even without CSL', async () => {
     const md = 'Some text [@smith2020effects].\n';
     const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
 
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(result.docx);
-    const customXml = zip.file('docProps/custom.xml');
-    expect(customXml).toBeNull();
+    const customXml = await zip.file('docProps/custom.xml')?.async('string');
+    expect(customXml).toContain('MANUSCRIPT_BIB_KEY_ORDER');
   });
 
   test('does not generate ZOTERO_BIBL when no CSL specified', async () => {

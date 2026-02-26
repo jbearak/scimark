@@ -213,10 +213,9 @@ describe('docs round-trip: md -> docx -> md', () => {
 
       // --- Bibtex preservation ---
       if (fixture.bibtex) {
-        expect(mdResult.bibtex.length).toBeGreaterThan(0);
-        const originalEntries = (fixture.bibtex.match(/^@\w+\{/gm) || []).length;
-        const roundTrippedEntries = (mdResult.bibtex.match(/^@\w+\{/gm) || []).length;
-        expect(roundTrippedEntries).toBe(originalEntries);
+        // Layer 1 (raw .bib in ZIP): the round-tripped .bib should be identical
+        // to the original (all entries, original order, including uncited ones)
+        expect(mdResult.bibtex).toBe(fixture.bibtex);
       }
 
       // --- Word preservation ---
@@ -305,6 +304,9 @@ describe('double round-trip: md -> docx -> md -> docx -> md', () => {
     expect(r1.warnings).toEqual([]);
     const m1 = await convertDocx(r1.docx);
 
+    // RT1 output .bib should be identical to original (Layer 1: raw .bib in ZIP)
+    expect(m1.bibtex).toBe(sampleBib);
+
     // RT2: md -> docx -> md (using RT1 output)
     const r2 = await convertMdToDocx(m1.markdown, { bibtex: m1.bibtex });
     expect(r2.warnings).toEqual([]);
@@ -332,6 +334,18 @@ describe('double round-trip: md -> docx -> md -> docx -> md', () => {
     const r1 = await convertMdToDocx(draftMd, { bibtex: draftBib });
     expect(r1.warnings).toEqual([]);
     const m1 = await convertDocx(r1.docx);
+
+    // RT1 output .bib should be identical to original (preserves uncited entries & order)
+    expect(m1.bibtex).toBe(draftBib);
+
+    // Verify uncited entries survived: draft.bib has 63 entries
+    const rt1Entries = (m1.bibtex.match(/^@\w+\{/gm) || []).length;
+    expect(rt1Entries).toBe(63);
+
+    // Verify original key order preserved
+    const originalKeys = [...draftBib.matchAll(/@\w+\{([^,]+),/g)].map(m => m[1]);
+    const rt1Keys = [...m1.bibtex.matchAll(/@\w+\{([^,]+),/g)].map(m => m[1]);
+    expect(rt1Keys).toEqual(originalKeys);
 
     // RT2: md -> docx -> md (using RT1 output)
     const r2 = await convertMdToDocx(m1.markdown, { bibtex: m1.bibtex });

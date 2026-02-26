@@ -3143,6 +3143,20 @@ function frontmatterBlankLineProps(count: number): CustomPropEntry[] {
   return [{ name: 'MANUSCRIPT_FRONTMATTER_BLANK_LINES', value: String(count) }];
 }
 
+function bibKeyOrderProps(bibEntries: Map<string, BibtexEntry> | undefined): CustomPropEntry[] {
+  if (!bibEntries || bibEntries.size === 0) return [];
+  const csv = [...bibEntries.keys()].join(',');
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < csv.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_BIB_KEY_ORDER_' + (props.length + 1),
+      value: csv.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+
 /** Assign sequential htmlCommentIndex to each HTML comment token and return
  *  a map from index → blankLinesBefore count (only for non-default values). */
 export function annotateHtmlCommentIndices(tokens: MdToken[]): Map<number, number> {
@@ -4432,9 +4446,15 @@ export async function convertMdToDocx(
   customProps.push(...consecutiveReplyProps(state));
   customProps.push(...htmlCommentGapProps(state.htmlCommentGaps));
   customProps.push(...frontmatterBlankLineProps(frontmatterBlankLines));
+  customProps.push(...bibKeyOrderProps(bibEntries));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));
+  }
+
+  // Store raw .bib text for perfect-fidelity round-trip (Layer 1)
+  if (options?.bibtex) {
+    zip.file('word/bibliography.bib', options.bibtex);
   }
 
   // Store image binaries in word/media/
