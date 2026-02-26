@@ -3133,7 +3133,7 @@ function stripAlertLeadPrefix(text: string, alertType: GfmAlertType): string {
 }
 
 
-/** Render a table as a GFM pipe table if possible, otherwise fall back to HTML. */
+/** Render a table as a grid table if possible; returns null if not feasible. */
 function tryRenderGridTable(
   table: { rows: TableRow[] },
   comments: Map<string, Comment>,
@@ -3253,6 +3253,7 @@ function tryRenderGridTable(
   return result;
 }
 
+/** Render a table as a GFM pipe table if possible, otherwise fall back to HTML. */
 function renderTableOrFallback(
   item: { rows: TableRow[] },
   comments: Map<string, Comment>,

@@ -549,6 +549,8 @@ function parseGridRow(line: string): string[] | null {
   return trimmed.slice(1, -1).split('|').map(cell => cell.trim());
 }
 
+// Simplified grid-table parser for Expand/Compact Table (single-line cells only).
+// The full multi-line grid-table parser lives in md-to-docx.ts.
 function parseGridTable(text: string): ParsedGridTable | null {
   const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   if (lines.length < 3 || lines.length % 2 === 0) {

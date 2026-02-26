@@ -4111,8 +4111,6 @@ export async function convertMdToDocx(
   const { metadata: frontmatter, body } = parseFrontmatter(markdown);
   // Count blank lines between frontmatter closing --- and body content.
   // parseFrontmatter strips one \n; remaining leading \n's = blank lines.
-  // Count blank lines between frontmatter closing --- and body content.
-  // parseFrontmatter strips one \n; remaining leading \n's = blank lines.
   const hadFrontmatter = markdown.trimStart().startsWith('---');
   const frontmatterBlankLines = hadFrontmatter
     ? (body.match(/^\n*/) || [''])[0].length

@@ -60,6 +60,8 @@ function makeState(): DocxGenState {
     nextImageDocPrId: 1,
     tableIndex: 0,
     tableFormats: new Map(),
+    consecutiveReplyParaIds: new Set(),
+    htmlCommentGaps: new Map(),
     listIndent: 'spaces',
   };
 }
