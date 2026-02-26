@@ -3766,6 +3766,7 @@ describe('extractStoredBibtex', () => {
     const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: bib });
     const zip = await JSZip.loadAsync(docx);
     const contentTypes = await zip.file('[Content_Types].xml')?.async('string');
+    expect(contentTypes).toBeDefined();
     expect(contentTypes).toContain('PartName="/word/bibliography.bib"');
     expect(contentTypes).toContain('ContentType="text/plain"');
   });
@@ -3775,6 +3776,7 @@ describe('extractStoredBibtex', () => {
     const { docx } = await convertMdToDocx('Hello world.');
     const zip = await JSZip.loadAsync(docx);
     const contentTypes = await zip.file('[Content_Types].xml')?.async('string');
+    expect(contentTypes).toBeDefined();
     expect(contentTypes).not.toContain('bibliography.bib');
   });
 });

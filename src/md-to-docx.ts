@@ -3211,7 +3211,19 @@ function htmlCommentGapProps(gaps: Map<number, number>): CustomPropEntry[] {
   return props;
 }
 
-function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageRelationships?: Map<string, { rId: string; mediaPath: string }>): string {
+interface DocumentRelsOptions {
+  relationships: Map<string, string>;
+  hasList: boolean;
+  hasComments: boolean;
+  hasTheme?: boolean;
+  hasFootnotes?: boolean;
+  hasEndnotes?: boolean;
+  hasCommentsExtended?: boolean;
+  imageRelationships?: Map<string, { rId: string; mediaPath: string }>;
+}
+
+function documentRelsXml(opts: DocumentRelsOptions): string {
+  const { relationships, hasList, hasComments, hasTheme, hasFootnotes, hasEndnotes, hasCommentsExtended, imageRelationships } = opts;
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
   xml += '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
@@ -4490,7 +4502,16 @@ export async function convertMdToDocx(
     hasBibliography: !!options?.bibtex,
   }));
   zip.file('_rels/.rels', relsXml(hasCustomProps));
-  zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageRelationships.size > 0 ? state.imageRelationships : undefined));
+  zip.file('word/_rels/document.xml.rels', documentRelsXml({
+    relationships: state.relationships,
+    hasList: state.hasList,
+    hasComments: state.hasComments,
+    hasTheme,
+    hasFootnotes: state.hasFootnotes,
+    hasEndnotes: state.hasEndnotes,
+    hasCommentsExtended,
+    imageRelationships: state.imageRelationships.size > 0 ? state.imageRelationships : undefined,
+  }));
 
   // Check for comment range markers without corresponding bodies
   for (const [mdId, numericId] of state.commentIdMap) {
