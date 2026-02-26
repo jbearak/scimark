@@ -176,7 +176,7 @@ describe('Feature: docx-equation-conversion, Property 11: Math run text handling
     );
   });
 
-  it('multi-letter text is wrapped in \\mathrm{}', () => {
+  it('multi-letter text is preserved without implicit \\mathrm{} wrapping', () => {
     const multiLetter = fc.array(asciiLetter, { minLength: 2, maxLength: 6 })
       .map(arr => arr.join(''));
 
@@ -184,7 +184,7 @@ describe('Feature: docx-equation-conversion, Property 11: Math run text handling
       fc.property(multiLetter, (text) => {
         const node = makeRun(text);
         const result = ommlToLatex([node]);
-        return result.includes('\\mathrm{') && result.includes(text);
+        return !result.includes('\\mathrm{') && result === text;
       }),
       { numRuns: 100 },
     );
@@ -880,7 +880,7 @@ describe('Unit tests: OMML construct translation', () => {
       };
       const result = ommlToLatex([node]);
       expect(result).toContain('\\sum');
-      expect(result).toContain('_\\mathrm{i=0}');
+      expect(result).toContain('_{i=0}');
       expect(result).toContain('^n');
       expect(result).toContain('i');
     });
@@ -968,8 +968,6 @@ describe('Unit tests: OMML construct translation', () => {
           { 'm:e': [makeRun('x')] },
         ],
       };
-      // "sin" is multi-letter so translateRun wraps it in \mathrm{},
-      // but translateFunction strips that wrapping before checking KNOWN_FUNCTIONS
       expect(ommlToLatex([node])).toBe('\\sin{x}');
     });
 

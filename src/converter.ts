@@ -64,6 +64,42 @@ export interface Comment {
   replies?: CommentReply[];
   consecutiveReplies?: boolean; // true when original MD used consecutive {>>...<<} format for replies
 }
+export async function extractBlockquotePreContentBlankLineMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_BLOCKQUOTE_PRE_CONTENT_BLANK_LINES');
+  if (!mappingJson) return null;
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<number, number>();
+    for (const [key, count] of Object.entries(parsedJson)) {
+      const groupIdx = parseInt(key, 10);
+      // Preserve sentinel -1 (used when non-blockquote content exists between
+      // groups in source) in addition to non-negative blank-line counts.
+      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < -1) continue;
+      mapping.set(groupIdx, count);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
+export async function extractBlockquotePostContentBlankLineMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_BLOCKQUOTE_POST_CONTENT_BLANK_LINES');
+  if (!mappingJson) return null;
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<number, number>();
+    for (const [key, count] of Object.entries(parsedJson)) {
+      const groupIdx = parseInt(key, 10);
+      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < -1) continue;
+      mapping.set(groupIdx, count);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
 
 const ALERT_STYLE_TO_TYPE: Record<string, GfmAlertType> = {
   githubnote: 'note',
@@ -381,14 +417,15 @@ export function parseBlockquoteLevel(pPrChildren: any[]): number | undefined {
   if (!pStyleElement) return undefined;
   const val = getAttr(pStyleElement, 'val').toLowerCase();
   const isAlertStyle = ALERT_STYLE_TO_TYPE[val] !== undefined;
-  if (val !== 'quote' && val !== 'intensequote' && val !== 'github' && !isAlertStyle) return undefined;
+  const isGithubBlockquoteStyle = val === 'github' || val === 'githubblockquote';
+  if (val !== 'quote' && val !== 'intensequote' && !isGithubBlockquoteStyle && !isAlertStyle) return undefined;
 
   // Extract left indent to determine nesting level
   const indElement = pPrChildren.find(child => child['w:ind'] !== undefined);
   if (indElement) {
     const left = parseInt(getAttr(indElement, 'left'), 10);
     if (!isNaN(left) && left > 0) {
-      const unit = (val === 'github' || isAlertStyle) ? 240 : 720;
+      const unit = (isGithubBlockquoteStyle || isAlertStyle) ? 240 : 720;
       return Math.max(1, Math.round(left / unit));
     }
   }
@@ -686,7 +723,7 @@ export async function extractComments(data: Uint8Array | JSZip): Promise<Map<str
 
   for (const node of findAllDeep(parsed, 'w:comment')) {
     const id = getAttr(node, 'id');
-    const author = getAttr(node, 'author') || 'Unknown';
+    const author = getAttr(node, 'author');
     const date = getAttr(node, 'date') || '';
     // Collect all w:t text within this comment
     const tNodes = findAllDeep(node['w:comment'] || [], 'w:t');
@@ -1069,7 +1106,7 @@ export async function extractBlockquoteGapMapping(data: Uint8Array | JSZip): Pro
     const mapping = new Map<number, number>();
     for (const [key, count] of Object.entries(parsedJson)) {
       const groupIdx = parseInt(key, 10);
-      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) continue;
+      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < -1) continue;
       mapping.set(groupIdx, count);
     }
     return mapping.size > 0 ? mapping : null;
@@ -1941,17 +1978,24 @@ export async function extractDocumentContent(
           // LaTeX OMML hidden runs and other vanish runs without the prefix fall through.
           const hasVanish = rPrChildren?.some((c: any) => c['w:vanish'] !== undefined) ?? false;
           if (hasVanish) {
-            // Collect text from w:t/w:delText elements in this run
+            // Collect text from w:t/w:delText elements in this run and preserve
+            // explicit break elements so multiline hidden payloads survive.
             let runText = '';
             for (const child of runChildren) {
               if (child['w:t'] !== undefined) {
                 runText += nodeText(child['w:t'] || []);
               } else if (child['w:delText'] !== undefined) {
                 runText += nodeText(child['w:delText'] || []);
+              } else if (child['w:br'] !== undefined || child['w:cr'] !== undefined) {
+                runText += '\n';
               }
             }
-            if (runText.startsWith('\u200B') && runText.substring(1).trimStart().startsWith('<!--')) {
-              const payload = runText.substring(1);
+            const hiddenPayload = runText.replace(/^\u200B+/, '');
+            const lastItem = target.length > 0 ? target[target.length - 1] : undefined;
+            const canContinueHiddenHtmlComment = lastItem?.type === 'html_comment'
+              && commentSetsEqual(lastItem.commentIds, activeComments);
+            if (hiddenPayload.trimStart().startsWith('<!--')) {
+              const payload = hiddenPayload;
               target.push({
                 type: 'html_comment',
                 text: payload,
@@ -1959,10 +2003,18 @@ export async function extractDocumentContent(
               });
               continue; // skip normal walk for this run
             }
+            // Word may split a hidden HTML comment across many vanish runs on
+            // save (first run "<!--", following runs for lines/breaks/"-->").
+            // Reassemble contiguous hidden fragments into the preceding
+            // html_comment item instead of dropping continuation runs.
+            if (canContinueHiddenHtmlComment && hiddenPayload.length > 0) {
+              lastItem.text += hiddenPayload;
+              continue;
+            }
             // Extract blockquote group index from hidden tag (encoded by md→docx
             // for gap metadata correlation) and attach to the most recent para item.
-            if (runText.startsWith('\u200B_bqg')) {
-              const idx = parseInt(runText.slice('\u200B_bqg'.length), 10);
+            if (hiddenPayload.startsWith('_bqg')) {
+              const idx = parseInt(hiddenPayload.slice('_bqg'.length), 10);
               if (!isNaN(idx)) {
                 for (let ti = target.length - 1; ti >= 0; ti--) {
                   if (target[ti].type === 'para') {
@@ -1973,6 +2025,9 @@ export async function extractDocumentContent(
               }
               continue;
             }
+            // Hidden metadata markers are not user-visible content. This avoids
+            // leaking internal sentinels when Word splits \u200B-prefixed runs.
+            continue;
           }
 
           walk(runChildren, runFormatting, target, inTableCell, currentRevision);
@@ -2219,6 +2274,19 @@ function revisionsEqual(a: RevisionInfo | undefined, b: RevisionInfo | undefined
 // Avoid literal '$$' — tool text-replacement corrupts '$' in replacement
 // strings. See CLAUDE.md "Template literal corruption" rule.
 const MATH_FENCE = '$'.repeat(2);
+function canonicalizeDisplayMathLatex(latex: string): string {
+  const trimmed = latex.trim();
+  const envMatch = trimmed.match(/^\\begin\{([a-zA-Z*]+)\}\s*([\s\S]*?)\s*\\end\{\1\}$/);
+  if (!envMatch) return trimmed;
+  const envName = envMatch[1];
+  const multilineEnvs = new Set(['aligned', 'align', 'align*', 'gathered', 'cases']);
+  if (!multilineEnvs.has(envName)) return trimmed;
+  const inner = envMatch[2].trim();
+  if (!inner) return `\\begin{${envName}}\n\\end{${envName}}`;
+  const rows = inner.split(/\\\\/).map(row => row.trim()).filter(row => row.length > 0);
+  if (rows.length === 0) return `\\begin{${envName}}\n\\end{${envName}}`;
+  return `\\begin{${envName}}\n${rows.join(' \\\\\n')}\n\\end{${envName}}`;
+}
 
 function wrapWithRevision(text: string, rev?: RevisionInfo): string {
   if (!rev) return text;
@@ -2254,7 +2322,9 @@ function tryRenderSubstitution(
       ? (precedingText.endsWith(' ') ? '' : ' ') + '[' + deletion.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
       : deletion.text;
   } else if (deletion.type === 'math') {
-    oldText = deletion.display ? MATH_FENCE + '\n' + deletion.latex + '\n' + MATH_FENCE : '$' + deletion.latex + '$';
+    oldText = deletion.display
+      ? MATH_FENCE + '\n' + canonicalizeDisplayMathLatex(deletion.latex) + '\n' + MATH_FENCE
+      : '$' + deletion.latex + '$';
   }
 
   let newText = '';
@@ -2266,7 +2336,9 @@ function tryRenderSubstitution(
       ? (oldText.endsWith(' ') ? '' : ' ') + '[' + addition.pandocKeys.map(k => k.startsWith('-') ? '-@' + k.slice(1) : '@' + k).join('; ') + ']'
       : addition.text;
   } else if (addition.type === 'math') {
-    newText = addition.display ? MATH_FENCE + '\n' + addition.latex + '\n' + MATH_FENCE : '$' + addition.latex + '$';
+    newText = addition.display
+      ? MATH_FENCE + '\n' + canonicalizeDisplayMathLatex(addition.latex) + '\n' + MATH_FENCE
+      : '$' + addition.latex + '$';
   }
 
   if (oldText && newText) {
@@ -2393,19 +2465,25 @@ function formatDateSuffix(date: string | undefined): string {
   } catch { return ` (${date})`; }
 }
 
+function formatCommentAttribution(author: string | undefined, date: string | undefined, text: string): string {
+  const trimmedAuthor = (author || '').trim();
+  if (!trimmedAuthor) return text;
+  return `${trimmedAuthor}${formatDateSuffix(date)}: ${text}`;
+}
+
 function formatCommentBody(_cid: string, c: Comment): string {
   if (c.consecutiveReplies && c.replies && c.replies.length > 0) {
     // Consecutive format: each reply is a separate {>>...<<} block
-    let body = `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+    let body = `{>>${formatCommentAttribution(c.author, c.date, c.text)}<<}`;
     for (const reply of c.replies) {
-      body += `{>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+      body += `{>>${formatCommentAttribution(reply.author, reply.date, reply.text)}<<}`;
     }
     return body;
   }
-  let body = `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
+  let body = `{>>${formatCommentAttribution(c.author, c.date, c.text)}`;
   if (c.replies && c.replies.length > 0) {
     for (const reply of c.replies) {
-      body += `\n  {>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+      body += `\n  {>>${formatCommentAttribution(reply.author, reply.date, reply.text)}<<}`;
     }
     body += '\n<<}';
   } else {
@@ -2417,16 +2495,16 @@ function formatCommentBody(_cid: string, c: Comment): string {
 function formatCommentBodyWithId(cid: string, c: Comment): string {
   if (c.consecutiveReplies && c.replies && c.replies.length > 0) {
     // Consecutive format: each reply is a separate {>>...<<} block
-    let body = `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+    let body = `{#${cid}>>${formatCommentAttribution(c.author, c.date, c.text)}<<}`;
     for (const reply of c.replies) {
-      body += `{>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+      body += `{>>${formatCommentAttribution(reply.author, reply.date, reply.text)}<<}`;
     }
     return body;
   }
-  let body = `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
+  let body = `{#${cid}>>${formatCommentAttribution(c.author, c.date, c.text)}`;
   if (c.replies && c.replies.length > 0) {
     for (const reply of c.replies) {
-      body += `\n  {>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+      body += `\n  {>>${formatCommentAttribution(reply.author, reply.date, reply.text)}<<}`;
     }
     body += '\n<<}';
   } else {
@@ -3003,18 +3081,29 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
   // Build pipe table lines
   const lines: string[] = [];
   const deferredAll: string[] = [];
+  const formatPipeRow = (cells: { text: string; deferred: string[] }[]): string => {
+    let line = '|';
+    for (const c of cells) {
+      if (c.text.length === 0) {
+        line += ' |';
+      } else {
+        line += ' ' + c.text + ' |';
+      }
+    }
+    return line;
+  };
 
   // GFM pipe tables always require a header row. If the DOCX table has no
   // header signal, the first row is promoted — an accepted round-trip trade-off.
   const headerCells = rendered[0];
-  lines.push('| ' + headerCells.map(c => c.text).join(' | ') + ' |');
+  lines.push(formatPipeRow(headerCells));
   for (const c of headerCells) deferredAll.push(...c.deferred);
 
   lines.push('| ' + Array(numCols).fill('---').join(' | ') + ' |');
 
   for (let i = 1; i < rendered.length; i++) {
     const rowCells = rendered[i];
-    lines.push('| ' + rowCells.map(c => c.text).join(' | ') + ' |');
+    lines.push(formatPipeRow(rowCells));
     for (const c of rowCells) deferredAll.push(...c.deferred);
   }
 
@@ -3230,7 +3319,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3362,12 +3451,15 @@ export function buildMarkdown(
   // stable on DOCX -> MD conversion.
   let pendingAlertInlineLevelForHardBreak: number | undefined;
   let lastBlockquoteGroupIndex: number | undefined;
+  let pendingPostContentGroupIndex: number | undefined;
   // Track previous blockquote type to detect group boundaries when gap
   // metadata is absent (plain↔alert or alert↔different-alert transitions).
   let lastBlockquoteAlertType: GfmAlertType | 'plain' | undefined;
   let lastBlockquoteLevel: number | undefined;
   const codeBlockLangs = options?.codeBlockLangs;
   const blockquoteGaps = options?.blockquoteGaps;
+  const blockquotePreContentBlankLines = options?.blockquotePreContentBlankLines;
+  const blockquotePostContentBlankLines = options?.blockquotePostContentBlankLines;
   const blockquoteAlertInlineByGroup = options?.blockquoteAlertInlineByGroup;
   const htmlCommentGaps = options?.htmlCommentGaps;
   let htmlCommentIndex = 0;
@@ -3474,6 +3566,28 @@ export function buildMarkdown(
           if (gapCount !== undefined && gapCount >= 0) {
             // gapCount blank lines = gapCount+1 newline characters
             output.push('\n' + '\n'.repeat(gapCount));
+          } else if (gapCount === -1) {
+            // Non-blockquote content existed between the groups in source;
+            // use pre-content spacing metadata for this group when available.
+            const preBlankCount = blockquotePreContentBlankLines?.get(item.blockquoteGroupIndex);
+            if (preBlankCount !== undefined && preBlankCount >= 0) {
+              output.push('\n' + '\n'.repeat(preBlankCount));
+            } else {
+              output.push('\n');
+            }
+          } else {
+            output.push('\n\n');
+          }
+        } else if (
+          blockquotePreContentBlankLines &&
+          item.blockquoteLevel &&
+          item.blockquoteGroupIndex !== undefined
+        ) {
+          // Blockquote group following non-blockquote content: preserve the
+          // authored blank-line count before this group exactly.
+          const blankCount = blockquotePreContentBlankLines.get(item.blockquoteGroupIndex);
+          if (blankCount !== undefined && blankCount >= 0) {
+            output.push('\n' + '\n'.repeat(blankCount));
           } else {
             output.push('\n\n');
           }
@@ -3503,6 +3617,38 @@ export function buildMarkdown(
             output.push('\n\n');
           }
         } else if (
+          blockquotePostContentBlankLines &&
+          !item.blockquoteLevel &&
+          pendingPostContentGroupIndex !== undefined &&
+          !item.headingLevel &&
+          !item.listMeta &&
+          !item.isCodeBlock
+        ) {
+          // Non-blockquote paragraph after a blockquote group: restore the
+          // authored blank-line count exactly (including zero-blank adjacency).
+          const next = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
+          const nextIsBlockquotePara = next?.type === 'para' && !!next.blockquoteLevel;
+          const nextIsStructuralPara = next?.type === 'para' && (
+            !!next.headingLevel || !!next.listMeta || !!next.isCodeBlock
+          );
+          if (nextIsBlockquotePara) {
+            // Structural separator between blockquote groups — let the
+            // blockquote gap logic handle spacing at the next group boundary.
+          } else if (nextIsStructuralPara) {
+            // Structural separator before heading/list/code-block content.
+            // Keep pending metadata so spacing is emitted at the real content.
+          } else {
+            const blankCount = blockquotePostContentBlankLines.get(pendingPostContentGroupIndex);
+            if (blankCount !== undefined && blankCount >= 0) {
+              output.push('\n' + '\n'.repeat(blankCount));
+            } else {
+              output.push('\n\n');
+            }
+            // Consume once: this metadata applies only to the first real
+            // content paragraph after a blockquote group.
+            pendingPostContentGroupIndex = undefined;
+          }
+        } else if (
           blockquoteGaps &&
           !item.blockquoteLevel &&
           lastBlockquoteGroupIndex !== undefined &&
@@ -3517,7 +3663,7 @@ export function buildMarkdown(
           const gapCount = blockquoteGaps.get(lastBlockquoteGroupIndex);
           const next = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
           const nextIsBlockquotePara = next?.type === 'para' && !!next.blockquoteLevel;
-          if (gapCount !== undefined && gapCount >= 0 && nextIsBlockquotePara) {
+          if (gapCount !== undefined && (gapCount >= 0 || gapCount === -1) && nextIsBlockquotePara) {
             // Suppress — gap handled at next blockquote para transition
           } else {
             output.push('\n\n');
@@ -3558,9 +3704,11 @@ export function buildMarkdown(
       // group transitions even when structural separator paras intervene.
       if (item.blockquoteLevel && item.blockquoteGroupIndex !== undefined) {
         lastBlockquoteGroupIndex = item.blockquoteGroupIndex;
+        pendingPostContentGroupIndex = item.blockquoteGroupIndex;
       } else if (item.headingLevel || item.listMeta || item.isCodeBlock) {
         // Real non-blockquote content resets the tracking
         lastBlockquoteGroupIndex = undefined;
+        pendingPostContentGroupIndex = undefined;
       }
 
       // Track blockquote type for boundary detection (plain↔alert, alert↔alert).
@@ -3644,7 +3792,7 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      const mathBlock = MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE;
+      const mathBlock = MATH_FENCE + '\n' + canonicalizeDisplayMathLatex(item.latex) + '\n' + MATH_FENCE;
       output.push(item.revision ? wrapWithRevision(mathBlock, item.revision) : mathBlock);
       // A display math block breaks list flow; reset list continuation state.
       lastListType = undefined;
@@ -3750,7 +3898,7 @@ export function buildMarkdown(
             bodyParts.push(part.text);
             deferredAll.push(...part.deferredComments);
           }
-          const mathBlock = MATH_FENCE + '\n' + item.latex + '\n' + MATH_FENCE;
+          const mathBlock = MATH_FENCE + '\n' + canonicalizeDisplayMathLatex(item.latex) + '\n' + MATH_FENCE;
           bodyParts.push(item.revision ? wrapWithRevision(mathBlock, item.revision) : mathBlock);
           partStart = bi + 1;
         } else if (item.type === 'table') {
@@ -4154,7 +4302,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number; existingBibtex?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4165,6 +4313,8 @@ export async function convertDocx(
     extractCommentThreads(zip),
     extractCodeBlockStyling(zip),
     extractBlockquoteGapMapping(zip),
+    extractBlockquotePreContentBlankLineMapping(zip),
+    extractBlockquotePostContentBlankLineMapping(zip),
     extractBlockquoteAlertStyleMapping(zip),
     extractImageFormatMapping(zip),
     extractTableFormatMapping(zip),
@@ -4290,6 +4440,8 @@ export async function convertDocx(
     notes: notesMap.size > 0 ? { map: notesMap, assignedLabels } : undefined,
     codeBlockLangs: codeBlockLangMapping,
     blockquoteGaps: blockquoteGapMapping,
+    blockquotePreContentBlankLines: blockquotePreContentBlankLineMapping,
+    blockquotePostContentBlankLines: blockquotePostContentBlankLineMapping,
     blockquoteAlertInlineByGroup: blockquoteAlertStyleMapping,
     imageFormatMapping,
     tableFormatMapping,

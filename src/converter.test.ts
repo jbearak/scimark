@@ -765,6 +765,14 @@ describe('Table format metadata round-trip', () => {
     expect(result.markdown).toContain('| A |');
     expect(result.markdown).not.toContain('<table>');
   });
+
+  test('pipe table empty cells do not gain doubled spaces on round-trip', async () => {
+    const pipeMd = '| H1 | H2 | H3 |\n| --- | --- | --- |\n| A | | C |';
+    const { docx } = await convertMdToDocx(pipeMd);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('| A | | C |');
+    expect(result.markdown).not.toContain('| A |  | C |');
+  });
 });
 
 describe('Grid table renderer', () => {
@@ -888,6 +896,7 @@ describe('Dateless comment round-trip', () => {
     const { docx } = await convertMdToDocx(md);
     const result = await convertDocx(docx);
     expect(result.markdown).toContain('{>>');
+    expect(result.markdown).toContain('{>>This is a comment without a date<<}');
     // Should NOT contain a parenthesized date like (2026-02-25 23:12)
     expect(result.markdown).not.toMatch(/\(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\)/);
   });
@@ -920,6 +929,58 @@ describe('HTML comment blank line round-trip', () => {
     expect(result.markdown).toContain('Paragraph one.\n\n<!-- A comment -->');
     // Should NOT have extra blank lines
     expect(result.markdown).not.toContain('Paragraph one.\n\n\n<!-- A comment -->');
+  });
+
+  test('multiline HTML comments preserve internal newlines', async () => {
+    const md = 'Before\n\n<!--\n\nLine one\n\nLine two\n\n-->\n\nAfter';
+    const { docx } = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const documentXml = await zip.file('word/document.xml')!.async('string');
+    // Export should encode internal line breaks explicitly for hidden comment runs.
+    expect(documentXml).toContain('<w:vanish/>');
+
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!--\n\nLine one\n\nLine two\n\n-->');
+  });
+
+  test('hidden html comment runs with w:br are reconstructed with newlines', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Before</w:t></w:r></w:p>'
+      + '<w:p><w:r><w:rPr><w:vanish/></w:rPr>'
+      + '<w:t xml:space=\"preserve\">\u200B&lt;!--</w:t>'
+      + '<w:br/>'
+      + '<w:br/>'
+      + '<w:t xml:space=\"preserve\">Line one</w:t>'
+      + '<w:br/>'
+      + '<w:br/>'
+      + '<w:t xml:space=\"preserve\">Line two</w:t>'
+      + '<w:br/>'
+      + '<w:br/>'
+      + '<w:t xml:space=\"preserve\">--&gt;</w:t>'
+      + '</w:r></w:p>'
+      + '<w:p><w:r><w:t>After</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('<!--\n\nLine one\n\nLine two\n\n-->');
+  });
+
+  test('Word-split hidden HTML comment runs are reassembled', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Before</w:t></w:r></w:p>'
+      + '<w:p>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">\u200B</w:t></w:r>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">&lt;!--</w:t></w:r>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:br/></w:r>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">Line one</w:t><w:br/></w:r>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">--&gt;</w:t></w:r>'
+      + '</w:p>'
+      + '<w:p><w:r><w:t>After</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('<!--\nLine one\n-->');
   });
 });
 
@@ -2116,8 +2177,7 @@ describe('Integration: DOCX equation conversion', () => {
     const buf = await buildSyntheticDocx(xml);
     const result = await convertDocx(buf);
     const md = result.markdown;
-
-    const displayBlock = '$$' + '\n' + '\\mathrm{E=mc^2}' + '\n' + '$$';
+    const displayBlock = '$$' + '\n' + 'E=mc^2' + '\n' + '$$';
     expect(md).toContain(displayBlock);
 
     // Verify blank line before display block
@@ -2747,7 +2807,7 @@ describe('DOCX footnote extraction', () => {
     const buf = await buildSyntheticDocx(docXml, { 'word/footnotes.xml': footnotesXml });
     const result = await convertDocx(buf);
 
-    expect(result.markdown).toContain('[^1]:\n\n    $$\n    \\mathrm{E=mc^2}\n    $$');
+    expect(result.markdown).toContain('[^1]:\n\n    ' + '$' + '$' + '\n    E=mc^2\n    ' + '$' + '$');
   });
 
   test('footnote body with text then display math does not duplicate equation', async () => {
@@ -2765,7 +2825,7 @@ describe('DOCX footnote extraction', () => {
     const result = await convertDocx(buf);
 
     // Should contain exactly one instance of the display math block
-    const displayMathBlock = '$$\n    \\mathrm{x^2}\n    $$';
+    const displayMathBlock = '$$\n    x^2\n    $$';
     const occurrences = (result.markdown.match(/\$\$[\s\S]*?x\^2[\s\S]*?\$\$/g) || []).length;
     expect(occurrences).toBe(1);
     expect(result.markdown).toContain('[^1]: Here is an equation:');
@@ -2914,6 +2974,10 @@ describe('parseBlockquoteLevel', () => {
 
   test('returns 1 for GitHub style without explicit indent', () => {
     const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHub' } }];
+    expect(parseBlockquoteLevel(children)).toBe(1);
+  });
+  test('returns 1 for GitHubBlockquote style (Word-saved)', () => {
+    const children = [{ 'w:pStyle': [], ':@': { '@_w:val': 'GitHubBlockquote' } }];
     expect(parseBlockquoteLevel(children)).toBe(1);
   });
 

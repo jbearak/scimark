@@ -6,6 +6,8 @@
 
 import { describe, test, expect } from 'bun:test';
 import * as fc from 'fast-check';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { convertMdToDocx } from './md-to-docx';
 import { convertDocx } from './converter';
 
@@ -119,6 +121,16 @@ const alertTypeArb = fc.constantFrom(
 );
 
 describe('Property 1: Fault Condition — Blockquote Roundtrip Fidelity', () => {
+  test('golden fixture blockquotes.md roundtrips exactly', async () => {
+    const md = readFileSync(join(__dirname, '..', 'test', 'fixtures', 'blockquotes.md'), 'utf8');
+    const result = stripFrontmatter(await roundtrip(md));
+    expect(result).toBe(md);
+  });
+  test('alert followed immediately by paragraph preserves zero-blank adjacency', async () => {
+    const md = '> [!NOTE]\n> This is a note.\nThis is a paragraph.';
+    const result = stripFrontmatter(await roundtrip(md));
+    expect(result.trim()).toBe(md);
+  });
 
   /**
    * **Validates: Requirements 1.1, 1.7**

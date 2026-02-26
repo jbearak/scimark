@@ -113,20 +113,23 @@ export function escapeLatex(text: string): string {
  */
 export function unicodeToLatex(text: string): string {
   let result = '';
-  for (const ch of text) {
+  const chars = [...text];
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
     const mapped = UNICODE_LATEX_MAP.get(ch);
     if (mapped) {
-      // Add a space before the command if the previous char is a letter,
-      // and add a trailing space so the command doesn't merge with following text.
-      if (result.length > 0 && !result.endsWith(' ') && !result.endsWith('{')) {
+      result += mapped;
+      // Prevent command-name capture when the next source character is an ASCII
+      // letter (e.g. αx -> \alpha x, not \alphax).
+      const next = chars[i + 1];
+      if (next && /[A-Za-z]/.test(next)) {
         result += ' ';
       }
-      result += mapped + ' ';
     } else {
       result += ch;
     }
   }
-  return result.replace(/ +$/, '');
+  return result;
 }
 
 /**
@@ -359,7 +362,7 @@ function translateRun(children: any[]): string {
   if (script === 'script') {
     return '\\mathcal{' + mapped + '}';
   }
-  if (style === 'p' || isMultiLetter(mapped)) {
+  if (style === 'p') {
     return '\\mathrm{' + mapped + '}';
   }
   return mapped;
@@ -505,8 +508,7 @@ function translateNary(children: any[]): string {
   const sub = subHide ? '' : '_' + scriptArg(subLatex);
   const sup = supHide ? '' : '^' + scriptArg(supLatex);
   const body = ommlToLatex(findChild(children, 'm:e'));
-
-  return op + limits + sub + sup + scriptArg(body);
+  return op + limits + sub + sup + body;
 }
 
 

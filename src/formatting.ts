@@ -618,6 +618,17 @@ export function compactTable(text: string): TextTransformation {
   if (parsed) {
     const { rows, columnWidths, alignments } = parsed;
     const columnCount = columnWidths.length;
+    const formatCompactRow = (cells: string[]): string => {
+      let line = '|';
+      for (const cell of cells) {
+        if (cell.length === 0) {
+          line += ' |';
+        } else {
+          line += ' ' + cell + ' |';
+        }
+      }
+      return line;
+    };
 
     const formattedRows = rows.map(row => {
       if (row.isSeparator) {
@@ -630,10 +641,10 @@ export function compactTable(text: string): TextTransformation {
             default: return '---';
           }
         });
-        return '| ' + cells.join(' | ') + ' |';
+        return formatCompactRow(cells);
       } else {
         const cells = Array.from({ length: columnCount }, (_, i) => row.cells[i] ?? '');
-        return '| ' + cells.join(' | ') + ' |';
+        return formatCompactRow(cells);
       }
     });
 

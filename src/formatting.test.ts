@@ -1344,6 +1344,21 @@ describe('compactTable', () => {
     if (result.newText !== text) throw new Error('Should return original text');
   });
 
+  it('keeps empty cells compact with single-space separators', () => {
+    const input = [
+      '| H1 | H2 | H3 |',
+      '| --- | --- | --- |',
+      '| A | | C |',
+    ].join('\n');
+    const result = compactTable(input);
+    if (!result.newText.includes('| A | | C |')) {
+      throw new Error('Expected compact empty-cell row, got: ' + result.newText);
+    }
+    if (result.newText.includes('| A |  | C |')) {
+      throw new Error('Should not add double-space empty cell padding: ' + result.newText);
+    }
+  });
+
   it('is the inverse of reflowTable (reflow then compact removes padding)', () => {
     const input = '| a | bb | ccc |\n| --- | --- | --- |\n| d | ee | fff |';
     const reflowed = reflowTable(input);

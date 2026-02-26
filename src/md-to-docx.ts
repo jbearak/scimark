@@ -121,14 +121,29 @@ export { PARA_PLACEHOLDER, preprocessCriticMarkup };
 // Custom inline rules
 
 /** Parse author/date/text from comment content string. */
+function isLikelyCommentAuthorLabel(label: string): boolean {
+  const trimmed = label.trim();
+  if (!trimmed) return false;
+  // Word truncates comment author metadata on save; avoid putting long prose
+  // before ":" into w:author where it can be lost. Long labels are treated
+  // as plain comment text instead.
+  if (trimmed.length > 120) return false;
+  if (trimmed.includes('\n')) return false;
+  if (trimmed.split(/\s+/).filter(Boolean).length > 12) return false;
+  return true;
+}
 function parseCommentContent(content: string): { author?: string; date?: string; text: string } {
   const match = content.match(/^([\s\S]+?)\s+\(([^)]+)\):\s*([\s\S]*)$/);
-  if (match) {
+  if (match && isLikelyCommentAuthorLabel(match[1])) {
     return { author: match[1], date: match[2], text: match[3] };
   }
   const authorMatch = content.match(/^([^:]+):\s*([\s\S]*)$/);
   if (authorMatch) {
-    return { author: authorMatch[1].trim(), text: authorMatch[2] };
+    const authorLabel = authorMatch[1].trim();
+    if (isLikelyCommentAuthorLabel(authorLabel)) {
+      return { author: authorLabel, text: authorMatch[2] };
+    }
+    return { text: content };
   }
   if (content.trim()) {
     if (content.includes(':') || content.includes(' ') || /[^a-zA-Z0-9_-]/.test(content)) {
@@ -730,26 +745,26 @@ export function detectListIndent(markdown: string): 'tab' | 'spaces' {
   const tabAfterMarker = /^[-*+]\t/m.test(markdown) || /^\d+\.\t/m.test(markdown);
   return (tabIndented || tabAfterMarker) ? 'tab' : 'spaces';
 }
+function parseBlockquoteLevel(line: string): number {
+  const stripped = line.replace(/^ {0,3}/, '');
+  let level = 0;
+  let j = 0;
+  while (j < stripped.length) {
+    if (stripped[j] === '>') {
+      level++;
+      j++;
+      if (stripped[j] === ' ') j++;
+      continue;
+    }
+    break;
+  }
+  return level;
+}
 
 export function computeBlockquoteGaps(markdown: string): Map<number, number> {
   const gaps = new Map<number, number>();
   const lines = markdown.split('\n');
   const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
-  const blockquoteLevel = (line: string): number => {
-    const stripped = line.replace(/^ {0,3}/, '');
-    let level = 0;
-    let j = 0;
-    while (j < stripped.length) {
-      if (stripped[j] === '>') {
-        level++;
-        j++;
-        if (stripped[j] === ' ') j++;
-        continue;
-      }
-      break;
-    }
-    return level;
-  };
 
   // Identify blockquote group spans (start/end line indices).
   // A new group starts when: (a) a '>' line follows a non-'>' line, or
@@ -762,10 +777,10 @@ export function computeBlockquoteGaps(markdown: string): Map<number, number> {
       const runStart = i;
       // First line of a contiguous '>' run always starts a group
       let groupStart = i;
-      let groupLevel = blockquoteLevel(lines[i]);
+      let groupLevel = parseBlockquoteLevel(lines[i]);
       i++;
       while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
-        const level = blockquoteLevel(lines[i]);
+        const level = parseBlockquoteLevel(lines[i]);
         const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
         const levelChanged = level !== groupLevel;
         if (startsAlertGroup || levelChanged) {
@@ -812,21 +827,6 @@ export function computeBlockquotePostContentBlankLines(markdown: string): Map<nu
   const blanksByGroup = new Map<number, number>();
   const lines = markdown.split('\n');
   const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
-  const blockquoteLevel = (line: string): number => {
-    const stripped = line.replace(/^ {0,3}/, '');
-    let level = 0;
-    let j = 0;
-    while (j < stripped.length) {
-      if (stripped[j] === '>') {
-        level++;
-        j++;
-        if (stripped[j] === ' ') j++;
-        continue;
-      }
-      break;
-    }
-    return level;
-  };
 
   const groups: Array<{ start: number; end: number }> = [];
   let i = 0;
@@ -834,10 +834,10 @@ export function computeBlockquotePostContentBlankLines(markdown: string): Map<nu
     if (/^ {0,3}>/.test(lines[i])) {
       const runStart = i;
       let groupStart = i;
-      let groupLevel = blockquoteLevel(lines[i]);
+      let groupLevel = parseBlockquoteLevel(lines[i]);
       i++;
       while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
-        const level = blockquoteLevel(lines[i]);
+        const level = parseBlockquoteLevel(lines[i]);
         const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
         const levelChanged = level !== groupLevel;
         if (startsAlertGroup || levelChanged) {
@@ -860,7 +860,10 @@ export function computeBlockquotePostContentBlankLines(markdown: string): Map<nu
       blankCount++;
       li++;
     }
-    if (blankCount > 0 && li < lines.length && !/^ {0,3}>/.test(lines[li])) {
+    if (li < lines.length && !/^ {0,3}>/.test(lines[li])) {
+      // Preserve explicit authored spacing before non-blockquote content,
+      // including zero-blank transitions (`> quote` immediately followed by
+      // a paragraph line), so DOCX→MD can reconstruct semantic boundaries.
       blanksByGroup.set(g, blankCount);
     }
   }
@@ -873,21 +876,6 @@ export function computeBlockquoteAlertMarkerInlineByGroup(markdown: string): Map
   const inlineByGroup = new Map<number, boolean>();
   const lines = markdown.split('\n');
   const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](.*)$/i;
-  const blockquoteLevel = (line: string): number => {
-    const stripped = line.replace(/^ {0,3}/, '');
-    let level = 0;
-    let j = 0;
-    while (j < stripped.length) {
-      if (stripped[j] === '>') {
-        level++;
-        j++;
-        if (stripped[j] === ' ') j++;
-        continue;
-      }
-      break;
-    }
-    return level;
-  };
 
   let groupIndex = 0;
   let i = 0;
@@ -895,10 +883,10 @@ export function computeBlockquoteAlertMarkerInlineByGroup(markdown: string): Map
     if (/^ {0,3}>/.test(lines[i])) {
       const runStart = i;
       let groupStart = i;
-      let groupLevel = blockquoteLevel(lines[i]);
+      let groupLevel = parseBlockquoteLevel(lines[i]);
       i++;
       while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
-        const level = blockquoteLevel(lines[i]);
+        const level = parseBlockquoteLevel(lines[i]);
         const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
         const levelChanged = level !== groupLevel;
         if (startsAlertGroup || levelChanged) {
@@ -956,6 +944,49 @@ export function blockquoteGapProps(gaps: Map<number, number>): CustomPropEntry[]
   }
   return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_GAPS_', JSON.stringify(mapping));
 }
+export function computeBlockquotePreContentBlankLines(markdown: string): Map<number, number> {
+  const blanksByGroup = new Map<number, number>();
+  const lines = markdown.split('\n');
+  const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+
+  const groups: Array<{ start: number; end: number }> = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (/^ {0,3}>/.test(lines[i])) {
+      const runStart = i;
+      let groupStart = i;
+      let groupLevel = parseBlockquoteLevel(lines[i]);
+      i++;
+      while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
+        const level = parseBlockquoteLevel(lines[i]);
+        const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
+        const levelChanged = level !== groupLevel;
+        if (startsAlertGroup || levelChanged) {
+          groups.push({ start: groupStart, end: i - 1 });
+          groupStart = i;
+          groupLevel = level;
+        }
+        i++;
+      }
+      groups.push({ start: groupStart, end: i - 1 });
+    } else {
+      i++;
+    }
+  }
+
+  for (let g = 0; g < groups.length; g++) {
+    let li = groups[g].start - 1;
+    let blankCount = 0;
+    while (li >= 0 && lines[li].trim() === '') {
+      blankCount++;
+      li--;
+    }
+    if (li >= 0 && !/^ {0,3}>/.test(lines[li])) {
+      blanksByGroup.set(g, blankCount);
+    }
+  }
+  return blanksByGroup;
+}
 export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boolean>): CustomPropEntry[] {
   if (inlineByGroup.size === 0) return [];
   const mapping: Record<string, number> = {};
@@ -963,6 +994,22 @@ export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boole
     mapping[String(index)] = isInline ? 1 : 0;
   }
   return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE_', JSON.stringify(mapping));
+}
+export function blockquotePreContentBlankLineProps(gaps: Map<number, number>): CustomPropEntry[] {
+  if (gaps.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, count] of gaps) {
+    mapping[String(index)] = count;
+  }
+  return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_PRE_CONTENT_BLANK_LINES_', JSON.stringify(mapping));
+}
+export function blockquotePostContentBlankLineProps(gaps: Map<number, number>): CustomPropEntry[] {
+  if (gaps.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, count] of gaps) {
+    mapping[String(index)] = count;
+  }
+  return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_POST_CONTENT_BLANK_LINES_', JSON.stringify(mapping));
 }
 
 export function imageFormatProps(imageFormats: Map<string, string>): CustomPropEntry[] {
@@ -2069,6 +2116,7 @@ export interface DocxGenState {
   codeFont: string;
   codeShadingMode: boolean;
   blockquoteGaps: Map<number, number>; // gap (blank-line count) after each blockquote group, keyed by group index
+  blockquotePreContentBlankLines: Map<number, number>; // blank lines before group when previous non-blank source line is non-blockquote content
   blockquotePostContentBlankLines: Map<number, number>; // blank lines after group when next non-blank line is non-blockquote content
   blockquoteAlertMarkerInlineByGroup: Map<number, boolean>; // alert group index -> inline marker style
   // Image tracking
@@ -2140,11 +2188,14 @@ interface ContentTypesOptions {
   hasFootnotes?: boolean;
   hasEndnotes?: boolean;
   hasCommentsExtended?: boolean;
+  hasCommentsIds?: boolean;
+  hasCommentsExtensible?: boolean;
+  hasPeople?: boolean;
   imageExtensions?: Set<string>;
 }
 
 function contentTypesXml(opts: ContentTypesOptions): string {
-  const { hasList, hasComments, hasTheme, hasCustomProps, hasFootnotes, hasEndnotes, hasCommentsExtended, imageExtensions } = opts;
+  const { hasList, hasComments, hasTheme, hasCustomProps, hasFootnotes, hasEndnotes, hasCommentsExtended, hasCommentsIds, hasCommentsExtensible, hasPeople, imageExtensions } = opts;
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n';
   xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n';
@@ -2173,6 +2224,15 @@ function contentTypesXml(opts: ContentTypesOptions): string {
   }
   if (hasCommentsExtended) {
     xml += '<Override PartName="/word/commentsExtended.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"/>\n';
+  }
+  if (hasCommentsIds) {
+    xml += '<Override PartName="/word/commentsIds.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml"/>\n';
+  }
+  if (hasCommentsExtensible) {
+    xml += '<Override PartName="/word/commentsExtensible.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml"/>\n';
+  }
+  if (hasPeople) {
+    xml += '<Override PartName="/word/people.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml"/>\n';
   }
   if (hasTheme) {
     xml += '<Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>\n';
@@ -2815,9 +2875,10 @@ function numberingXml(): string {
     '</w:numbering>';
 }
 
-function settingsXml(hasFootnotes?: boolean, hasEndnotes?: boolean): string {
+function settingsXml(hasFootnotes?: boolean, hasEndnotes?: boolean, hasThreadedComments?: boolean): string {
+  const ignorable = hasThreadedComments ? 'w14 w15 w16se w16cid w16 w16cex w16sdtdh w16du' : 'w14 w15';
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
-    '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w14 w15">\n' +
+    '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:w16="http://schemas.microsoft.com/office/word/2018/wordml" xmlns:w16cex="http://schemas.microsoft.com/office/word/2018/wordml/cex" xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid" xmlns:w16du="http://schemas.microsoft.com/office/word/2023/wordml/word16du" xmlns:w16sdtdh="http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash" xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="' + ignorable + '">\n' +
     '<w:compat>\n' +
     '<w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/>\n' +
     '</w:compat>\n' +
@@ -3036,11 +3097,14 @@ interface DocumentRelsOptions {
   hasFootnotes?: boolean;
   hasEndnotes?: boolean;
   hasCommentsExtended?: boolean;
+  hasCommentsIds?: boolean;
+  hasCommentsExtensible?: boolean;
+  hasPeople?: boolean;
   imageRelationships?: Map<string, { rId: string; mediaPath: string }>;
 }
 
 function documentRelsXml(opts: DocumentRelsOptions): string {
-  const { relationships, hasList, hasComments, hasTheme, hasFootnotes, hasEndnotes, hasCommentsExtended, imageRelationships } = opts;
+  const { relationships, hasList, hasComments, hasTheme, hasFootnotes, hasEndnotes, hasCommentsExtended, hasCommentsIds, hasCommentsExtensible, hasPeople, imageRelationships } = opts;
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
   xml += '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
@@ -3064,6 +3128,18 @@ function documentRelsXml(opts: DocumentRelsOptions): string {
   }
   if (hasCommentsExtended) {
     xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/>\n';
+    nextFixed++;
+  }
+  if (hasCommentsIds) {
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.microsoft.com/office/2016/09/relationships/commentsIds" Target="commentsIds.xml"/>\n';
+    nextFixed++;
+  }
+  if (hasCommentsExtensible) {
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.microsoft.com/office/2018/08/relationships/commentsExtensible" Target="commentsExtensible.xml"/>\n';
+    nextFixed++;
+  }
+  if (hasPeople) {
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.microsoft.com/office/2011/relationships/people" Target="people.xml"/>\n';
     nextFixed++;
   }
   if (hasTheme) {
@@ -3108,6 +3184,25 @@ export function generateRPr(run: MdRun): string {
 
 export function generateRun(text: string, rPr: string): string {
   return '<w:r>' + rPr + '<w:t xml:space="preserve">' + escapeXml(text) + '</w:t></w:r>';
+}
+
+function generateHiddenHtmlCommentRun(text: string): string {
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalized.split('\n');
+  let xml = '<w:r><w:rPr><w:vanish/></w:rPr>';
+  for (let i = 0; i < lines.length; i++) {
+    if (i > 0) {
+      xml += '<w:br/>';
+    }
+    const line = lines[i];
+    if (i === 0) {
+      xml += '<w:t xml:space="preserve">' + '\u200B' + escapeXml(line) + '</w:t>';
+    } else if (line.length > 0) {
+      xml += '<w:t xml:space="preserve">' + escapeXml(line) + '</w:t>';
+    }
+  }
+  xml += '</w:r>';
+  return xml;
 }
 
 function mergeRunFormatting(inner: MdRun, outer: MdRun, forced: Partial<MdRun> = {}): MdRun {
@@ -3232,28 +3327,22 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
     } else if (run.type === 'critic_highlight') {
       if (nextRun?.type === 'critic_comment') {
         const commentId = state.commentId++;
-        const author = nextRun.author || options?.authorName || 'Unknown';
+        const author = nextRun.author ?? '';
         const date = normalizeToUtcIso(nextRun.date || '', state.timezone);
         const commentBody = nextRun.commentText || '';
         const parentParaId = generateParaId(state);
         state.comments.push({ id: commentId, author, date, text: commentBody, paraId: parentParaId });
         state.hasComments = true;
-        // Generate reply entries
-        const replyEntries: Array<{replyId: number}> = [];
         if (nextRun.replies && nextRun.replies.length > 0) {
           for (const reply of nextRun.replies) {
             const replyId = state.commentId++;
             const replyParaId = generateParaId(state);
-            const replyAuthor = reply.author || options?.authorName || 'Unknown';
+            const replyAuthor = reply.author ?? '';
             const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
             state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
-            replyEntries.push({ replyId });
           }
         }
-        xml += '<w:commentRangeStart w:id="' + commentId + '"/>';
-        for (const re of replyEntries) {
-          xml += '<w:commentRangeStart w:id="' + re.replyId + '"/>';
-        }
+        xml += '<w:commentRangeStart w:id=\"' + commentId + '\"/>';
         xml += generateInlineCriticContent(
           run.innerRuns,
           run.text,
@@ -3264,22 +3353,29 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           citeprocEngine,
           run.highlight ? { highlight: true, highlightColor: run.highlightColor } : {}
         );
-        for (const re of replyEntries) {
-          xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
-          xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + re.replyId + '"/></w:r>';
+        xml += '<w:commentRangeEnd w:id=\"' + commentId + '\"/>';
+        xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + commentId + '\"/></w:r>';
+        if (nextRun.replies && nextRun.replies.length > 0) {
+          let replyAnchorId = commentId + 1;
+          for (let i = 0; i < nextRun.replies.length; i++) {
+          xml += '<w:commentRangeStart w:id=\"' + replyAnchorId + '\"/>';
+          xml += '<w:commentRangeEnd w:id=\"' + replyAnchorId + '\"/>';
+          xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + replyAnchorId + '\"/></w:r>';
+            replyAnchorId++;
+          }
         }
-        xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
-        xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
-        ri++; // skip the comment run
-        // Absorb additional consecutive {>>...<<} as replies to this comment
+        ri++;
         let absorbedConsecutiveReply = false;
         while (ri + 1 < inputRuns.length && inputRuns[ri + 1].type === 'critic_comment') {
           const replyRun = inputRuns[ri + 1];
           const replyId = state.commentId++;
           const replyParaId = generateParaId(state);
-          const replyAuthor = replyRun.author || options?.authorName || 'Unknown';
+          const replyAuthor = replyRun.author ?? '';
           const replyDate = normalizeToUtcIso(replyRun.date || '', state.timezone);
           state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: replyRun.commentText || '', paraId: replyParaId, parentParaId });
+          xml += '<w:commentRangeStart w:id=\"' + replyId + '\"/>';
+          xml += '<w:commentRangeEnd w:id=\"' + replyId + '\"/>';
+          xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + replyId + '\"/></w:r>';
           absorbedConsecutiveReply = true;
           ri++;
         }
@@ -3300,7 +3396,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       }
     } else if (run.type === 'critic_comment') {
       const commentId = state.commentId++;
-      const author = run.author || options?.authorName || 'Unknown';
+      const author = run.author ?? '';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
       const commentBody = run.commentText || '';
       const parentParaId = generateParaId(state);
@@ -3309,22 +3405,17 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       state.hasComments = true;
 
       // Generate reply entries
-      const replyEntries: Array<{replyId: number}> = [];
       if (run.replies && run.replies.length > 0) {
         for (const reply of run.replies) {
           const replyId = state.commentId++;
           const replyParaId = generateParaId(state);
-          const replyAuthor = reply.author || options?.authorName || 'Unknown';
+          const replyAuthor = reply.author ?? '';
           const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
           state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
-          replyEntries.push({ replyId });
         }
       }
 
-      xml += '<w:commentRangeStart w:id="' + commentId + '"/>';
-      for (const re of replyEntries) {
-        xml += '<w:commentRangeStart w:id="' + re.replyId + '"/>';
-      }
+        xml += '<w:commentRangeStart w:id=\"' + commentId + '\"/>';
       if (run.text) {
         xml += generateInlineCriticContent(
           run.innerRuns,
@@ -3337,12 +3428,17 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           run.highlight ? { highlight: true, highlightColor: run.highlightColor } : {}
         );
       }
-      for (const re of replyEntries) {
-        xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
-        xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + re.replyId + '"/></w:r>';
+        xml += '<w:commentRangeEnd w:id=\"' + commentId + '\"/>';
+        xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + commentId + '\"/></w:r>';
+      if (run.replies && run.replies.length > 0) {
+        let replyAnchorId = commentId + 1;
+        for (let i = 0; i < run.replies.length; i++) {
+          xml += '<w:commentRangeStart w:id=\"' + replyAnchorId + '\"/>';
+          xml += '<w:commentRangeEnd w:id=\"' + replyAnchorId + '\"/>';
+          xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + replyAnchorId + '\"/></w:r>';
+          replyAnchorId++;
+        }
       }
-      xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
-      xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
     } else if (run.type === 'footnote_ref') {
       const label = run.footnoteLabel || '';
       let noteId = state.footnoteLabelToId.get(label);
@@ -3379,11 +3475,9 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         state.commentIdMap.set(mdId, numericId);
       }
       xml += '<w:commentRangeStart w:id="' + numericId + '"/>';
-      // Also emit range starts for replies associated with this parent
-      for (const rr of state.replyRanges) {
-        if (rr.parentId === numericId) {
-          xml += '<w:commentRangeStart w:id="' + rr.replyId + '"/>';
-        }
+      const replyRanges = state.replyRanges.filter(rr => rr.parentId === numericId);
+      for (const reply of replyRanges) {
+        xml += '<w:commentRangeStart w:id=\"' + reply.replyId + '\"/>';
       }
       state.hasComments = true;
     } else if (run.type === 'comment_range_end') {
@@ -3393,15 +3487,13 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         state.warnings.push(`Unmatched comment range end marker: {/${mdId}}`);
         continue;
       }
-      // Emit reply range ends before parent's
-      for (const rr of state.replyRanges) {
-        if (rr.parentId === numericId) {
-          xml += '<w:commentRangeEnd w:id="' + rr.replyId + '"/>';
-          xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + rr.replyId + '"/></w:r>';
-        }
-      }
       xml += '<w:commentRangeEnd w:id="' + numericId + '"/>';
       xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + numericId + '"/></w:r>';
+      const replyRanges = state.replyRanges.filter(rr => rr.parentId === numericId);
+      for (const reply of replyRanges) {
+        xml += '<w:commentRangeEnd w:id=\"' + reply.replyId + '\"/>';
+        xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + reply.replyId + '\"/></w:r>';
+      }
     } else if (run.type === 'comment_body_with_id') {
       const mdId = run.commentId || '';
       const numericId = state.commentIdMap.get(mdId);
@@ -3412,7 +3504,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       // Only emit the comment entry once per ID (multi-paragraph comments
       // may produce duplicate body markers in the markdown).
       if (!state.comments.some(c => c.id === numericId)) {
-        const author = run.author || options?.authorName || 'Unknown';
+        const author = run.author ?? '';
         const date = normalizeToUtcIso(run.date || '', state.timezone);
         const commentBody = run.commentText || '';
         const parentParaId = generateParaId(state);
@@ -3426,7 +3518,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
             const reply = run.replies[i];
             const replyId = i < preAllocated.length ? preAllocated[i].replyId : state.commentId++;
             const replyParaId = generateParaId(state);
-            const replyAuthor = reply.author || options?.authorName || 'Unknown';
+            const replyAuthor = reply.author ?? '';
             const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
             state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
             if (i >= preAllocated.length) {
@@ -3437,7 +3529,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       }
       state.hasComments = true;
     } else if (run.type === 'html_comment') {
-      xml += '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">' + '\u200B' + escapeXml(run.text) + '</w:t></w:r>';
+      xml += generateHiddenHtmlCommentRun(run.text);
     } else if (run.type === 'image') {
       const src = run.imageSrc || '';
       const alt = run.imageAlt || '';
@@ -3768,13 +3860,25 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
 function generateParaId(state: DocxGenState): string {
   return (state.nextParaId++).toString(16).toUpperCase().padStart(8, '0');
 }
+function authorInitials(author: string): string {
+  const initials = author
+    .split(/\s+/)
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => part[0].toUpperCase())
+    .join('')
+    .slice(0, 8);
+  return initials;
+}
 
 function commentsXml(comments: CommentEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-  xml += '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">';
+  xml += '<w:comments xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" mc:Ignorable=\"w14\">';
   for (const c of comments) {
     const dateAttr = c.date ? ' w:date="' + escapeXml(c.date) + '"' : '';
-    xml += '<w:comment w:id="' + c.id + '" w:author="' + escapeXml(c.author) + '"' + dateAttr + '>';
+    const initials = authorInitials(c.author);
+    const initialsAttr = initials ? ' w:initials=\"' + escapeXml(initials) + '\"' : '';
+    xml += '<w:comment w:id=\"' + c.id + '\" w:author=\"' + escapeXml(c.author) + '\"' + initialsAttr + dateAttr + '>';
     // Split on \n\n for paragraph breaks within the comment
     const paragraphs = c.text.split('\n\n');
     for (let pi = 0; pi < paragraphs.length; pi++) {
@@ -3826,6 +3930,47 @@ function commentsExtendedXml(comments: CommentEntry[]): string {
     }
   }
   xml += '</w15:commentsEx>';
+  return xml;
+}
+
+function durableIdFromParaId(paraId: string): string {
+  let hash = 2166136261 >>> 0;
+  for (let i = 0; i < paraId.length; i++) {
+    hash ^= paraId.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash.toString(16).toUpperCase().padStart(8, '0');
+}
+
+function commentsIdsXml(comments: CommentEntry[]): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<w16cid:commentsIds xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid">';
+  for (const c of comments) {
+    xml += '<w16cid:commentId w16cid:paraId="' + c.paraId + '" w16cid:durableId="' + durableIdFromParaId(c.paraId) + '"/>';
+  }
+  xml += '</w16cid:commentsIds>';
+  return xml;
+}
+
+function commentsExtensibleXml(comments: CommentEntry[]): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<w16cex:commentsExtensible xmlns:w16cex="http://schemas.microsoft.com/office/word/2018/wordml/cex">';
+  for (const c of comments) {
+    const dateUtcAttr = c.date ? ' w16cex:dateUtc="' + escapeXml(c.date) + '"' : '';
+    xml += '<w16cex:commentExtensible w16cex:durableId="' + durableIdFromParaId(c.paraId) + '"' + dateUtcAttr + '/>';
+  }
+  xml += '</w16cex:commentsExtensible>';
+  return xml;
+}
+
+function peopleXml(comments: CommentEntry[]): string {
+  const authors = [...new Set(comments.map(c => c.author).filter(a => !!a && a.trim().length > 0))];
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<w15:people xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">';
+  for (const author of authors) {
+    xml += '<w15:person w15:author="' + escapeXml(author) + '"/>';
+  }
+  xml += '</w15:people>';
   return xml;
 }
 
@@ -3998,6 +4143,7 @@ export async function convertMdToDocx(
   // Compute inter-blockquote-group gap metadata from the original markdown
   // source and annotate tokens with sequential group indices.
   const blockquoteGaps = computeBlockquoteGaps(bodyWithoutFootnotes);
+  const blockquotePreContentBlankLines = computeBlockquotePreContentBlankLines(bodyWithoutFootnotes);
   const blockquotePostContentBlankLines = computeBlockquotePostContentBlankLines(bodyWithoutFootnotes);
   const blockquoteAlertMarkerInlineByGroup = computeBlockquoteAlertMarkerInlineByGroup(bodyWithoutFootnotes);
   annotateBlockquoteGroupIndices(tokens);
@@ -4079,9 +4225,9 @@ export async function convertMdToDocx(
   const notesMode = frontmatter.notes === 'endnotes' ? 'endnotes' as const : 'footnotes' as const;
 
   // Reserve rId slots: 1=styles, 2=numbering, 3=comments,
-  // 4+=footnotes/endnotes/commentsExtended/theme/settings/fontTable.
-  // We reserve max optional slots to avoid hyperlink rId collisions.
-  const rIdOffset = 3 + 3 + (hasTheme ? 1 : 0) + 2; // +3 optional note/comment-extension rels, +2 fixed settings/fontTable
+  // 4+=optional notes/comment-thread rels/theme/settings/fontTable.
+  // Reserve max optional slots to avoid hyperlink rId collisions.
+  const rIdOffset = 3 + 6 + (hasTheme ? 1 : 0) + 2; // +6 optional rels (foot/end/commentsExtended/commentsIds/commentsExtensible/people), +2 fixed settings/fontTable
 
   const state: DocxGenState = {
     commentId: 0,
@@ -4111,6 +4257,7 @@ export async function convertMdToDocx(
     codeFont: fontOverrides?.codeFont || 'Consolas',
     codeShadingMode: !isInsetMode,
     blockquoteGaps: blockquoteGaps,
+    blockquotePreContentBlankLines,
     blockquotePostContentBlankLines,
     blockquoteAlertMarkerInlineByGroup,
     imageRelationships: new Map(),
@@ -4234,9 +4381,15 @@ export async function convertMdToDocx(
     zip.file('word/styles.xml', stylesXml(fontOverrides, codeBlockConfig, effectiveColors));
   }
 
+  const hasCommentsExtended = state.hasComments && state.comments.some(c => c.parentParaId);
+  const hasThreadedComments = hasCommentsExtended;
+  const hasCommentsIds = hasThreadedComments;
+  const hasCommentsExtensible = hasThreadedComments;
+  const hasPeople = hasThreadedComments;
+
   // Always use generated settings.xml to guarantee compatibilityMode >= 15
   // (template settings.xml may have compatibilityMode < 15, causing "unreadable content" errors)
-  zip.file('word/settings.xml', settingsXml(state.hasFootnotes, state.hasEndnotes));
+  zip.file('word/settings.xml', settingsXml(state.hasFootnotes, state.hasEndnotes, hasThreadedComments));
 
   // Always include fontTable.xml
   zip.file('word/fontTable.xml', fontTableXml());
@@ -4255,11 +4408,19 @@ export async function convertMdToDocx(
     zip.file('word/theme/theme1.xml', templateParts!.get('word/theme/theme1.xml')!);
   }
 
-  const hasCommentsExtended = state.hasComments && state.comments.some(c => c.parentParaId);
   if (state.hasComments) {
     zip.file('word/comments.xml', commentsXml(state.comments));
     if (hasCommentsExtended) {
       zip.file('word/commentsExtended.xml', commentsExtendedXml(state.comments));
+    }
+    if (hasCommentsIds) {
+      zip.file('word/commentsIds.xml', commentsIdsXml(state.comments));
+    }
+    if (hasCommentsExtensible) {
+      zip.file('word/commentsExtensible.xml', commentsExtensibleXml(state.comments));
+    }
+    if (hasPeople) {
+      zip.file('word/people.xml', peopleXml(state.comments));
     }
   }
 
@@ -4284,6 +4445,8 @@ export async function convertMdToDocx(
   customProps.push(...codeBlockStylingProps(frontmatter));
   customProps.push(...pipeTableMaxLineWidthProps(frontmatter));
   customProps.push(...blockquoteGapProps(state.blockquoteGaps));
+  customProps.push(...blockquotePreContentBlankLineProps(state.blockquotePreContentBlankLines));
+  customProps.push(...blockquotePostContentBlankLineProps(state.blockquotePostContentBlankLines));
   customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
   customProps.push(...imageFormatProps(state.imageFormats));
   customProps.push(...tableFormatProps(state.tableFormats));
@@ -4311,6 +4474,9 @@ export async function convertMdToDocx(
     hasFootnotes: state.hasFootnotes,
     hasEndnotes: state.hasEndnotes,
     hasCommentsExtended,
+    hasCommentsIds,
+    hasCommentsExtensible,
+    hasPeople,
     imageExtensions: state.imageExtensions.size > 0 ? state.imageExtensions : undefined,
   }));
   zip.file('_rels/.rels', relsXml(hasCustomProps));
@@ -4322,6 +4488,9 @@ export async function convertMdToDocx(
     hasFootnotes: state.hasFootnotes,
     hasEndnotes: state.hasEndnotes,
     hasCommentsExtended,
+    hasCommentsIds,
+    hasCommentsExtensible,
+    hasPeople,
     imageRelationships: state.imageRelationships.size > 0 ? state.imageRelationships : undefined,
   }));
 
