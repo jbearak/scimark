@@ -64,6 +64,42 @@ export interface Comment {
   replies?: CommentReply[];
   consecutiveReplies?: boolean; // true when original MD used consecutive {>>...<<} format for replies
 }
+export async function extractBlockquotePreContentBlankLineMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_BLOCKQUOTE_PRE_CONTENT_BLANK_LINES');
+  if (!mappingJson) return null;
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<number, number>();
+    for (const [key, count] of Object.entries(parsedJson)) {
+      const groupIdx = parseInt(key, 10);
+      // Preserve sentinel -1 (used when non-blockquote content exists between
+      // groups in source) in addition to non-negative blank-line counts.
+      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < -1) continue;
+      mapping.set(groupIdx, count);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
+export async function extractBlockquotePostContentBlankLineMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_BLOCKQUOTE_POST_CONTENT_BLANK_LINES');
+  if (!mappingJson) return null;
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<number, number>();
+    for (const [key, count] of Object.entries(parsedJson)) {
+      const groupIdx = parseInt(key, 10);
+      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < -1) continue;
+      mapping.set(groupIdx, count);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
 
 const ALERT_STYLE_TO_TYPE: Record<string, GfmAlertType> = {
   githubnote: 'note',
@@ -1069,7 +1105,7 @@ export async function extractBlockquoteGapMapping(data: Uint8Array | JSZip): Pro
     const mapping = new Map<number, number>();
     for (const [key, count] of Object.entries(parsedJson)) {
       const groupIdx = parseInt(key, 10);
-      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) continue;
+      if (isNaN(groupIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < -1) continue;
       mapping.set(groupIdx, count);
     }
     return mapping.size > 0 ? mapping : null;
@@ -3244,7 +3280,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3376,12 +3412,15 @@ export function buildMarkdown(
   // stable on DOCX -> MD conversion.
   let pendingAlertInlineLevelForHardBreak: number | undefined;
   let lastBlockquoteGroupIndex: number | undefined;
+  let pendingPostContentGroupIndex: number | undefined;
   // Track previous blockquote type to detect group boundaries when gap
   // metadata is absent (plain↔alert or alert↔different-alert transitions).
   let lastBlockquoteAlertType: GfmAlertType | 'plain' | undefined;
   let lastBlockquoteLevel: number | undefined;
   const codeBlockLangs = options?.codeBlockLangs;
   const blockquoteGaps = options?.blockquoteGaps;
+  const blockquotePreContentBlankLines = options?.blockquotePreContentBlankLines;
+  const blockquotePostContentBlankLines = options?.blockquotePostContentBlankLines;
   const blockquoteAlertInlineByGroup = options?.blockquoteAlertInlineByGroup;
   const htmlCommentGaps = options?.htmlCommentGaps;
   let htmlCommentIndex = 0;
@@ -3488,6 +3527,28 @@ export function buildMarkdown(
           if (gapCount !== undefined && gapCount >= 0) {
             // gapCount blank lines = gapCount+1 newline characters
             output.push('\n' + '\n'.repeat(gapCount));
+          } else if (gapCount === -1) {
+            // Non-blockquote content existed between the groups in source;
+            // use pre-content spacing metadata for this group when available.
+            const preBlankCount = blockquotePreContentBlankLines?.get(item.blockquoteGroupIndex);
+            if (preBlankCount !== undefined && preBlankCount >= 0) {
+              output.push('\n' + '\n'.repeat(preBlankCount));
+            } else {
+              output.push('\n');
+            }
+          } else {
+            output.push('\n\n');
+          }
+        } else if (
+          blockquotePreContentBlankLines &&
+          item.blockquoteLevel &&
+          item.blockquoteGroupIndex !== undefined
+        ) {
+          // Blockquote group following non-blockquote content: preserve the
+          // authored blank-line count before this group exactly.
+          const blankCount = blockquotePreContentBlankLines.get(item.blockquoteGroupIndex);
+          if (blankCount !== undefined && blankCount >= 0) {
+            output.push('\n' + '\n'.repeat(blankCount));
           } else {
             output.push('\n\n');
           }
@@ -3517,6 +3578,38 @@ export function buildMarkdown(
             output.push('\n\n');
           }
         } else if (
+          blockquotePostContentBlankLines &&
+          !item.blockquoteLevel &&
+          pendingPostContentGroupIndex !== undefined &&
+          !item.headingLevel &&
+          !item.listMeta &&
+          !item.isCodeBlock
+        ) {
+          // Non-blockquote paragraph after a blockquote group: restore the
+          // authored blank-line count exactly (including zero-blank adjacency).
+          const next = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
+          const nextIsBlockquotePara = next?.type === 'para' && !!next.blockquoteLevel;
+          const nextIsStructuralPara = next?.type === 'para' && (
+            !!next.headingLevel || !!next.listMeta || !!next.isCodeBlock
+          );
+          if (nextIsBlockquotePara) {
+            // Structural separator between blockquote groups — let the
+            // blockquote gap logic handle spacing at the next group boundary.
+          } else if (nextIsStructuralPara) {
+            // Structural separator before heading/list/code-block content.
+            // Keep pending metadata so spacing is emitted at the real content.
+          } else {
+            const blankCount = blockquotePostContentBlankLines.get(pendingPostContentGroupIndex);
+            if (blankCount !== undefined && blankCount >= 0) {
+              output.push('\n' + '\n'.repeat(blankCount));
+            } else {
+              output.push('\n\n');
+            }
+            // Consume once: this metadata applies only to the first real
+            // content paragraph after a blockquote group.
+            pendingPostContentGroupIndex = undefined;
+          }
+        } else if (
           blockquoteGaps &&
           !item.blockquoteLevel &&
           lastBlockquoteGroupIndex !== undefined &&
@@ -3531,7 +3624,7 @@ export function buildMarkdown(
           const gapCount = blockquoteGaps.get(lastBlockquoteGroupIndex);
           const next = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
           const nextIsBlockquotePara = next?.type === 'para' && !!next.blockquoteLevel;
-          if (gapCount !== undefined && gapCount >= 0 && nextIsBlockquotePara) {
+          if (gapCount !== undefined && (gapCount >= 0 || gapCount === -1) && nextIsBlockquotePara) {
             // Suppress — gap handled at next blockquote para transition
           } else {
             output.push('\n\n');
@@ -3572,9 +3665,11 @@ export function buildMarkdown(
       // group transitions even when structural separator paras intervene.
       if (item.blockquoteLevel && item.blockquoteGroupIndex !== undefined) {
         lastBlockquoteGroupIndex = item.blockquoteGroupIndex;
+        pendingPostContentGroupIndex = item.blockquoteGroupIndex;
       } else if (item.headingLevel || item.listMeta || item.isCodeBlock) {
         // Real non-blockquote content resets the tracking
         lastBlockquoteGroupIndex = undefined;
+        pendingPostContentGroupIndex = undefined;
       }
 
       // Track blockquote type for boundary detection (plain↔alert, alert↔alert).
@@ -4168,7 +4263,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number; existingBibtex?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4179,6 +4274,8 @@ export async function convertDocx(
     extractCommentThreads(zip),
     extractCodeBlockStyling(zip),
     extractBlockquoteGapMapping(zip),
+    extractBlockquotePreContentBlankLineMapping(zip),
+    extractBlockquotePostContentBlankLineMapping(zip),
     extractBlockquoteAlertStyleMapping(zip),
     extractImageFormatMapping(zip),
     extractTableFormatMapping(zip),
@@ -4304,6 +4401,8 @@ export async function convertDocx(
     notes: notesMap.size > 0 ? { map: notesMap, assignedLabels } : undefined,
     codeBlockLangs: codeBlockLangMapping,
     blockquoteGaps: blockquoteGapMapping,
+    blockquotePreContentBlankLines: blockquotePreContentBlankLineMapping,
+    blockquotePostContentBlankLines: blockquotePostContentBlankLineMapping,
     blockquoteAlertInlineByGroup: blockquoteAlertStyleMapping,
     imageFormatMapping,
     tableFormatMapping,

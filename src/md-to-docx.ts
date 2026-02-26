@@ -860,7 +860,10 @@ export function computeBlockquotePostContentBlankLines(markdown: string): Map<nu
       blankCount++;
       li++;
     }
-    if (blankCount > 0 && li < lines.length && !/^ {0,3}>/.test(lines[li])) {
+    if (li < lines.length && !/^ {0,3}>/.test(lines[li])) {
+      // Preserve explicit authored spacing before non-blockquote content,
+      // including zero-blank transitions (`> quote` immediately followed by
+      // a paragraph line), so DOCX→MD can reconstruct semantic boundaries.
       blanksByGroup.set(g, blankCount);
     }
   }
@@ -956,6 +959,64 @@ export function blockquoteGapProps(gaps: Map<number, number>): CustomPropEntry[]
   }
   return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_GAPS_', JSON.stringify(mapping));
 }
+export function computeBlockquotePreContentBlankLines(markdown: string): Map<number, number> {
+  const blanksByGroup = new Map<number, number>();
+  const lines = markdown.split('\n');
+  const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+  const blockquoteLevel = (line: string): number => {
+    const stripped = line.replace(/^ {0,3}/, '');
+    let level = 0;
+    let j = 0;
+    while (j < stripped.length) {
+      if (stripped[j] === '>') {
+        level++;
+        j++;
+        if (stripped[j] === ' ') j++;
+        continue;
+      }
+      break;
+    }
+    return level;
+  };
+
+  const groups: Array<{ start: number; end: number }> = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (/^ {0,3}>/.test(lines[i])) {
+      const runStart = i;
+      let groupStart = i;
+      let groupLevel = blockquoteLevel(lines[i]);
+      i++;
+      while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
+        const level = blockquoteLevel(lines[i]);
+        const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
+        const levelChanged = level !== groupLevel;
+        if (startsAlertGroup || levelChanged) {
+          groups.push({ start: groupStart, end: i - 1 });
+          groupStart = i;
+          groupLevel = level;
+        }
+        i++;
+      }
+      groups.push({ start: groupStart, end: i - 1 });
+    } else {
+      i++;
+    }
+  }
+
+  for (let g = 0; g < groups.length; g++) {
+    let li = groups[g].start - 1;
+    let blankCount = 0;
+    while (li >= 0 && lines[li].trim() === '') {
+      blankCount++;
+      li--;
+    }
+    if (li >= 0 && !/^ {0,3}>/.test(lines[li])) {
+      blanksByGroup.set(g, blankCount);
+    }
+  }
+  return blanksByGroup;
+}
 export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boolean>): CustomPropEntry[] {
   if (inlineByGroup.size === 0) return [];
   const mapping: Record<string, number> = {};
@@ -963,6 +1024,22 @@ export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boole
     mapping[String(index)] = isInline ? 1 : 0;
   }
   return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE_', JSON.stringify(mapping));
+}
+export function blockquotePreContentBlankLineProps(gaps: Map<number, number>): CustomPropEntry[] {
+  if (gaps.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, count] of gaps) {
+    mapping[String(index)] = count;
+  }
+  return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_PRE_CONTENT_BLANK_LINES_', JSON.stringify(mapping));
+}
+export function blockquotePostContentBlankLineProps(gaps: Map<number, number>): CustomPropEntry[] {
+  if (gaps.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, count] of gaps) {
+    mapping[String(index)] = count;
+  }
+  return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_POST_CONTENT_BLANK_LINES_', JSON.stringify(mapping));
 }
 
 export function imageFormatProps(imageFormats: Map<string, string>): CustomPropEntry[] {
@@ -2069,6 +2146,7 @@ export interface DocxGenState {
   codeFont: string;
   codeShadingMode: boolean;
   blockquoteGaps: Map<number, number>; // gap (blank-line count) after each blockquote group, keyed by group index
+  blockquotePreContentBlankLines: Map<number, number>; // blank lines before group when previous non-blank source line is non-blockquote content
   blockquotePostContentBlankLines: Map<number, number>; // blank lines after group when next non-blank line is non-blockquote content
   blockquoteAlertMarkerInlineByGroup: Map<number, boolean>; // alert group index -> inline marker style
   // Image tracking
@@ -4095,6 +4173,7 @@ export async function convertMdToDocx(
   // Compute inter-blockquote-group gap metadata from the original markdown
   // source and annotate tokens with sequential group indices.
   const blockquoteGaps = computeBlockquoteGaps(bodyWithoutFootnotes);
+  const blockquotePreContentBlankLines = computeBlockquotePreContentBlankLines(bodyWithoutFootnotes);
   const blockquotePostContentBlankLines = computeBlockquotePostContentBlankLines(bodyWithoutFootnotes);
   const blockquoteAlertMarkerInlineByGroup = computeBlockquoteAlertMarkerInlineByGroup(bodyWithoutFootnotes);
   annotateBlockquoteGroupIndices(tokens);
@@ -4208,6 +4287,7 @@ export async function convertMdToDocx(
     codeFont: fontOverrides?.codeFont || 'Consolas',
     codeShadingMode: !isInsetMode,
     blockquoteGaps: blockquoteGaps,
+    blockquotePreContentBlankLines,
     blockquotePostContentBlankLines,
     blockquoteAlertMarkerInlineByGroup,
     imageRelationships: new Map(),
@@ -4395,6 +4475,8 @@ export async function convertMdToDocx(
   customProps.push(...codeBlockStylingProps(frontmatter));
   customProps.push(...pipeTableMaxLineWidthProps(frontmatter));
   customProps.push(...blockquoteGapProps(state.blockquoteGaps));
+  customProps.push(...blockquotePreContentBlankLineProps(state.blockquotePreContentBlankLines));
+  customProps.push(...blockquotePostContentBlankLineProps(state.blockquotePostContentBlankLines));
   customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
   customProps.push(...imageFormatProps(state.imageFormats));
   customProps.push(...tableFormatProps(state.tableFormats));
