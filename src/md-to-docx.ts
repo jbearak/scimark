@@ -4125,8 +4125,17 @@ export async function convertMdToDocx(
     codeFontColor: frontmatter.codeFontColor,
     codeBlockInset: frontmatter.codeBlockInset,
   };
+  // Strip previously-generated "Citation data for @key was not found" paragraphs
+  // so they don't accumulate on successive round-trips. The missing-key mechanism
+  // regenerates these from the actual unresolved citation keys.
+  const MISSING_KEY_LINE = /^Citation data for @\S+ was not found in the bibliography file\.$/;
+  const bodyStripped = body.split('\n')
+    .filter(line => !MISSING_KEY_LINE.test(line))
+    .join('\n')
+    .replace(/\n{3,}$/, '\n'); // trim trailing excess blank lines from removed block
+
   // Extract footnote definitions before markdown parsing
-  const { cleaned: bodyWithoutFootnotes, definitions: footnoteDefs } = extractFootnoteDefinitions(body);
+  const { cleaned: bodyWithoutFootnotes, definitions: footnoteDefs } = extractFootnoteDefinitions(bodyStripped);
   const tokens = parseMd(bodyWithoutFootnotes);
 
   // Compute inter-blockquote-group gap metadata from the original markdown
