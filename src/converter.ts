@@ -4362,6 +4362,7 @@ export async function convertDocx(
     // Only append genuinely new Zotero entries (citations added in Word).
     const storedKeys = new Set(parseBibtex(storedBibData).keys());
     const generated = generateBibTeX(zoteroCitations, keyMap);
+    // generateBibTeX joins entries with '\n\n'; split to filter by key.
     const newEntries = generated
       .split(/\n\n+/)
       .filter(entry => {
