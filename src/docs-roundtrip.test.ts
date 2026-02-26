@@ -294,6 +294,8 @@ describe('CriticMarkup round-trip: md -> docx -> md', () => {
   }
 });
 
+const draftBib = readFileSync(join(repoRoot, 'test/fixtures/draft.bib'), 'utf-8');
+
 describe('double round-trip: md -> docx -> md -> docx -> md', () => {
   it('sample.md reaches a fixpoint after one round-trip', async () => {
     const originalMd = readFileSync(join(repoRoot, 'sample.md'), 'utf-8');
@@ -321,6 +323,47 @@ describe('double round-trip: md -> docx -> md -> docx -> md', () => {
     // Key structural elements survived both round-trips
     expect(countHeadings(m2.markdown)).toBe(countHeadings(originalMd));
     expect(countCodeBlocks(m2.markdown)).toBe(countCodeBlocks(originalMd));
+  }, 60_000);
+
+  it('draft.md reaches a fixpoint after one round-trip (with bib)', async () => {
+    const draftMd = readFileSync(join(repoRoot, 'test/fixtures/draft.md'), 'utf-8');
+
+    // RT1: md -> docx -> md
+    const r1 = await convertMdToDocx(draftMd, { bibtex: draftBib });
+    expect(r1.warnings).toEqual([]);
+    const m1 = await convertDocx(r1.docx);
+
+    // RT2: md -> docx -> md (using RT1 output)
+    const r2 = await convertMdToDocx(m1.markdown, { bibtex: m1.bibtex });
+    expect(r2.warnings).toEqual([]);
+    const m2 = await convertDocx(r2.docx);
+
+    // Fixpoint: RT1 and RT2 should produce identical markdown
+    expect(m2.markdown.trimEnd()).toBe(m1.markdown.trimEnd());
+
+    // Bib entries preserved through both round-trips
+    expect(m2.bibtex).toBe(m1.bibtex);
+
+    // Key structural elements survived both round-trips
+    expect(countHeadings(m2.markdown)).toBe(countHeadings(draftMd));
+  }, 60_000);
+
+  it('draft.md reaches a fixpoint after one round-trip (without bib)', async () => {
+    const draftMd = readFileSync(join(repoRoot, 'test/fixtures/draft.md'), 'utf-8');
+
+    // RT1: md -> docx -> md (no bib file)
+    const r1 = await convertMdToDocx(draftMd);
+    const m1 = await convertDocx(r1.docx);
+
+    // RT2: md -> docx -> md (using RT1 output, still no bib)
+    const r2 = await convertMdToDocx(m1.markdown);
+    const m2 = await convertDocx(r2.docx);
+
+    // Fixpoint: RT1 and RT2 should produce identical markdown
+    expect(m2.markdown.trimEnd()).toBe(m1.markdown.trimEnd());
+
+    // Key structural elements survived both round-trips
+    expect(countHeadings(m2.markdown)).toBe(countHeadings(draftMd));
   }, 60_000);
 });
 

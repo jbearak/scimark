@@ -35,3 +35,6 @@ vsc-extension-quickstart.md
 
 # Temp extraction dirs
 *_temp/
+
+# Script output
+scripts/draft-roundtrip-output/
