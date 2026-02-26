@@ -2293,11 +2293,10 @@ interface ContentTypesOptions {
   hasEndnotes?: boolean;
   hasCommentsExtended?: boolean;
   imageExtensions?: Set<string>;
-  hasBibliography?: boolean;
 }
 
 function contentTypesXml(opts: ContentTypesOptions): string {
-  const { hasList, hasComments, hasTheme, hasCustomProps, hasFootnotes, hasEndnotes, hasCommentsExtended, imageExtensions, hasBibliography } = opts;
+  const { hasList, hasComments, hasTheme, hasCustomProps, hasFootnotes, hasEndnotes, hasCommentsExtended, imageExtensions } = opts;
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n';
   xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n';
@@ -2334,9 +2333,6 @@ function contentTypesXml(opts: ContentTypesOptions): string {
   xml += '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>\n';
   if (hasCustomProps) {
     xml += '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>\n';
-  }
-  if (hasBibliography) {
-    xml += '<Override PartName="/word/bibliography.bib" ContentType="text/plain"/>\n';
   }
   xml += '</Types>';
   return xml;
@@ -3168,6 +3164,19 @@ function bibKeyOrderProps(bibEntries: Map<string, BibtexEntry> | undefined): Cus
     props.push({
       name: 'MANUSCRIPT_BIB_KEY_ORDER_' + (props.length + 1),
       value: csv.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+
+function bibDataProps(bibtex: string | undefined): CustomPropEntry[] {
+  if (!bibtex || bibtex.trim().length === 0) return [];
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < bibtex.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_BIB_DATA_' + (props.length + 1),
+      value: bibtex.slice(i, i + CHUNK_SIZE),
     });
   }
   return props;
@@ -4475,14 +4484,10 @@ export async function convertMdToDocx(
   customProps.push(...htmlCommentGapProps(state.htmlCommentGaps));
   customProps.push(...frontmatterBlankLineProps(frontmatterBlankLines));
   customProps.push(...bibKeyOrderProps(bibEntries));
+  customProps.push(...bibDataProps(options?.bibtex));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));
-  }
-
-  // Store raw .bib text for perfect-fidelity round-trip (Layer 1)
-  if (options?.bibtex) {
-    zip.file('word/bibliography.bib', options.bibtex);
   }
 
   // Store image binaries in word/media/
@@ -4499,7 +4504,6 @@ export async function convertMdToDocx(
     hasEndnotes: state.hasEndnotes,
     hasCommentsExtended,
     imageExtensions: state.imageExtensions.size > 0 ? state.imageExtensions : undefined,
-    hasBibliography: !!options?.bibtex,
   }));
   zip.file('_rels/.rels', relsXml(hasCustomProps));
   zip.file('word/_rels/document.xml.rels', documentRelsXml({

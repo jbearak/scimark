@@ -6,7 +6,7 @@ import { wrapColoredHighlight } from './formatting';
 import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
 import { gfmAlertTitle, parseGfmAlertMarker, toGfmAlertMarker, type GfmAlertType } from './gfm';
 import { emuToPixels, isSupportedImageFormat, resolveImageFilename } from './image-utils';
-import { parseBibtex, mergeBibtex } from './bibtex-parser';
+import { mergeBibtex } from './bibtex-parser';
 
 // --- Implementation notes ---
 // Table parsing:
@@ -1031,15 +1031,6 @@ export async function extractFrontmatterBlankLines(data: Uint8Array | JSZip): Pr
   return null;
 }
 
-/** Layer 1: read raw .bib stored verbatim at word/bibliography.bib in the DOCX ZIP. */
-export async function extractStoredBibtex(data: Uint8Array | JSZip): Promise<string | null> {
-  const zip = data instanceof JSZip ? data : await loadZip(data);
-  const file = zip.file('word/bibliography.bib');
-  if (!file) return null;
-  const text = await file.async('string');
-  return text || null;
-}
-
 /** Layer 2: read comma-separated bib key order from chunked MANUSCRIPT_BIB_KEY_ORDER_* custom props. */
 export async function extractBibKeyOrder(data: Uint8Array | JSZip): Promise<string[] | null> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
@@ -1073,6 +1064,40 @@ export async function extractBibKeyOrder(data: Uint8Array | JSZip): Promise<stri
   const csv = parts.map(p => p.value).join('');
   const keys = csv.split(',').map(k => k.trim()).filter(Boolean);
   return keys.length > 0 ? keys : null;
+}
+
+/** Layer 1: read full .bib text from chunked MANUSCRIPT_BIB_DATA_* custom props. */
+export async function extractBibData(data: Uint8Array | JSZip): Promise<string | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propPrefix = 'MANUSCRIPT_BIB_DATA_';
+  const parts: Array<{ index: number; value: string }> = [];
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (!name.startsWith(propPrefix)) continue;
+
+    const chunkMatch = name.slice(propPrefix.length).match(/^(\d+)$/);
+    if (!chunkMatch) continue;
+    const idx = parseInt(chunkMatch[1], 10);
+    if (isNaN(idx)) continue;
+
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const val = nodeText(child['vt:lpwstr'] || []);
+        parts.push({ index: idx, value: val });
+      }
+    }
+  }
+
+  if (parts.length === 0) return null;
+  parts.sort((a, b) => a.index - b.index);
+  const text = parts.map(p => p.value).join('');
+  return text.trim().length > 0 ? text : null;
 }
 
 export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Promise<number | null> {
@@ -3977,7 +4002,6 @@ const CSL_TO_BIBTEX: Record<string, string> = {
 export function generateBibTeX(
   zoteroCitations: ZoteroCitation[],
   keyMap: Map<string, string>,
-  skipKeys?: Set<string> | null,
   originalKeyOrder?: string[] | null,
 ): string {
   const entries: string[] = [];
@@ -3992,9 +4016,6 @@ export function generateBibTeX(
 
       const key = keyMap.get(id);
       if (!key) { continue; }
-
-      // Skip entries whose keys are already in the stored .bib (used by Layer 1 caller)
-      if (skipKeys && skipKeys.has(key)) { continue; }
 
       const authorStr = meta.authors.map(serializeAuthor).join(' and ');
 
@@ -4258,7 +4279,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number; existingBibtex?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, storedBibtex, bibKeyOrder] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4277,8 +4298,8 @@ export async function convertDocx(
     extractConsecutiveReplyParaIds(zip),
     extractFrontmatterBlankLines(zip),
     extractHtmlCommentGapMapping(zip),
-    extractStoredBibtex(zip),
     extractBibKeyOrder(zip),
+    extractBibData(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -4462,22 +4483,17 @@ export async function convertDocx(
   }
 
   // Layered .bib restoration:
-  // Layer 1: raw .bib stored in ZIP (perfect fidelity, may be stripped by Word)
-  // Layer 2: key order in custom properties (survives Word editing)
+  // Layer 1: full .bib stored in custom properties (survives Word editing)
+  // Layer 2: key order in custom properties — regenerate with original order
   // Layer 3: regenerate from Zotero citations (backward compatible)
   let bibtex: string;
-  if (storedBibtex) {
-    // Layer 1: use stored .bib verbatim, append only genuinely new entries.
-    // skipKeys filters by citation key — if the key format changed between
-    // write and read, a regenerated key could differ from the stored one and
-    // produce a duplicate entry. This is an unlikely edge case since the key
-    // format is fixed per-project.
-    const storedKeys = new Set(parseBibtex(storedBibtex).keys());
-    const newEntries = generateBibTeX(zoteroCitations, keyMap, storedKeys);
-    bibtex = newEntries ? storedBibtex.trimEnd() + '\n\n' + newEntries : storedBibtex;
+  if (storedBibData) {
+    // Layer 1: use stored .bib as base, merge in any new Zotero entries
+    const generated = generateBibTeX(zoteroCitations, keyMap);
+    bibtex = mergeBibtex(storedBibData, generated);
   } else if (bibKeyOrder) {
     // Layer 2: regenerate but sort to match original key order
-    bibtex = generateBibTeX(zoteroCitations, keyMap, null, bibKeyOrder);
+    bibtex = generateBibTeX(zoteroCitations, keyMap, bibKeyOrder);
   } else {
     // Layer 3: backward compatible — generate from Zotero citations
     bibtex = generateBibTeX(zoteroCitations, keyMap);

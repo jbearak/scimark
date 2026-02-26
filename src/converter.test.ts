@@ -25,8 +25,8 @@ import {
   formatLocalIsoMinute,
   citationPandocKeys,
   ZoteroCitation,
-  extractStoredBibtex,
   extractBibKeyOrder,
+  extractBibData,
 } from './converter';
 import { convertMdToDocx } from './md-to-docx';
 
@@ -2291,34 +2291,6 @@ describe('Zotero citation roundtrip', () => {
     expect(bib).toContain('doi = {10.1/some_thing_test}');
   });
 
-  test('generateBibTeX with skipKeys omits entries in the set', () => {
-    const citations: ZoteroCitation[] = [{
-      plainCitation: '(A; B)',
-      items: [
-        { authors: [{ family: 'Alpha', given: 'A' }], title: 'Alpha Title', year: '2020', journal: 'J', volume: '1', pages: '1-2', doi: '', type: 'article-journal', fullItemData: {} },
-        { authors: [{ family: 'Beta', given: 'B' }], title: 'Beta Title', year: '2021', journal: 'J', volume: '2', pages: '3-4', doi: '', type: 'article-journal', fullItemData: {} },
-      ],
-    }];
-    const keyMap = buildCitationKeyMap(citations);
-    const alphaKey = [...keyMap.values()].find(k => k.includes('alpha'))!;
-    const bib = generateBibTeX(citations, keyMap, new Set([alphaKey]));
-    expect(bib).not.toContain('Alpha Title');
-    expect(bib).toContain('Beta Title');
-  });
-
-  test('generateBibTeX with skipKeys returns empty string when all skipped', () => {
-    const citations: ZoteroCitation[] = [{
-      plainCitation: '(A)',
-      items: [
-        { authors: [{ family: 'Alpha', given: 'A' }], title: 'Alpha Title', year: '2020', journal: 'J', volume: '1', pages: '1-2', doi: '', type: 'article-journal', fullItemData: {} },
-      ],
-    }];
-    const keyMap = buildCitationKeyMap(citations);
-    const alphaKey = [...keyMap.values()][0];
-    const bib = generateBibTeX(citations, keyMap, new Set([alphaKey]));
-    expect(bib).toBe('');
-  });
-
   test('generateBibTeX with originalKeyOrder reorders output', () => {
     const citations: ZoteroCitation[] = [{
       plainCitation: '(A; B; C)',
@@ -2334,12 +2306,12 @@ describe('Zotero citation roundtrip', () => {
     const betaKey = keys.find(k => k.includes('beta'))!;
     const gammaKey = keys.find(k => k.includes('gamma'))!;
     // Request reversed order
-    const bib = generateBibTeX(citations, keyMap, null, [gammaKey, betaKey, alphaKey]);
+    const bib = generateBibTeX(citations, keyMap, [gammaKey, betaKey, alphaKey]);
     const entryOrder = [...bib.matchAll(/@article\{([^,]+),/g)].map(m => m[1]);
     expect(entryOrder).toEqual([gammaKey, betaKey, alphaKey]);
   });
 
-  test('generateBibTeX with neither skipKeys nor originalKeyOrder preserves current behavior', () => {
+  test('generateBibTeX with null originalKeyOrder preserves current behavior', () => {
     const citations: ZoteroCitation[] = [{
       plainCitation: '(Test)',
       items: [{
@@ -2351,7 +2323,7 @@ describe('Zotero citation roundtrip', () => {
     }];
     const keyMap = buildCitationKeyMap(citations);
     const bib1 = generateBibTeX(citations, keyMap);
-    const bib2 = generateBibTeX(citations, keyMap, null, null);
+    const bib2 = generateBibTeX(citations, keyMap, null);
     expect(bib2).toBe(bib1);
   });
 
@@ -3746,41 +3718,6 @@ describe('Track changes (CriticMarkup)', () => {
   });
 });
 
-describe('extractStoredBibtex', () => {
-  test('reads word/bibliography.bib from DOCX ZIP', async () => {
-    const sampleBib = '@article{key1,\n  author = {A},\n}\n\n@article{key2,\n  author = {B},\n}';
-    const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: sampleBib });
-    const result = await extractStoredBibtex(docx);
-    expect(result).toBe(sampleBib);
-  });
-
-  test('returns null when no .bib is stored', async () => {
-    const { docx } = await convertMdToDocx('Hello world.');
-    const result = await extractStoredBibtex(docx);
-    expect(result).toBeNull();
-  });
-
-  test('[Content_Types].xml includes bibliography override when .bib is stored', async () => {
-    const JSZip = (await import('jszip')).default;
-    const bib = '@article{key1,\n  author = {A},\n}';
-    const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: bib });
-    const zip = await JSZip.loadAsync(docx);
-    const contentTypes = await zip.file('[Content_Types].xml')?.async('string');
-    expect(contentTypes).toBeDefined();
-    expect(contentTypes).toContain('PartName="/word/bibliography.bib"');
-    expect(contentTypes).toContain('ContentType="text/plain"');
-  });
-
-  test('[Content_Types].xml omits bibliography override when no .bib', async () => {
-    const JSZip = (await import('jszip')).default;
-    const { docx } = await convertMdToDocx('Hello world.');
-    const zip = await JSZip.loadAsync(docx);
-    const contentTypes = await zip.file('[Content_Types].xml')?.async('string');
-    expect(contentTypes).toBeDefined();
-    expect(contentTypes).not.toContain('bibliography.bib');
-  });
-});
-
 describe('extractBibKeyOrder', () => {
   // Key order includes all entries from the .bib, not just cited ones.
   // This preserves uncited entries across round-trips.
@@ -3796,6 +3733,45 @@ describe('extractBibKeyOrder', () => {
     const { docx } = await convertMdToDocx('Hello world.');
     const result = await extractBibKeyOrder(docx);
     expect(result).toBeNull();
+  });
+});
+
+describe('extractBibData', () => {
+  test('reads .bib data from DOCX custom properties (round-trip)', async () => {
+    const bib = '@article{key1,\n  author = {A},\n}\n\n@article{key2,\n  author = {B},\n}';
+    const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: bib });
+    const result = await extractBibData(docx);
+    expect(result).not.toBeNull();
+    expect(result).toContain('@article{key1,');
+    expect(result).toContain('@article{key2,');
+  });
+
+  test('returns null when no .bib was provided', async () => {
+    const { docx } = await convertMdToDocx('Hello world.');
+    const result = await extractBibData(docx);
+    expect(result).toBeNull();
+  });
+
+  test('uncited entries survive round-trip via stored .bib data', async () => {
+    const bib = '@article{cited1,\n  author = {A},\n  title = {{Title A}},\n  year = {2020},\n}\n\n@article{uncited1,\n  author = {B},\n  title = {{Uncited Entry}},\n  year = {2021},\n}';
+    const md = 'Some text [@cited1].\n';
+    const { docx } = await convertMdToDocx(md, { bibtex: bib });
+    // Round-trip: convert DOCX back to markdown
+    const result = await convertDocx(docx, 'authorYearTitle');
+    // Layer 1 (stored .bib data) should preserve the uncited entry
+    expect(result.bibtex).toContain('@article{uncited1,');
+    expect(result.bibtex).toContain('Uncited Entry');
+  });
+
+  test('new Zotero entries (added in Word) are appended to stored .bib', async () => {
+    // Use sampleData which has Zotero citations (smith2020, jones2019, davis2021)
+    // but no stored .bib data — add stored .bib data manually
+    const storedBib = '@article{myentry,\n  author = {Custom, Author},\n  title = {{My Custom Entry}},\n  year = {2022},\n}';
+    const { docx } = await convertMdToDocx('Text [@myentry].', { bibtex: storedBib });
+    const result = await convertDocx(docx, 'authorYearTitle');
+    // Stored entry preserved via Layer 1
+    expect(result.bibtex).toContain('@article{myentry,');
+    expect(result.bibtex).toContain('My Custom Entry');
   });
 });
 
@@ -3824,33 +3800,18 @@ describe('convertDocx existingBibtex (post-processing merge)', () => {
     expect(result.bibtex).toContain('@article{smith2020,');
   });
 
-  test('merges stored .bib (Layer 1) with existingBibtex', async () => {
-    const storedBib = '@article{stored1,\n  author = {Stored, Author},\n  title = {{From stored bib}},\n  year = {2024},\n}';
-    const md = 'Some text [@stored1].\n';
-    const { docx } = await convertMdToDocx(md, { bibtex: storedBib });
-    // Now convert back with existingBibtex — both should be present
-    const result = await convertDocx(docx, 'authorYearTitle', {
-      existingBibtex: EXISTING_BIB,
-    });
-    // Layer 1 entry is present
-    expect(result.bibtex).toContain('From stored bib');
-    // Existing-only entries are also preserved (merge, not preference)
-    expect(result.bibtex).toContain('uncitedEntry');
-    expect(result.bibtex).toContain('Not cited anywhere');
-  });
-
   test('merges key order (Layer 2) with existingBibtex', async () => {
-    // key2 is uncited but included in stored .bib so key-order metadata covers both keys
     const storedBib = '@article{key1,\n  author = {A, X},\n  title = {{Title A}},\n  year = {2020},\n}\n\n@article{key2,\n  author = {B, Y},\n  title = {{Title B}},\n  year = {2021},\n}';
     const md = 'Some text [@key1].\n';
-    const { docx: fullDocx } = await convertMdToDocx(md, { bibtex: storedBib });
-    // Strip the stored .bib from the ZIP so Layer 1 is unavailable,
-    // but Layer 2 (MANUSCRIPT_BIB_KEY_ORDER_*) remains in custom props.
+    const { docx } = await convertMdToDocx(md, { bibtex: storedBib });
+    // Strip MANUSCRIPT_BIB_DATA_* props so Layer 1 is unavailable and Layer 2 kicks in
     const JSZip = (await import('jszip')).default;
-    const zip = await JSZip.loadAsync(fullDocx);
-    zip.remove('word/bibliography.bib');
-    const strippedDocx = await zip.generateAsync({ type: 'uint8array' });
-    const result = await convertDocx(strippedDocx, 'authorYearTitle', {
+    const zip = await JSZip.loadAsync(docx);
+    const customXml = await zip.file('docProps/custom.xml')!.async('string');
+    const stripped = customXml.replace(/<property[^>]*name="MANUSCRIPT_BIB_DATA_[^"]*"[^>]*>[\s\S]*?<\/property>/g, '');
+    zip.file('docProps/custom.xml', stripped);
+    const modifiedDocx = new Uint8Array(await zip.generateAsync({ type: 'uint8array' }));
+    const result = await convertDocx(modifiedDocx, 'authorYearTitle', {
       existingBibtex: EXISTING_BIB,
     });
     // Layer 2 regenerates from Zotero metadata — should contain the cited key
