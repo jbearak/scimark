@@ -3253,7 +3253,7 @@ function tryRenderGridTable(
   return result;
 }
 
-/** Render a table as a GFM pipe table if possible, otherwise fall back to HTML. */
+/** Render a table as a grid table, GFM pipe table, or HTML fallback, depending on feasibility and stored format. */
 function renderTableOrFallback(
   item: { rows: TableRow[] },
   comments: Map<string, Comment>,
