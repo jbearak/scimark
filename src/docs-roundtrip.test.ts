@@ -416,7 +416,7 @@ describe('alerts integration: md -> docx -> md', () => {
 
     const { docx } = await convertMdToDocx(md);
     const rt = await convertDocx(docx);
-    expect(rt.markdown).toBe(md);
+    expect(rt.markdown).toBe(md + '\n');
   });
 
   it('preserves inline authored alert marker style', async () => {
@@ -426,7 +426,7 @@ describe('alerts integration: md -> docx -> md', () => {
 
     const { docx } = await convertMdToDocx(md);
     const rt = await convertDocx(docx);
-    expect(rt.markdown).toBe(md);
+    expect(rt.markdown).toBe(md + '\n');
   });
 
   it('round-trips multi-paragraph alert blocks and preserves only one marker per alert block', async () => {
@@ -465,6 +465,7 @@ describe('alerts integration: md -> docx -> md', () => {
       '> alpha alpha',
       '',
       'alpha alpha',
+      '',
     ].join('\n'));
   });
 

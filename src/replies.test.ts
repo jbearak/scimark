@@ -311,6 +311,32 @@ describe('Non-ID comment replies (inline {>>...<<})', () => {
   });
 });
 
+describe('Consecutive reply format preservation', () => {
+  test('consecutive reply format round-trips as consecutive', async () => {
+    const md = `{==some text==}{>>Alice (2024-01-15T14:30-05:00): Parent comment<<}{>>Bob (2024-01-16T10:00-05:00): Reply<<}`;
+
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+
+    // Should preserve consecutive format (no nested indentation)
+    expect(result.markdown).toContain('Parent comment<<}{>>Bob');
+    expect(result.markdown).not.toContain('\n  {>>');
+  });
+
+  test('nested reply format round-trips as nested', async () => {
+    const md = `{==some text==}{>>Alice (2024-01-15T14:30-05:00): Parent comment
+  {>>Bob (2024-01-16T10:00-05:00): Reply<<}
+<<}`;
+
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+
+    // Should preserve nested format
+    expect(result.markdown).toContain('\n  {>>Bob');
+    expect(result.markdown).toContain('\n<<}');
+  });
+});
+
 describe('Multi-level reply chain flattening', () => {
   test('deep reply chains are flattened to root parent', () => {
     const comments = new Map<string, Comment>([

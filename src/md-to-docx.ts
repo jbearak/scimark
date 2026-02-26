@@ -2217,6 +2217,7 @@ export interface DocxGenState {
   tableIndex: number;
   tableFormats: Map<number, string>; // table index -> source format ("pipe" | "html" | "grid")
   listIndent: 'tab' | 'spaces'; // indentation style for nested list items
+  consecutiveReplyParaIds: Set<string>; // parent paraIds whose replies were in consecutive format
 }
 
 interface CommentEntry {
@@ -3115,6 +3116,11 @@ function listIndentProps(state: DocxGenState): CustomPropEntry[] {
   return [];
 }
 
+function consecutiveReplyProps(state: DocxGenState): CustomPropEntry[] {
+  if (state.consecutiveReplyParaIds.size === 0) return [];
+  return [{ name: 'MANUSCRIPT_CONSECUTIVE_REPLY_COMMENTS', value: [...state.consecutiveReplyParaIds].join(',') }];
+}
+
 function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageRelationships?: Map<string, { rId: string; mediaPath: string }>): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
@@ -3344,6 +3350,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
         ri++; // skip the comment run
         // Absorb additional consecutive {>>...<<} as replies to this comment
+        let absorbedConsecutiveReply = false;
         while (ri + 1 < inputRuns.length && inputRuns[ri + 1].type === 'critic_comment') {
           const replyRun = inputRuns[ri + 1];
           const replyId = state.commentId++;
@@ -3351,7 +3358,11 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           const replyAuthor = replyRun.author || options?.authorName || 'Unknown';
           const replyDate = normalizeToUtcIso(replyRun.date || '', state.timezone);
           state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: replyRun.commentText || '', paraId: replyParaId, parentParaId });
+          absorbedConsecutiveReply = true;
           ri++;
+        }
+        if (absorbedConsecutiveReply) {
+          state.consecutiveReplyParaIds.add(parentParaId);
         }
       } else {
         xml += generateInlineCriticContent(
@@ -4172,6 +4183,7 @@ export async function convertMdToDocx(
     tableIndex: 0,
     tableFormats: new Map(),
     listIndent: detectListIndent(bodyWithoutFootnotes),
+    consecutiveReplyParaIds: new Set(),
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -4336,6 +4348,7 @@ export async function convertMdToDocx(
   customProps.push(...imageFormatProps(state.imageFormats));
   customProps.push(...tableFormatProps(state.tableFormats));
   customProps.push(...listIndentProps(state));
+  customProps.push(...consecutiveReplyProps(state));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));

@@ -673,6 +673,24 @@ describe('Pipe table rendering', () => {
   });
 });
 
+test('pipe table headers round-trip without spurious bold', async () => {
+  const md = [
+    '| Header 1 | Header 2 |',
+    '| --- | --- |',
+    '| cell A | cell B |',
+    '',
+  ].join('\n');
+
+  const { docx } = await convertMdToDocx(md);
+  const result = await convertDocx(docx);
+
+  // Headers should not gain **bold** markers on round-trip
+  expect(result.markdown).not.toContain('**Header 1**');
+  expect(result.markdown).not.toContain('**Header 2**');
+  expect(result.markdown).toContain('| Header 1 |');
+  expect(result.markdown).toContain('| Header 2 |');
+});
+
 describe('Integration: tables.docx fixture', () => {
   test('converts tables.docx and produces three tables (simple one as pipe, complex as HTML)', async () => {
     const result = await convertDocx(tablesData, 'authorYearTitle', { pipeTableMaxLineWidthDefault: 120 });
@@ -1166,7 +1184,7 @@ describe('extractDocumentContent', () => {
 </w:document>`);
     const buf = await zip.generateAsync({ type: 'uint8array' });
     const result = await convertDocx(buf);
-    expect(result.markdown).toBe('**Bold **Plain');
+    expect(result.markdown).toBe('**Bold **Plain\n');
   });
 });
 

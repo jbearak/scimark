@@ -61,6 +61,7 @@ export interface Comment {
   date: string;
   paraId?: string;         // w14:paraId from <w:p> in comments.xml
   replies?: CommentReply[];
+  consecutiveReplies?: boolean; // true when original MD used consecutive {>>...<<} format for replies
 }
 
 const ALERT_STYLE_TO_TYPE: Record<string, GfmAlertType> = {
@@ -980,6 +981,27 @@ export async function extractListIndent(data: Uint8Array | JSZip): Promise<'tab'
       if (child['vt:lpwstr'] !== undefined) {
         const raw = nodeText(child['vt:lpwstr'] || []).trim();
         if (raw === 'tab') return 'tab';
+      }
+    }
+  }
+  return null;
+}
+
+export async function extractConsecutiveReplyParaIds(data: Uint8Array | JSZip): Promise<Set<string> | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_CONSECUTIVE_REPLY_COMMENTS') continue;
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
+        if (raw) return new Set(raw.split(','));
       }
     }
   }
@@ -2343,6 +2365,14 @@ function formatDateSuffix(date: string | undefined): string {
 }
 
 function formatCommentBody(_cid: string, c: Comment): string {
+  if (c.consecutiveReplies && c.replies && c.replies.length > 0) {
+    // Consecutive format: each reply is a separate {>>...<<} block
+    let body = `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+    for (const reply of c.replies) {
+      body += `{>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+    }
+    return body;
+  }
   let body = `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
   if (c.replies && c.replies.length > 0) {
     for (const reply of c.replies) {
@@ -2356,6 +2386,14 @@ function formatCommentBody(_cid: string, c: Comment): string {
 }
 
 function formatCommentBodyWithId(cid: string, c: Comment): string {
+  if (c.consecutiveReplies && c.replies && c.replies.length > 0) {
+    // Consecutive format: each reply is a separate {>>...<<} block
+    let body = `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+    for (const reply of c.replies) {
+      body += `{>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+    }
+    return body;
+  }
   let body = `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
   if (c.replies && c.replies.length > 0) {
     for (const reply of c.replies) {
@@ -2894,7 +2932,15 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
     const rowCells: { text: string; deferred: string[] }[] = [];
     for (const cell of row.cells) {
       if (cell.paragraphs.length > 0) {
-        const r = renderInlineSegment(mergeConsecutiveRuns(cell.paragraphs[0]), comments, renderOpts);
+        // Strip auto-bold from header row cells — md-to-docx forces bold on
+        // header cells, so we undo it here to avoid spurious **...** on round-trip.
+        const items = row.isHeader
+          ? cell.paragraphs[0].map(item =>
+              item.type === 'text' && item.formatting?.bold
+                ? { ...item, formatting: { ...item.formatting, bold: false } }
+                : item)
+          : cell.paragraphs[0];
+        const r = renderInlineSegment(mergeConsecutiveRuns(items), comments, renderOpts);
         if (r.text.includes('\n')) { rollback(); return null; }
         // Escape pipes for GFM table cells: \| in source must become \\\| (escaped
         // backslash + escaped pipe); bare | must become \|. Single-pass callback
@@ -4022,7 +4068,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4038,6 +4084,7 @@ export async function convertDocx(
     extractTableFormatMapping(zip),
     extractPipeTableMaxLineWidth(zip),
     extractListIndent(zip),
+    extractConsecutiveReplyParaIds(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -4051,6 +4098,15 @@ export async function convertDocx(
 
   // Group reply comments under their parents and get IDs to exclude from ranges
   const replyIds = groupCommentThreads(comments, threads);
+
+  // Mark parent comments whose replies were originally in consecutive format
+  if (consecutiveReplyParaIds && consecutiveReplyParaIds.size > 0) {
+    for (const comment of comments.values()) {
+      if (comment.paraId && consecutiveReplyParaIds.has(comment.paraId) && comment.replies && comment.replies.length > 0) {
+        comment.consecutiveReplies = true;
+      }
+    }
+  }
 
   const keyMap = buildCitationKeyMap(zoteroCitations, format);
 
@@ -4155,7 +4211,7 @@ export async function convertDocx(
     const lines = markdown.split('\n');
     const sourcesIdx = lines.findIndex(l => SOURCES_HEADING_RE.test(l.trim()));
     if (sourcesIdx >= 0) {
-      markdown = lines.slice(0, sourcesIdx).join('\n').trimEnd();
+      markdown = lines.slice(0, sourcesIdx).join('\n');
     }
   }
 
@@ -4204,7 +4260,7 @@ export async function convertDocx(
   }
   const frontmatterStr = serializeFrontmatter(fm);
   if (frontmatterStr) {
-    markdown = frontmatterStr + '\n' + markdown;
+    markdown = frontmatterStr + markdown;
   }
 
   const bibtex = generateBibTeX(zoteroCitations, keyMap);
@@ -4230,6 +4286,9 @@ export async function convertDocx(
     }
     if (images.size === 0) images = undefined;
   }
+
+  // Ensure the output ends with exactly one newline (POSIX convention)
+  if (!markdown.endsWith('\n')) markdown += '\n';
 
   return { markdown, bibtex, zoteroPrefs, zoteroBiblData, images };
 }
