@@ -3121,6 +3121,11 @@ function consecutiveReplyProps(state: DocxGenState): CustomPropEntry[] {
   return [{ name: 'MANUSCRIPT_CONSECUTIVE_REPLY_COMMENTS', value: [...state.consecutiveReplyParaIds].join(',') }];
 }
 
+function frontmatterBlankLineProps(count: number): CustomPropEntry[] {
+  if (count < 0) return []; // no frontmatter
+  return [{ name: 'MANUSCRIPT_FRONTMATTER_BLANK_LINES', value: String(count) }];
+}
+
 function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageRelationships?: Map<string, { rId: string; mediaPath: string }>): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
@@ -4045,6 +4050,14 @@ export async function convertMdToDocx(
 ): Promise<MdToDocxResult> {
   // Parse frontmatter for CSL style and other metadata
   const { metadata: frontmatter, body } = parseFrontmatter(markdown);
+  // Count blank lines between frontmatter closing --- and body content.
+  // parseFrontmatter strips one \n; remaining leading \n's = blank lines.
+  // Count blank lines between frontmatter closing --- and body content.
+  // parseFrontmatter strips one \n; remaining leading \n's = blank lines.
+  const hadFrontmatter = markdown.trimStart().startsWith('---');
+  const frontmatterBlankLines = hadFrontmatter
+    ? (body.match(/^\n*/) || [''])[0].length
+    : -1; // -1 means no frontmatter present
   const fontOverrides = resolveFontOverrides(frontmatter);
   const isInsetMode = frontmatter.codeBackgroundColor === 'none' || frontmatter.codeBackgroundColor === 'transparent';
   const codeBlockConfig: CodeBlockConfig = {
@@ -4349,6 +4362,7 @@ export async function convertMdToDocx(
   customProps.push(...tableFormatProps(state.tableFormats));
   customProps.push(...listIndentProps(state));
   customProps.push(...consecutiveReplyProps(state));
+  customProps.push(...frontmatterBlankLineProps(frontmatterBlankLines));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));

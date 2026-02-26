@@ -1008,6 +1008,28 @@ export async function extractConsecutiveReplyParaIds(data: Uint8Array | JSZip): 
   return null;
 }
 
+export async function extractFrontmatterBlankLines(data: Uint8Array | JSZip): Promise<number | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_FRONTMATTER_BLANK_LINES') continue;
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
+        const n = parseInt(raw, 10);
+        if (!isNaN(n) && n >= 0) return n;
+      }
+    }
+  }
+  return null;
+}
+
 export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Promise<number | null> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
   const parsed = await readZipXml(zip, 'docProps/custom.xml');
@@ -4068,7 +4090,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4085,6 +4107,7 @@ export async function convertDocx(
     extractPipeTableMaxLineWidth(zip),
     extractListIndent(zip),
     extractConsecutiveReplyParaIds(zip),
+    extractFrontmatterBlankLines(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -4260,7 +4283,10 @@ export async function convertDocx(
   }
   const frontmatterStr = serializeFrontmatter(fm);
   if (frontmatterStr) {
-    markdown = frontmatterStr + markdown;
+    // Restore the original number of blank lines after frontmatter.
+    // Default to 1 blank line (conventional) when no stored value exists.
+    const blankLines = storedFrontmatterBlankLines ?? 1;
+    markdown = frontmatterStr + '\n'.repeat(blankLines) + markdown;
   }
 
   const bibtex = generateBibTeX(zoteroCitations, keyMap);
