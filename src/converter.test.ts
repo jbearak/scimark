@@ -765,6 +765,14 @@ describe('Table format metadata round-trip', () => {
     expect(result.markdown).toContain('| A |');
     expect(result.markdown).not.toContain('<table>');
   });
+
+  test('pipe table empty cells do not gain doubled spaces on round-trip', async () => {
+    const pipeMd = '| H1 | H2 | H3 |\\n| --- | --- | --- |\\n| A | | C |';
+    const { docx } = await convertMdToDocx(pipeMd);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('| A | | C |');
+    expect(result.markdown).not.toContain('| A |  | C |');
+  });
 });
 
 describe('Grid table renderer', () => {
@@ -920,6 +928,41 @@ describe('HTML comment blank line round-trip', () => {
     expect(result.markdown).toContain('Paragraph one.\n\n<!-- A comment -->');
     // Should NOT have extra blank lines
     expect(result.markdown).not.toContain('Paragraph one.\n\n\n<!-- A comment -->');
+  });
+
+  test('multiline HTML comments preserve internal newlines', async () => {
+    const md = 'Before\n\n<!--\n\nLine one\n\nLine two\n\n-->\n\nAfter';
+    const { docx } = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const documentXml = await zip.file('word/document.xml')!.async('string');
+    // Export should encode internal line breaks explicitly for hidden comment runs.
+    expect(documentXml).toContain('<w:vanish/>');
+
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!--\n\nLine one\n\nLine two\n\n-->');
+  });
+
+  test('hidden html comment runs with w:br are reconstructed with newlines', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Before</w:t></w:r></w:p>'
+      + '<w:p><w:r><w:rPr><w:vanish/></w:rPr>'
+      + '<w:t xml:space=\"preserve\">\u200B&lt;!--</w:t>'
+      + '<w:br/>'
+      + '<w:br/>'
+      + '<w:t xml:space=\"preserve\">Line one</w:t>'
+      + '<w:br/>'
+      + '<w:br/>'
+      + '<w:t xml:space=\"preserve\">Line two</w:t>'
+      + '<w:br/>'
+      + '<w:br/>'
+      + '<w:t xml:space=\"preserve\">--&gt;</w:t>'
+      + '</w:r></w:p>'
+      + '<w:p><w:r><w:t>After</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('<!--\n\nLine one\n\nLine two\n\n-->');
   });
 });
 

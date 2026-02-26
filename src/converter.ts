@@ -1941,13 +1941,16 @@ export async function extractDocumentContent(
           // LaTeX OMML hidden runs and other vanish runs without the prefix fall through.
           const hasVanish = rPrChildren?.some((c: any) => c['w:vanish'] !== undefined) ?? false;
           if (hasVanish) {
-            // Collect text from w:t/w:delText elements in this run
+            // Collect text from w:t/w:delText elements in this run and preserve
+            // explicit break elements so multiline hidden payloads survive.
             let runText = '';
             for (const child of runChildren) {
               if (child['w:t'] !== undefined) {
                 runText += nodeText(child['w:t'] || []);
               } else if (child['w:delText'] !== undefined) {
                 runText += nodeText(child['w:delText'] || []);
+              } else if (child['w:br'] !== undefined || child['w:cr'] !== undefined) {
+                runText += '\n';
               }
             }
             if (runText.startsWith('\u200B') && runText.substring(1).trimStart().startsWith('<!--')) {
@@ -3003,18 +3006,29 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
   // Build pipe table lines
   const lines: string[] = [];
   const deferredAll: string[] = [];
+  const formatPipeRow = (cells: { text: string; deferred: string[] }[]): string => {
+    let line = '|';
+    for (const c of cells) {
+      if (c.text.length === 0) {
+        line += ' |';
+      } else {
+        line += ' ' + c.text + ' |';
+      }
+    }
+    return line;
+  };
 
   // GFM pipe tables always require a header row. If the DOCX table has no
   // header signal, the first row is promoted — an accepted round-trip trade-off.
   const headerCells = rendered[0];
-  lines.push('| ' + headerCells.map(c => c.text).join(' | ') + ' |');
+  lines.push(formatPipeRow(headerCells));
   for (const c of headerCells) deferredAll.push(...c.deferred);
 
   lines.push('| ' + Array(numCols).fill('---').join(' | ') + ' |');
 
   for (let i = 1; i < rendered.length; i++) {
     const rowCells = rendered[i];
-    lines.push('| ' + rowCells.map(c => c.text).join(' | ') + ' |');
+    lines.push(formatPipeRow(rowCells));
     for (const c of rowCells) deferredAll.push(...c.deferred);
   }
 
