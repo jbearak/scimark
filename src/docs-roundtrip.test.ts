@@ -357,10 +357,15 @@ describe('double round-trip: md -> docx -> md -> docx -> md', () => {
 
     // RT1: md -> docx -> md (no bib file)
     const r1 = await convertMdToDocx(draftMd);
+    // Without a .bib file, citation-key-not-found warnings are expected
+    expect(r1.warnings.length).toBeGreaterThan(0);
+    expect(r1.warnings.every((w: string) => w.includes('Citation key not found'))).toBe(true);
     const m1 = await convertDocx(r1.docx);
 
     // RT2: md -> docx -> md (using RT1 output, still no bib)
     const r2 = await convertMdToDocx(m1.markdown);
+    expect(r2.warnings.length).toBeGreaterThan(0);
+    expect(r2.warnings.every((w: string) => w.includes('Citation key not found'))).toBe(true);
     const m2 = await convertDocx(r2.docx);
 
     // Fixpoint: RT1 and RT2 should produce identical markdown

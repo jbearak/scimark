@@ -647,7 +647,7 @@ export function compactTable(text: string): TextTransformation {
     const lines: string[] = [];
     for (let i = 0; i < grid.rows.length; i++) {
       lines.push(formatGridBorderRow(grid.columnWidths, grid.borderStyles[i] || 'dash'));
-      lines.push(formatGridContentRow(grid.rows[i], grid.columnWidths, false));
+      lines.push(formatGridContentRow(grid.rows[i], grid.columnWidths, true));
     }
     lines.push(formatGridBorderRow(grid.columnWidths, grid.borderStyles[grid.rows.length] || 'dash'));
     return { newText: lines.join('\n') };

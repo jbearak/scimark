@@ -926,9 +926,10 @@ function gridTableBlockRule(state: StateBlock, startLine: number, endLine: numbe
 
   if (silent) return true;
 
-  const jsonStr = lineText.slice(GRID_TABLE_PLACEHOLDER_PREFIX.length, -4);
+  const b64 = lineText.slice(GRID_TABLE_PLACEHOLDER_PREFIX.length, -4);
   let gridData: { rows: Array<{ cells: string[]; header: boolean }> };
   try {
+    const jsonStr = Buffer.from(b64, 'base64').toString();
     gridData = JSON.parse(jsonStr);
   } catch {
     return false;

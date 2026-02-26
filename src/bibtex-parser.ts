@@ -120,9 +120,10 @@ function parseBibtexWithRaw(input: string): { parsed: Map<string, BibtexEntry>; 
   // for those fields — only strip for non-name fields (title, journal, etc.)
   const AUTHOR_FIELDS = new Set(['author', 'editor']);
 
-  // NOTE: This regex handles nested braces only up to a small fixed depth.
+  // NOTE: This regex handles nested braces only up to a small fixed depth
+  // and backslash escapes within quoted strings (e.g. \").
   // If we need arbitrary nesting, replace with a balanced-brace field parser.
-  const fieldRegex = /(\w+(?:-\w+)*)\s*=\s*(?:\{((?:[^{}]|\{(?:[^{}]|\{[^}]*\})*\})*)\}|"([^"]*)"|(\w+))/g;
+  const fieldRegex = /(\w+(?:-\w+)*)\s*=\s*(?:\{((?:[^{}]|\{(?:[^{}]|\{[^}]*\})*\})*)\}|"((?:\\.|[^"\\])*)"|(\w+))/g;
 
   for (const match of entryMatches) {
     if (match.index! < lastEntryEnd) continue;

@@ -847,7 +847,7 @@ describe('Grid table round-trip', () => {
     expect(result.markdown).not.toContain('<table>');
   });
 
-  test('simple grid table without multi-line cells produces pipe table', async () => {
+  test('simple grid table without multi-line cells preserves grid format', async () => {
     const gridMd = [
       '+------+------+',
       '| H1   | H2   |',
@@ -857,8 +857,9 @@ describe('Grid table round-trip', () => {
     ].join('\n');
     const { docx } = await convertMdToDocx(gridMd);
     const result = await convertDocx(docx);
-    // Single-line cells: pipe table is preferred
-    expect(result.markdown).toContain('| --- |');
+    // Grid format is preserved even when cells are simple enough for pipe
+    expect(result.markdown).toContain('+');
+    expect(result.markdown).toContain('|');
   });
 });
 
@@ -867,6 +868,8 @@ describe('List indent round-trip', () => {
     const md = '- item 1\n\t- nested\n\t\t- deep';
     const { docx } = await convertMdToDocx(md);
     const result = await convertDocx(docx);
+    // The converter normalizes space-after-marker to tab-after-marker for
+    // tab-indented lists, so input `\t- nested` becomes `\t-\tnested`.
     expect(result.markdown).toContain('\t-\tnested');
   });
 

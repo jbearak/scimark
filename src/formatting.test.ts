@@ -531,11 +531,11 @@ describe('grid table support for Expand Table and Compact Table', () => {
     const result = compactTable(input);
     const expected = [
       '+-------+-----+',
-      '| Name | Age |',
+      '| Name  | Age |',
       '+=======+=====+',
-      '| Alice | 30 |',
+      '| Alice | 30  |',
       '+-------+-----+',
-      '| Bob | 7 |',
+      '| Bob   | 7   |',
       '+-------+-----+',
     ].join('\n');
 

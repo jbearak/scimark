@@ -990,7 +990,7 @@ export async function extractConsecutiveReplyParaIds(data: Uint8Array | JSZip): 
     for (const child of children) {
       if (child['vt:lpwstr'] !== undefined) {
         const raw = nodeText(child['vt:lpwstr'] || []).trim();
-        if (raw) return new Set(raw.split(','));
+        if (raw) return new Set(raw.split(',').map(id => id.trim()).filter(Boolean));
       }
     }
   }
@@ -1089,7 +1089,7 @@ export async function extractHtmlCommentGapMapping(data: Uint8Array | JSZip): Pr
     const mapping = new Map<number, number>();
     for (const [key, count] of Object.entries(parsedJson)) {
       const commentIdx = parseInt(key, 10);
-      if (isNaN(commentIdx) || typeof count !== 'number') continue;
+      if (isNaN(commentIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) continue;
       mapping.set(commentIdx, count);
     }
     return mapping.size > 0 ? mapping : null;
@@ -3205,19 +3205,16 @@ function renderTableOrFallback(
   if (storedFormat === 'html') {
     return renderHtmlTable(item, comments, options?.tableIndent, renderOpts);
   }
+  // If original was grid, try grid first to preserve format
+  if (storedFormat === 'grid') {
+    const gridResult = tryRenderGridTable(item, comments, renderOpts);
+    if (gridResult !== null) return gridResult;
+  }
   // When the original was a pipe table, skip the width check to preserve format
   const pipeMax = storedFormat === 'pipe' ? Infinity : (options?.pipeTableMaxLineWidth ?? 120);
-  // Try pipe table first (for pipe and grid source formats, or unknown)
   const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts);
   if (pipeResult !== null) {
     return pipeResult;
-  }
-  // If original was grid, try grid table before falling back to HTML
-  if (storedFormat === 'grid') {
-    const gridResult = tryRenderGridTable(item, comments, renderOpts);
-    if (gridResult !== null) {
-      return gridResult;
-    }
   }
   return renderHtmlTable(item, comments, options?.tableIndent, renderOpts);
 }
@@ -4409,7 +4406,7 @@ export async function convertDocx(
   }
 
   // Ensure the output ends with exactly one newline (POSIX convention)
-  if (!markdown.endsWith('\n')) markdown += '\n';
+  markdown = markdown.replace(/\n*$/, '\n');
 
   return { markdown, bibtex, zoteroPrefs, zoteroBiblData, images };
 }

@@ -1095,12 +1095,15 @@ export function preprocessGridTables(markdown: string): string {
         const parsed = parseGridTable(tableLines);
         if (parsed && parsed.rows.length > 0) {
           const json = JSON.stringify(parsed);
+          // Base64-encode to prevent cell content containing '-->' from
+          // breaking the HTML comment wrapper.
+          const encoded = Buffer.from(json).toString('base64');
           // Ensure blank lines around the placeholder so markdown-it treats
           // it as an html_block (Type 2: HTML comment).
           if (result.length > 0 && result[result.length - 1].trim() !== '') {
             result.push('');
           }
-          result.push(GRID_TABLE_PLACEHOLDER_PREFIX + json + ' -->');
+          result.push(GRID_TABLE_PLACEHOLDER_PREFIX + encoded + ' -->');
           result.push('');
           continue;
         }
@@ -1124,7 +1127,10 @@ export function preprocessGridTables(markdown: string): string {
  * Returns null if the lines don't form a valid grid table.
  */
 function parseGridTable(lines: string[]): GridTableData | null {
-  // Find column boundaries from the first separator line
+  // Find column boundaries from the first separator line.
+  // Compute leading indent so we offset boundary indices when slicing
+  // content from untrimmed lines.
+  const indent = lines[0].length - lines[0].trimStart().length;
   const firstSep = lines[0].trim();
   const colBoundaries: number[] = [];
   for (let c = 0; c < firstSep.length; c++) {
@@ -1147,8 +1153,8 @@ function parseGridTable(lines: string[]): GridTableData | null {
       if (currentContent.length > 0) {
         const cells: string[] = [];
         for (let col = 0; col < numCols; col++) {
-          const left = colBoundaries[col] + 1;
-          const right = colBoundaries[col + 1];
+          const left = colBoundaries[col] + 1 + indent;
+          const right = colBoundaries[col + 1] + indent;
           const cellLines: string[] = [];
           for (const contentLine of currentContent) {
             const raw = contentLine.length >= right
@@ -1377,8 +1383,9 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
       case 'html_block': {
         const htmlContent = token.content || '';
         if (htmlContent.trim().startsWith(GRID_TABLE_PLACEHOLDER_PREFIX)) {
-          const jsonStr = htmlContent.trim().slice(GRID_TABLE_PLACEHOLDER_PREFIX.length, -4); // strip '<!-- MANUSCRIPT_GRID_TABLE:' and ' -->'
+          const b64 = htmlContent.trim().slice(GRID_TABLE_PLACEHOLDER_PREFIX.length, -4); // strip prefix and ' -->'
           try {
+            const jsonStr = Buffer.from(b64, 'base64').toString();
             const gridData: GridTableData = JSON.parse(jsonStr);
             const gridRows: MdTableRow[] = gridData.rows.map(row => ({
               cells: row.cells.map(cellText => ({
@@ -1416,7 +1423,7 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
           const blankLines = Math.max(0, thisStart - prevEnd);
           result.push({
             type: 'paragraph',
-            blankLinesBefore: blankLines > 0 ? blankLines : undefined,
+            blankLinesBefore: blankLines,
             runs: [{ type: 'html_comment' as const, text: htmlContent.replace(/\n$/, '') }]
           });
         } else if (isGfmDisallowedRawHtml(htmlContent)) {
