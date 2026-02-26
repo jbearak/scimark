@@ -60,6 +60,7 @@ function makeState(): DocxGenState {
     nextImageDocPrId: 1,
     tableIndex: 0,
     tableFormats: new Map(),
+    listIndent: 'spaces',
   };
 }
 
@@ -1296,15 +1297,15 @@ describe('CriticMarkup OOXML generation', () => {
     expect(state.comments[0].paraId).toMatch(/^[0-9A-F]{8}$/);
   });
 
-  it('generates zero-width comment for standalone comments', () => {
+  it('generates zero-width comment range for standalone comments', () => {
     const token: MdToken = {
       type: 'paragraph',
       runs: [{ type: 'critic_comment', text: '', commentText: 'Standalone comment', author: 'Charlie', date: '2024-01-05T00:00:00Z' }]
     };
     const state = createState();
     const result = generateParagraph(token, state, { authorName: 'Default' });
-    expect(result).not.toContain('<w:commentRangeStart');
-    expect(result).not.toContain('<w:commentRangeEnd');
+    expect(result).toContain('<w:commentRangeStart w:id="0"/>');
+    expect(result).toContain('<w:commentRangeEnd w:id="0"/>');
     expect(result).toContain('<w:commentReference w:id="0"/>');
     expect(state.comments[0].text).toBe('Standalone comment');
   });

@@ -23,7 +23,6 @@ import {
   parseCodeBlockStyle,
   parseRunProperties,
   formatLocalIsoMinute,
-  getLocalTimezoneOffset,
   citationPandocKeys,
   ZoteroCitation,
 } from './converter';
@@ -843,6 +842,23 @@ describe('Grid table round-trip', () => {
   });
 });
 
+describe('List indent round-trip', () => {
+  test('tab-indented lists round-trip with tabs', async () => {
+    const md = '- item 1\n\t- nested\n\t\t- deep';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('\t- nested');
+  });
+
+  test('space-indented lists round-trip with spaces', async () => {
+    const md = '- item 1\n  - nested\n    - deep';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('  - nested');
+    expect(result.markdown).not.toContain('\t');
+  });
+});
+
 describe('extractZoteroCitations', () => {
   test('extracts Zotero citations in document order', async () => {
     const citations = await extractZoteroCitations(sampleData);
@@ -1158,7 +1174,6 @@ describe('convertDocx (end-to-end)', () => {
   test('produces expected markdown', async () => {
     const result = await convertDocx(sampleData);
     const expectedMdLocal = expectedMd
-      .replace('{{TZ}}', getLocalTimezoneOffset())
       .replace('{{TS1}}', formatLocalIsoMinute('2025-01-15T10:30:00Z'))
       .replace('{{TS2}}', formatLocalIsoMinute('2025-01-16T14:00:00Z'))
       .replace('{{TS3}}', formatLocalIsoMinute('2025-01-17T09:15:00Z'));

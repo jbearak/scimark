@@ -49,11 +49,11 @@ describe('getLocalTimezoneOffset', () => {
     expect(tz).toMatch(/^[+-]\d{2}:\d{2}$/);
   });
 
-  test('matches formatLocalIsoMinute offset', () => {
-    const tz = getLocalTimezoneOffset();
+  test('formatLocalIsoMinute omits offset', () => {
     const now = new Date().toISOString();
     const formatted = formatLocalIsoMinute(now);
-    expect(formatted.slice(-6)).toBe(tz);
+    // Should end with HH:MM (no offset suffix)
+    expect(formatted).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   });
 });
 

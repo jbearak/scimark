@@ -186,7 +186,7 @@ describe('generateCitation', () => {
     const result = generateCitation(run, entries, undefined, usedIds, itemIdMap);
 
     expect(result.xml).toContain('ZOTERO_ITEM CSL_CITATION');
-    expect(result.xml).toContain('(@missingKey)');
+    expect(result.xml).toContain('[@missingKey]');
     expect(result.missingKeys).toEqual(['missingKey']);
     expect(result.warning).toContain('Citation key not found: missingKey');
   });
@@ -215,7 +215,7 @@ describe('generateCitation', () => {
     expect(result.xml).toContain('ZOTERO_ITEM CSL_CITATION');
     expect(result.xml).toContain('ABCD1234');
     // Missing key is plain text
-    expect(result.xml).toContain('(@noSuchKey)');
+    expect(result.xml).toContain('[@noSuchKey]');
     expect(result.missingKeys).toEqual(['noSuchKey']);
   });
 
@@ -359,7 +359,7 @@ describe('generateCitation', () => {
     const run = { keys: ['unknown'], text: 'unknown' };
     const result = generateCitation(run, entries);
 
-    expect(result.xml).toBe('<w:r><w:t>(@unknown)</w:t></w:r>');
+    expect(result.xml).toBe('<w:r><w:t>[@unknown]</w:t></w:r>');
     expect(result.warning).toBe('Citation key not found: unknown');
     expect(result.missingKeys).toEqual(['unknown']);
   });

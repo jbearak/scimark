@@ -716,6 +716,13 @@ function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
 // Learning: within a contiguous run of '>' lines, a line matching
 // '> [!TYPE]' (where TYPE is a GFM alert keyword) starts a new group —
 // this handles zero-gap same-type alerts that have no blank line between them.
+/** Detect whether the markdown source uses tab-based list indentation. */
+export function detectListIndent(markdown: string): 'tab' | 'spaces' {
+  // Look for nested list items (lines starting with tab followed by - or *)
+  const tabIndented = /^\t+[-*+] /m.test(markdown) || /^\t+\d+\. /m.test(markdown);
+  return tabIndented ? 'tab' : 'spaces';
+}
+
 export function computeBlockquoteGaps(markdown: string): Map<number, number> {
   const gaps = new Map<number, number>();
   const lines = markdown.split('\n');
@@ -2209,6 +2216,7 @@ export interface DocxGenState {
   nextImageDocPrId: number;
   tableIndex: number;
   tableFormats: Map<number, string>; // table index -> source format ("pipe" | "html" | "grid")
+  listIndent: 'tab' | 'spaces'; // indentation style for nested list items
 }
 
 interface CommentEntry {
@@ -3100,6 +3108,13 @@ function pipeTableMaxLineWidthProps(fm: Frontmatter): CustomPropEntry[] {
   return [{ name: 'MANUSCRIPT_PIPE_TABLE_MAX_LINE_WIDTH', value: String(fm.pipeTableMaxLineWidth) }];
 }
 
+function listIndentProps(state: DocxGenState): CustomPropEntry[] {
+  if (state.listIndent === 'tab') {
+    return [{ name: 'MANUSCRIPT_LIST_INDENT', value: 'tab' }];
+  }
+  return [];
+}
+
 function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageRelationships?: Map<string, { rId: string; mediaPath: string }>): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
@@ -3328,6 +3343,16 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
         xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
         ri++; // skip the comment run
+        // Absorb additional consecutive {>>...<<} as replies to this comment
+        while (ri + 1 < inputRuns.length && inputRuns[ri + 1].type === 'critic_comment') {
+          const replyRun = inputRuns[ri + 1];
+          const replyId = state.commentId++;
+          const replyParaId = generateParaId(state);
+          const replyAuthor = replyRun.author || options?.authorName || 'Unknown';
+          const replyDate = normalizeToUtcIso(replyRun.date || '', state.timezone);
+          state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: replyRun.commentText || '', paraId: replyParaId, parentParaId });
+          ri++;
+        }
       } else {
         xml += generateInlineCriticContent(
           run.innerRuns,
@@ -3363,11 +3388,11 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         }
       }
 
+      xml += '<w:commentRangeStart w:id="' + commentId + '"/>';
+      for (const re of replyEntries) {
+        xml += '<w:commentRangeStart w:id="' + re.replyId + '"/>';
+      }
       if (run.text) {
-        xml += '<w:commentRangeStart w:id="' + commentId + '"/>';
-        for (const re of replyEntries) {
-          xml += '<w:commentRangeStart w:id="' + re.replyId + '"/>';
-        }
         xml += generateInlineCriticContent(
           run.innerRuns,
           run.text,
@@ -3376,14 +3401,14 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           options,
           bibEntries,
           citeprocEngine,
-          { highlight: true }
+          run.highlight ? { highlight: true, highlightColor: run.highlightColor } : {}
         );
-        for (const re of replyEntries) {
-          xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
-          xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + re.replyId + '"/></w:r>';
-        }
-        xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
       }
+      for (const re of replyEntries) {
+        xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
+        xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + re.replyId + '"/></w:r>';
+      }
+      xml += '<w:commentRangeEnd w:id="' + commentId + '"/>';
       xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + commentId + '"/></w:r>';
     } else if (run.type === 'footnote_ref') {
       const label = run.footnoteLabel || '';
@@ -4146,6 +4171,7 @@ export async function convertMdToDocx(
     nextImageDocPrId: 1,
     tableIndex: 0,
     tableFormats: new Map(),
+    listIndent: detectListIndent(bodyWithoutFootnotes),
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -4309,6 +4335,7 @@ export async function convertMdToDocx(
   customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
   customProps.push(...imageFormatProps(state.imageFormats));
   customProps.push(...tableFormatProps(state.tableFormats));
+  customProps.push(...listIndentProps(state));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));

@@ -965,6 +965,27 @@ export async function extractTableFormatMapping(data: Uint8Array | JSZip): Promi
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_TABLE_FORMATS');
 }
 
+export async function extractListIndent(data: Uint8Array | JSZip): Promise<'tab' | 'spaces' | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_LIST_INDENT') continue;
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
+        if (raw === 'tab') return 'tab';
+      }
+    }
+  }
+  return null;
+}
+
 export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Promise<number | null> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
   const parsed = await readZipXml(zip, 'docProps/custom.xml');
@@ -1709,6 +1730,7 @@ export async function extractDocumentContent(
 
   const content: ContentItem[] = [];
   const activeComments = new Set<string>();
+  const commentStartTargetIndex = new Map<string, { target: ContentItem[], index: number }>();
   let inField = false;
   let inCitationField = false;
   let inBibliographyField = false;
@@ -1785,10 +1807,32 @@ export async function extractDocumentContent(
           if (Array.isArray(node[key])) walk(node[key], currentFormatting, target, inTableCell, rev);
         } else if (key === 'w:commentRangeStart') {
           const id = getAttr(node, 'id');
-          if (!replyIds?.has(id)) activeComments.add(id);
+          if (!replyIds?.has(id)) {
+            activeComments.add(id);
+            commentStartTargetIndex.set(id, { target, index: target.length });
+          }
         } else if (key === 'w:commentRangeEnd') {
           const id = getAttr(node, 'id');
-          if (!replyIds?.has(id)) activeComments.delete(id);
+          if (!replyIds?.has(id)) {
+            // Check if any content item was created with this comment ID
+            const startInfo = commentStartTargetIndex.get(id);
+            if (startInfo && startInfo.target === target) {
+              let found = false;
+              for (let ci = startInfo.index; ci < target.length; ci++) {
+                const item = target[ci];
+                if ('commentIds' in item && item.commentIds?.has(id)) {
+                  found = true;
+                  break;
+                }
+              }
+              if (!found) {
+                // Zero-width comment range: emit a synthetic empty text item
+                target.push({ type: 'text', text: '', formatting: {}, commentIds: new Set(activeComments), href: undefined });
+              }
+            }
+            commentStartTargetIndex.delete(id);
+            activeComments.delete(id);
+          }
         } else if (key === 'w:footnoteReference') {
           const noteId = getAttr(node, 'id');
           if (noteId && noteId !== '0' && noteId !== '-1') {
@@ -2486,7 +2530,10 @@ function renderInlineRange(
         j++;
       }
 
-      out += `{==${groupedCommentText.join('')}==}`;
+      const anchorText = groupedCommentText.join('');
+      if (anchorText) {
+        out += `{==${anchorText}==}`;
+      }
       for (const cid of [...commentSet].sort()) {
         const c = comments.get(cid);
         if (!c) { continue; }
@@ -3082,7 +3129,8 @@ function renderTableOrFallback(
   if (storedFormat === 'html') {
     return renderHtmlTable(item, comments, options?.tableIndent, renderOpts);
   }
-  const pipeMax = options?.pipeTableMaxLineWidth ?? 120;
+  // When the original was a pipe table, skip the width check to preserve format
+  const pipeMax = storedFormat === 'pipe' ? Infinity : (options?.pipeTableMaxLineWidth ?? 120);
   // Try pipe table first (for pipe and grid source formats, or unknown)
   const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts);
   if (pipeResult !== null) {
@@ -3101,7 +3149,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; listIndent?: 'tab' | 'spaces' },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3430,9 +3478,12 @@ export function buildMarkdown(
         lastAlertParagraphKey = undefined;
         pendingAlertPrefixStrip = undefined;
         pendingAlertInlineLevelForHardBreak = undefined;
-        const indent = item.listMeta.type === 'bullet'
-          ? ' '.repeat(2 * item.listMeta.level)
-          : ' '.repeat(3 * item.listMeta.level);
+        const useTab = options?.listIndent === 'tab';
+        const indent = useTab
+          ? '\t'.repeat(item.listMeta.level)
+          : item.listMeta.type === 'bullet'
+            ? ' '.repeat(2 * item.listMeta.level)
+            : ' '.repeat(3 * item.listMeta.level);
         const marker = item.listMeta.type === 'bullet' ? '- ' : '1. ';
         output.push(indent + marker);
       } else if (item.blockquoteLevel) {
@@ -3645,8 +3696,7 @@ export function formatLocalIsoMinute(ts: string): string {
     throw new Error(`Invalid timestamp: ${ts}`);
   }
   const pad = (n: number) => String(n).padStart(2, '0');
-  const offsetMinutes = -dt.getTimezoneOffset();
-  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}${formatOffsetString(offsetMinutes)}`;
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 }
 
 export function getLocalTimezoneOffset(): string {
@@ -3972,7 +4022,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -3987,6 +4037,7 @@ export async function convertDocx(
     extractImageFormatMapping(zip),
     extractTableFormatMapping(zip),
     extractPipeTableMaxLineWidth(zip),
+    extractListIndent(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -4096,6 +4147,7 @@ export async function convertDocx(
     blockquoteAlertInlineByGroup: blockquoteAlertStyleMapping,
     imageFormatMapping,
     tableFormatMapping,
+    listIndent: storedListIndent ?? 'spaces',
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
@@ -4117,17 +4169,18 @@ export async function convertDocx(
   }
   if (zoteroPrefs) {
     fm.csl = zoteroStyleShortName(zoteroPrefs.styleId);
-    fm.locale = zoteroPrefs.locale;
+    // Only emit locale when it differs from the default (en-US)
+    if (zoteroPrefs.locale && zoteroPrefs.locale !== 'en-US') {
+      fm.locale = zoteroPrefs.locale;
+    }
     fm.zoteroNotes = zoteroPrefs.noteType !== undefined ? noteTypeFromNumber(zoteroPrefs.noteType) : undefined;
   }
   if (detectedNotesMode === 'endnotes') {
     fm.notes = 'endnotes';
   }
-  // Store the local timezone so md→docx can reconstruct UTC dates
-  const hasCommentDates = [...comments.values()].some(c => !!c.date);
-  if (hasCommentDates) {
-    fm.timezone = getLocalTimezoneOffset();
-  }
+  // Note: timezone is intentionally omitted from frontmatter to avoid injecting
+  // fields that weren't in the original. Dates without explicit offsets are
+  // interpreted in the system timezone by normalizeToUtcIso, which is correct.
   // Extract heading/title font overrides from styles.xml for round-trip
   const stylesFile = zip.file('word/styles.xml');
   if (stylesFile) {

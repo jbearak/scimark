@@ -566,6 +566,26 @@ describe('Overlapping comments: round-trip', () => {
     const roundtrip = await convertDocx(docx);
     expect(roundtrip.markdown).toContain('==text==');
   });
+
+  test('consecutive {>>...<<} blocks are threaded as parent-reply', async () => {
+    const md = '{==text==}{>>alice (2024-01-01 00:00): parent note<<}{>>bob (2024-01-02 00:00): reply note<<}';
+    const { docx } = await convertMdToDocx(md, { authorName: 'test' });
+    const roundtrip = await convertDocx(docx);
+    expect(roundtrip.markdown).toContain('parent note');
+    expect(roundtrip.markdown).toContain('reply note');
+    // Reply should be nested inside the parent comment block
+    expect(roundtrip.markdown).toContain('{>>alice');
+    expect(roundtrip.markdown).toMatch(/\{>>bob.*reply note/);
+  });
+
+  test('standalone {>>comment<<} round-trips without anchor', async () => {
+    const md = 'Before.\n\n{>>alice (2024-01-01 00:00): standalone note<<}\n\nAfter.';
+    const { docx } = await convertMdToDocx(md, { authorName: 'test' });
+    const roundtrip = await convertDocx(docx);
+    expect(roundtrip.markdown).toContain('{>>');
+    expect(roundtrip.markdown).toContain('standalone note');
+    expect(roundtrip.markdown).not.toContain('{====}');
+  });
 });
 
 describe('Overlapping comments: CLI config', () => {
