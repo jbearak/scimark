@@ -3836,6 +3836,24 @@ describe('convertDocx existingBibtex (Layer 3)', () => {
     expect(result.bibtex).not.toContain('uncitedEntry');
   });
 
+  test('prefers key order (Layer 2) over existingBibtex (Layer 3)', async () => {
+    const storedBib = '@article{key1,\n  author = {A, X},\n  title = {{Title A}},\n  year = {2020},\n}\n\n@article{key2,\n  author = {B, Y},\n  title = {{Title B}},\n  year = {2021},\n}';
+    const md = 'Some text [@key1].\n';
+    const { docx: fullDocx } = await convertMdToDocx(md, { bibtex: storedBib });
+    // Strip the stored .bib from the ZIP so Layer 1 is unavailable,
+    // but Layer 2 (MANUSCRIPT_BIB_KEY_ORDER_*) remains in custom props.
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(fullDocx);
+    zip.remove('word/bibliography.bib');
+    const strippedDocx = await zip.generateAsync({ type: 'uint8array' });
+    const result = await convertDocx(strippedDocx, 'authorYearTitle', {
+      existingBibtex: EXISTING_BIB,
+    });
+    // Layer 2 regenerates from Zotero metadata — should NOT contain existingBibtex content
+    expect(result.bibtex).not.toContain('uncitedEntry');
+    expect(result.bibtex).not.toContain('Not cited anywhere');
+  });
+
   test('appends new Zotero entries not in existing .bib', async () => {
     // sampleData has smith2020, jones2019, davis2021 Zotero citations.
     // Provide existing .bib with only smith2020 — jones2019 and davis2021 should be appended.

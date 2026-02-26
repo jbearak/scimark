@@ -4479,7 +4479,7 @@ export async function convertDocx(
   } else if (bibKeyOrder) {
     // Layer 2: regenerate but sort to match original key order
     bibtex = generateBibTeX(zoteroCitations, keyMap, null, bibKeyOrder);
-  } else if (options?.existingBibtex) {
+  } else if (options?.existingBibtex && options.existingBibtex.length > 0) {
     // Layer 3: existing .bib from disk — verbatim + append new entries
     const existingKeys = new Set(parseBibtex(options.existingBibtex).keys());
     const newEntries = generateBibTeX(zoteroCitations, keyMap, existingKeys);
