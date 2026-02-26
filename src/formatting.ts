@@ -299,6 +299,14 @@ export interface ParsedTable {
   alignments: ColumnAlignment[]; // Alignment for each column
 }
 
+type GridBorderStyle = 'dash' | 'equal';
+
+interface ParsedGridTable {
+  rows: string[][];
+  columnWidths: number[];
+  borderStyles: GridBorderStyle[]; // One style per border line (rows + 1)
+}
+
 /**
  * Split a string on unescaped `|` characters.
  * `\|` (escaped pipe) is kept as part of the cell; `\\|` (escaped backslash
@@ -516,6 +524,88 @@ export function formatSeparatorRow(columnWidths: number[], alignments?: ColumnAl
   return '| ' + cells.join(' | ') + ' |';
 }
 
+function parseGridBorderSegments(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('+') || !trimmed.endsWith('+')) {
+    return null;
+  }
+  const segments = trimmed.slice(1, -1).split('+');
+  if (segments.length === 0) {
+    return null;
+  }
+  for (const segment of segments) {
+    if (segment.length === 0 || !/^[=-]+$/.test(segment)) {
+      return null;
+    }
+  }
+  return segments;
+}
+
+function parseGridRow(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
+    return null;
+  }
+  return trimmed.slice(1, -1).split('|').map(cell => cell.trim());
+}
+
+function parseGridTable(text: string): ParsedGridTable | null {
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  if (lines.length < 3 || lines.length % 2 === 0) {
+    return null;
+  }
+
+  const firstBorder = parseGridBorderSegments(lines[0]);
+  if (!firstBorder) {
+    return null;
+  }
+  const columnCount = firstBorder.length;
+
+  const rows: string[][] = [];
+  const borderStyles: GridBorderStyle[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (i % 2 === 0) {
+      const borderSegments = parseGridBorderSegments(lines[i]);
+      if (!borderSegments || borderSegments.length !== columnCount) {
+        return null;
+      }
+      borderStyles.push(borderSegments.some(segment => segment.includes('=')) ? 'equal' : 'dash');
+    } else {
+      const cells = parseGridRow(lines[i]);
+      if (!cells || cells.length !== columnCount) {
+        return null;
+      }
+      rows.push(cells);
+    }
+  }
+
+  const columnWidths: number[] = new Array(columnCount).fill(0);
+  for (const row of rows) {
+    for (let i = 0; i < columnCount; i++) {
+      columnWidths[i] = Math.max(columnWidths[i], row[i].length);
+    }
+  }
+
+  return { rows, columnWidths, borderStyles };
+}
+
+function formatGridBorderRow(columnWidths: number[], style: GridBorderStyle): string {
+  const borderChar = style === 'equal' ? '=' : '-';
+  const segments = columnWidths.map(width => borderChar.repeat(Math.max(width + 2, 3)));
+  return '+' + segments.join('+') + '+';
+}
+
+function formatGridContentRow(cells: string[], columnWidths: number[], pad: boolean): string {
+  const rendered = cells.map((cell, i) => {
+    if (!pad) {
+      return cell;
+    }
+    return cell.padEnd(columnWidths[i], ' ');
+  });
+  return '| ' + rendered.join(' | ') + ' |';
+}
+
 /**
  * Compacts a markdown table by removing padding whitespace.
  * Each cell is trimmed and separated by ` | ` with no extra padding.
@@ -523,35 +613,45 @@ export function formatSeparatorRow(columnWidths: number[], alignments?: ColumnAl
  */
 export function compactTable(text: string): TextTransformation {
   const parsed = parseTable(text);
+  if (parsed) {
+    const { rows, columnWidths, alignments } = parsed;
+    const columnCount = columnWidths.length;
 
-  if (!parsed) {
-    return { newText: text };
+    const formattedRows = rows.map(row => {
+      if (row.isSeparator) {
+        const cells = Array.from({ length: columnCount }, (_, i) => {
+          const a = alignments[i] || 'default';
+          switch (a) {
+            case 'left': return ':---';
+            case 'right': return '---:';
+            case 'center': return ':---:';
+            default: return '---';
+          }
+        });
+        return '| ' + cells.join(' | ') + ' |';
+      } else {
+        const cells = Array.from({ length: columnCount }, (_, i) => row.cells[i] ?? '');
+        return '| ' + cells.join(' | ') + ' |';
+      }
+    });
+
+    return {
+      newText: formattedRows.join('\n')
+    };
   }
 
-  const { rows, columnWidths, alignments } = parsed;
-  const columnCount = columnWidths.length;
-
-  const formattedRows = rows.map(row => {
-    if (row.isSeparator) {
-      const cells = Array.from({ length: columnCount }, (_, i) => {
-        const a = alignments[i] || 'default';
-        switch (a) {
-          case 'left': return ':---';
-          case 'right': return '---:';
-          case 'center': return ':---:';
-          default: return '---';
-        }
-      });
-      return '| ' + cells.join(' | ') + ' |';
-    } else {
-      const cells = Array.from({ length: columnCount }, (_, i) => row.cells[i] ?? '');
-      return '| ' + cells.join(' | ') + ' |';
+  const grid = parseGridTable(text);
+  if (grid) {
+    const lines: string[] = [];
+    for (let i = 0; i < grid.rows.length; i++) {
+      lines.push(formatGridBorderRow(grid.columnWidths, grid.borderStyles[i] || 'dash'));
+      lines.push(formatGridContentRow(grid.rows[i], grid.columnWidths, false));
     }
-  });
+    lines.push(formatGridBorderRow(grid.columnWidths, grid.borderStyles[grid.rows.length] || 'dash'));
+    return { newText: lines.join('\n') };
+  }
 
-  return {
-    newText: formattedRows.join('\n')
-  };
+  return { newText: text };
 }
 
 /**
@@ -563,23 +663,34 @@ export function compactTable(text: string): TextTransformation {
 export function reflowTable(text: string): TextTransformation {
   const parsed = parseTable(text);
   
-  if (!parsed) {
-    // Not a valid table, return original text
-    return { newText: text };
+  if (parsed) {
+    const { rows, columnWidths, alignments } = parsed;
+    
+    // Format each row
+    const formattedRows = rows.map(row => {
+      if (row.isSeparator) {
+        return formatSeparatorRow(columnWidths, alignments);
+      } else {
+        return formatContentRow(row.cells, columnWidths);
+      }
+    });
+    
+    return {
+      newText: formattedRows.join('\n')
+    };
   }
-  
-  const { rows, columnWidths, alignments } = parsed;
-  
-  // Format each row
-  const formattedRows = rows.map(row => {
-    if (row.isSeparator) {
-      return formatSeparatorRow(columnWidths, alignments);
-    } else {
-      return formatContentRow(row.cells, columnWidths);
+
+  const grid = parseGridTable(text);
+  if (grid) {
+    const lines: string[] = [];
+    for (let i = 0; i < grid.rows.length; i++) {
+      lines.push(formatGridBorderRow(grid.columnWidths, grid.borderStyles[i] || 'dash'));
+      lines.push(formatGridContentRow(grid.rows[i], grid.columnWidths, true));
     }
-  });
-  
-  return {
-    newText: formattedRows.join('\n')
-  };
+    lines.push(formatGridBorderRow(grid.columnWidths, grid.borderStyles[grid.rows.length] || 'dash'));
+    return { newText: lines.join('\n') };
+  }
+
+  // Not a valid table, return original text
+  return { newText: text };
 }

@@ -489,6 +489,62 @@ describe('Formatting Module Property Tests', () => {
   });
 });
 
+describe('grid table support for Expand Table and Compact Table', () => {
+  it('reflowTable expands Pandoc-style grid tables while preserving separator style', () => {
+    const input = [
+      '+-------+----+',
+      '| Name | Age |',
+      '+=======+====+',
+      '| Al | 9 |',
+      '+-------+----+',
+      '| Beatrice | 10 |',
+      '+-------+----+',
+    ].join('\n');
+
+    const result = reflowTable(input);
+    const expected = [
+      '+----------+-----+',
+      '| Name     | Age |',
+      '+==========+=====+',
+      '| Al       | 9   |',
+      '+----------+-----+',
+      '| Beatrice | 10  |',
+      '+----------+-----+',
+    ].join('\n');
+
+    if (result.newText !== expected) {
+      throw new Error('Expected:\n' + expected + '\n\nGot:\n' + result.newText);
+    }
+  });
+
+  it('compactTable compacts Pandoc-style grid tables while preserving separator style', () => {
+    const input = [
+      '+------------+-------+',
+      '| Name       | Age   |',
+      '+============+=======+',
+      '| Alice      | 30    |',
+      '+------------+-------+',
+      '| Bob        | 7     |',
+      '+------------+-------+',
+    ].join('\n');
+
+    const result = compactTable(input);
+    const expected = [
+      '+-------+-----+',
+      '| Name | Age |',
+      '+=======+=====+',
+      '| Alice | 30 |',
+      '+-------+-----+',
+      '| Bob | 7 |',
+      '+-------+-----+',
+    ].join('\n');
+
+    if (result.newText !== expected) {
+      throw new Error('Expected:\n' + expected + '\n\nGot:\n' + result.newText);
+    }
+  });
+});
+
 describe('Formatting Module Unit Tests - Author Name Edge Cases', () => {
   // Test comment insertion with null author name
   it('should insert comment without author prefix when author name is null', () => {
