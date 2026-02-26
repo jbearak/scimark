@@ -390,3 +390,52 @@ describe('spliceFieldsIntoEntry', () => {
     expect(result).toContain('year = {2020}\n}');
   });
 });
+
+describe('parseBibtex via parseBibtexWithRaw parity', () => {
+  // parseBibtex delegates to parseBibtexWithRaw — verify parsed output
+  // matches expectations on a non-trivial multi-entry input so drift in
+  // the single implementation is caught.
+  it('produces identical results for complex input', () => {
+    const input = [
+      '@article{Smith2020,',
+      '  title = {{A Complex Title}},',
+      '  author = {{World Health Organization}},',
+      '  year = {2020},',
+      '  doi = {10.1000/test}',
+      '}',
+      '',
+      '@book{Jones2021,',
+      '  title = "Quoted Book Title",',
+      '  editor = {Jane Doe},',
+      '  year = 2021',
+      '}',
+      '',
+      '@inproceedings{malformed,',
+      '  title = {Missing closing brace',
+      '',
+      '@misc{Valid2022,',
+      '  note = {see @article{ref, p.5}},',
+      '  year = {2022}',
+      '}',
+    ].join('\n');
+
+    const result = parseBibtex(input);
+
+    // Should parse 3 valid entries, skip malformed
+    expect(result.size).toBe(3);
+    expect(result.has('Smith2020')).toBe(true);
+    expect(result.has('Jones2021')).toBe(true);
+    expect(result.has('Valid2022')).toBe(true);
+    expect(result.has('malformed')).toBe(false);
+
+    // Verify field-level parsing
+    expect(result.get('Smith2020')!.fields.get('title')).toBe('A Complex Title');
+    expect(result.get('Smith2020')!.fields.get('author')).toBe('{World Health Organization}');
+    expect(result.get('Jones2021')!.fields.get('title')).toBe('Quoted Book Title');
+    expect(result.get('Jones2021')!.fields.get('year')).toBe('2021');
+    expect(result.get('Valid2022')!.fields.get('year')).toBe('2022');
+
+    // Spurious @article{ref inside note must not appear
+    expect(result.has('ref')).toBe(false);
+  });
+});

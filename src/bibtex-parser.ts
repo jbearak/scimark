@@ -59,7 +59,14 @@ function unescapeBibtex(s: string): string {
 /** Find the closing `}` of a BibTeX entry body, handling nested braces and
  *  quoted strings.  `startPos` is the position just after the `@type{key,`
  *  header (i.e. the first character of the field area).
- *  Returns the index of the closing `}`, or -1 if unmatched. */
+ *  Returns the index of the closing `}`, or -1 if unmatched.
+ *
+ *  Note: unlike extractRawField's brace scanner, this does NOT skip `\{`/`\}`
+ *  escapes — it counts them as real braces.  This is intentional: at the
+ *  entry-boundary level, `\{` inside a field value is always nested inside a
+ *  brace-delimited value, so the net depth change is zero and the result is
+ *  the same.  extractRawField needs escape-awareness because it scans a
+ *  single field value where `\{` must not alter depth. */
 function findEntryEnd(input: string, startPos: number): number {
   let braceCount = 1;
   let inQuotes = false;
@@ -93,8 +100,12 @@ function findEntryEnd(input: string, startPos: number): number {
   return -1;
 }
 
-export function parseBibtex(input: string): Map<string, BibtexEntry> {
-  const entries = new Map<string, BibtexEntry>();
+/** Parse BibTeX input, returning both the structured entries and raw entry
+ *  texts in a single pass over the entry boundaries.  parseBibtex delegates
+ *  here; mergeBibtex uses both the parsed and raw maps directly. */
+function parseBibtexWithRaw(input: string): { parsed: Map<string, BibtexEntry>; raw: Map<string, string> } {
+  const parsed = new Map<string, BibtexEntry>();
+  const raw = new Map<string, string>();
 
   // Find entry boundaries more carefully
   const entryMatches = [...input.matchAll(/@(\w+)\s*\{\s*([^,\s]+)\s*,/g)];
@@ -104,42 +115,36 @@ export function parseBibtex(input: string): Map<string, BibtexEntry> {
   // that reference other entries).
   let lastEntryEnd = 0;
 
-  for (let i = 0; i < entryMatches.length; i++) {
+  // author/editor use inner {Name} braces as a semantic signal for
+  // institutional/literal names (Req 2.3), so do NOT strip outer braces
+  // for those fields — only strip for non-name fields (title, journal, etc.)
+  const AUTHOR_FIELDS = new Set(['author', 'editor']);
+
+  // NOTE: This regex handles nested braces only up to a small fixed depth.
+  // If we need arbitrary nesting, replace with a balanced-brace field parser.
+  const fieldRegex = /(\w+(?:-\w+)*)\s*=\s*(?:\{((?:[^{}]|\{(?:[^{}]|\{[^}]*\})*\})*)\}|"([^"]*)"|(\w+))/g;
+
+  for (const match of entryMatches) {
+    if (match.index! < lastEntryEnd) continue;
+
+    const [, type, key] = match;
+    const entryStart = match.index!;
+    const startPos = entryStart + match[0].length;
+
+    const endPos = findEntryEnd(input, startPos);
+    lastEntryEnd = (endPos === -1 ? startPos : endPos) + 1;
+    if (endPos === -1) continue;
+
+    // Raw entry text (preserves original formatting)
+    raw.set(key, input.slice(entryStart, endPos + 1));
+
+    // Parsed entry
     try {
-      const match = entryMatches[i];
-
-      // Skip matches that fall inside a previously parsed entry's body
-      if (match.index! < lastEntryEnd) {
-        continue;
-      }
-
-      const [, type, key] = match;
-      const startPos = match.index! + match[0].length;
-
-      const endPos = findEntryEnd(input, startPos);
-
-      // Advance past this entry's body regardless of whether it parsed
-      // successfully, so subsequent matches inside it are skipped.
-      lastEntryEnd = (endPos === -1 ? startPos : endPos) + 1;
-
-      // Skip if we couldn't find a proper closing brace
-      if (endPos === -1) {
-        continue;
-      }
-      
       const fieldsStr = input.slice(startPos, endPos);
       const fields = new Map<string, string>();
-      
-      // Parse fields more carefully
-      // NOTE: This regex handles nested braces only up to a small fixed depth.
-      // If we need arbitrary nesting, replace with a balanced-brace field parser.
-      const fieldRegex = /(\w+(?:-\w+)*)\s*=\s*(?:\{((?:[^{}]|\{(?:[^{}]|\{[^}]*\})*\})*)\}|"([^"]*)"|(\w+))/g;
-      // author/editor use inner {Name} braces as a semantic signal for
-      // institutional/literal names (Req 2.3), so do NOT strip outer braces
-      // for those fields — only strip for non-name fields (title, journal, etc.)
-      const AUTHOR_FIELDS = new Set(['author', 'editor']);
+
+      fieldRegex.lastIndex = 0;
       let fieldMatch;
-      
       while ((fieldMatch = fieldRegex.exec(fieldsStr)) !== null) {
         const [, fieldName, braceValue, quoteValue, bareValue] = fieldMatch;
         const lowerField = fieldName.toLowerCase();
@@ -148,22 +153,24 @@ export function parseBibtex(input: string): Map<string, BibtexEntry> {
           : unescapeBibtex(quoteValue ?? bareValue ?? ''));
         fields.set(lowerField, value);
       }
-      
-      const entry: BibtexEntry = {
+
+      parsed.set(key, {
         type: type.toLowerCase(),
         key,
         fields,
         zoteroKey: fields.get('zotero-key'),
-        zoteroUri: fields.get('zotero-uri')
-      };
-      
-      entries.set(key, entry);
+        zoteroUri: fields.get('zotero-uri'),
+      });
     } catch {
-      // Skip malformed entries
+      // Skip malformed entries — raw text is still preserved
     }
   }
-  
-  return entries;
+
+  return { parsed, raw };
+}
+
+export function parseBibtex(input: string): Map<string, BibtexEntry> {
+  return parseBibtexWithRaw(input).parsed;
 }
 
 export function serializeBibtex(entries: Map<string, BibtexEntry>): string {
@@ -198,32 +205,6 @@ export function serializeBibtex(entries: Map<string, BibtexEntry>): string {
 // ---------------------------------------------------------------------------
 // Amend-only .bib merging helpers
 // ---------------------------------------------------------------------------
-
-/** Extract raw entry texts from BibTeX input, preserving original formatting.
- *  Returns Map<citationKey, rawEntryText> in document order.
- *  Uses inline brace-counting (same approach as parseBibtex) to avoid a
- *  core→LSP dependency on bib-entry-ranges. */
-export function extractRawEntries(input: string): Map<string, string> {
-  const entries = new Map<string, string>();
-  const entryMatches = [...input.matchAll(/@(\w+)\s*\{\s*([^,\s]+)\s*,/g)];
-  let lastEntryEnd = 0;
-
-  for (const match of entryMatches) {
-    if (match.index! < lastEntryEnd) continue;
-
-    const key = match[2];
-    const entryStart = match.index!;
-    const afterHeader = entryStart + match[0].length;
-
-    const endPos = findEntryEnd(input, afterHeader);
-    lastEntryEnd = (endPos === -1 ? afterHeader : endPos) + 1;
-    if (endPos === -1) continue;
-
-    entries.set(key, input.slice(entryStart, endPos + 1));
-  }
-
-  return entries;
-}
 
 /** Extract a single field's raw text from an entry string.
  *  Returns the full line including indentation and trailing comma, e.g.
@@ -296,64 +277,6 @@ export function spliceFieldsIntoEntry(producedRaw: string, fieldTexts: string[])
   });
 
   return before + cleaned.join('\n') + '\n}';
-}
-
-/** Parse BibTeX input, returning both the structured entries and raw entry
- *  texts in a single pass over the entry boundaries.  This avoids the four
- *  separate parse/extract calls that were previously needed. */
-function parseBibtexWithRaw(input: string): { parsed: Map<string, BibtexEntry>; raw: Map<string, string> } {
-  const parsed = new Map<string, BibtexEntry>();
-  const raw = new Map<string, string>();
-
-  const entryMatches = [...input.matchAll(/@(\w+)\s*\{\s*([^,\s]+)\s*,/g)];
-  let lastEntryEnd = 0;
-
-  const AUTHOR_FIELDS = new Set(['author', 'editor']);
-  const fieldRegex = /(\w+(?:-\w+)*)\s*=\s*(?:\{((?:[^{}]|\{(?:[^{}]|\{[^}]*\})*\})*)\}|"([^"]*)"|(\w+))/g;
-
-  for (const match of entryMatches) {
-    if (match.index! < lastEntryEnd) continue;
-
-    const [, type, key] = match;
-    const entryStart = match.index!;
-    const startPos = entryStart + match[0].length;
-
-    const endPos = findEntryEnd(input, startPos);
-    lastEntryEnd = (endPos === -1 ? startPos : endPos) + 1;
-    if (endPos === -1) continue;
-
-    // Raw entry text (preserves original formatting)
-    raw.set(key, input.slice(entryStart, endPos + 1));
-
-    // Parsed entry
-    try {
-      const fieldsStr = input.slice(startPos, endPos);
-      const fields = new Map<string, string>();
-
-      fieldRegex.lastIndex = 0;
-      let fieldMatch;
-      while ((fieldMatch = fieldRegex.exec(fieldsStr)) !== null) {
-        const [, fieldName, braceValue, quoteValue, bareValue] = fieldMatch;
-        const lowerField = fieldName.toLowerCase();
-        const value = (braceValue !== undefined
-          ? unescapeBibtex(AUTHOR_FIELDS.has(lowerField) ? braceValue : stripOuterBraces(braceValue))
-          : unescapeBibtex(quoteValue ?? bareValue ?? ''));
-        fields.set(lowerField, value);
-      }
-
-      parsed.set(key, {
-        type: type.toLowerCase(),
-        key,
-        fields,
-        zoteroKey: fields.get('zotero-key'),
-        zoteroUri: fields.get('zotero-uri'),
-      });
-    } catch {
-      // Skip malformed entries — raw text is still preserved
-    }
-  }
-
-  return { parsed, raw };
 }
 
 /** Merge an existing .bib (from disk) with a produced .bib (from conversion).
