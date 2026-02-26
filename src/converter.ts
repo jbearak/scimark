@@ -1046,21 +1046,17 @@ export async function extractBibKeyOrder(data: Uint8Array | JSZip): Promise<stri
   const parsed = await readZipXml(zip, 'docProps/custom.xml');
   if (!parsed) return null;
 
-  const propPrefix = 'MANUSCRIPT_BIB_KEY_ORDER';
+  const propPrefix = 'MANUSCRIPT_BIB_KEY_ORDER_';
   const parts: Array<{ index: number; value: string }> = [];
   const propertyNodes = findAllDeep(parsed, 'property');
   for (const propNode of propertyNodes) {
     const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
     if (!name.startsWith(propPrefix)) continue;
 
-    let idx = 1;
-    if (name !== propPrefix) {
-      if (!name.startsWith(propPrefix + '_')) continue;
-      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
-      if (!chunkMatch) continue;
-      idx = parseInt(chunkMatch[1], 10);
-      if (isNaN(idx)) continue;
-    }
+    const chunkMatch = name.slice(propPrefix.length).match(/^(\d+)$/);
+    if (!chunkMatch) continue;
+    const idx = parseInt(chunkMatch[1], 10);
+    if (isNaN(idx)) continue;
 
     const children = propNode['property'];
     if (!Array.isArray(children)) continue;
@@ -3985,7 +3981,7 @@ export function generateBibTeX(
   originalKeyOrder?: string[] | null,
 ): string {
   const entries: string[] = [];
-  const entryByKey = new Map<string, string>();
+  const entryByKey = originalKeyOrder ? new Map<string, string>() : null;
   const emitted = new Set<string>();
 
   for (const citation of zoteroCitations) {
@@ -3997,7 +3993,7 @@ export function generateBibTeX(
       const key = keyMap.get(id);
       if (!key) { continue; }
 
-      // Layer 1: skip entries already present in the stored .bib
+      // Skip entries whose keys are already in the stored .bib (used by Layer 1 caller)
       if (skipKeys && skipKeys.has(key)) { continue; }
 
       const authorStr = meta.authors.map(serializeAuthor).join(' and ');
@@ -4049,12 +4045,12 @@ export function generateBibTeX(
 
       const entryStr = `@${entryType}{${key},\n${fields.join(',\n')},\n}`;
       entries.push(entryStr);
-      entryByKey.set(key, entryStr);
+      if (entryByKey) entryByKey.set(key, entryStr);
     }
   }
 
-  // Layer 2: reorder output to match original key order when provided
-  if (originalKeyOrder && originalKeyOrder.length > 0) {
+  // Reorder output to match original key order when provided (used by Layer 2 caller)
+  if (originalKeyOrder && originalKeyOrder.length > 0 && entryByKey) {
     const ordered: string[] = [];
     const remaining = new Map(entryByKey);
     for (const key of originalKeyOrder) {
@@ -4471,10 +4467,14 @@ export async function convertDocx(
   // Layer 3: regenerate from Zotero citations (backward compatible)
   let bibtex: string;
   if (storedBibtex) {
-    // Layer 1: use stored .bib verbatim, append only genuinely new entries
+    // Layer 1: use stored .bib verbatim, append only genuinely new entries.
+    // skipKeys filters by citation key — if the key format changed between
+    // write and read, a regenerated key could differ from the stored one and
+    // produce a duplicate entry. This is an unlikely edge case since the key
+    // format is fixed per-project.
     const storedKeys = new Set(parseBibtex(storedBibtex).keys());
     const newEntries = generateBibTeX(zoteroCitations, keyMap, storedKeys);
-    bibtex = newEntries ? storedBibtex + '\n\n' + newEntries : storedBibtex;
+    bibtex = newEntries ? storedBibtex.trimEnd() + '\n\n' + newEntries : storedBibtex;
   } else if (bibKeyOrder) {
     // Layer 2: regenerate but sort to match original key order
     bibtex = generateBibTeX(zoteroCitations, keyMap, null, bibKeyOrder);

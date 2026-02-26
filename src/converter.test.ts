@@ -25,6 +25,8 @@ import {
   formatLocalIsoMinute,
   citationPandocKeys,
   ZoteroCitation,
+  extractStoredBibtex,
+  extractBibKeyOrder,
 } from './converter';
 import { convertMdToDocx } from './md-to-docx';
 
@@ -3741,6 +3743,36 @@ describe('Track changes (CriticMarkup)', () => {
       expect(result.markdown).toContain('{++added cell++}');
       expect(result.markdown).toContain('{--removed cell--}');
     });
+  });
+});
+
+describe('extractStoredBibtex', () => {
+  test('reads word/bibliography.bib from DOCX ZIP', async () => {
+    const sampleBib = '@article{key1,\n  author = {A},\n}\n\n@article{key2,\n  author = {B},\n}';
+    const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: sampleBib });
+    const result = await extractStoredBibtex(docx);
+    expect(result).toBe(sampleBib);
+  });
+
+  test('returns null when no .bib is stored', async () => {
+    const { docx } = await convertMdToDocx('Hello world.');
+    const result = await extractStoredBibtex(docx);
+    expect(result).toBeNull();
+  });
+});
+
+describe('extractBibKeyOrder', () => {
+  test('reads chunked MANUSCRIPT_BIB_KEY_ORDER_* from DOCX ZIP', async () => {
+    const bib = '@article{key1,\n  author = {A},\n}\n\n@article{key2,\n  author = {B},\n}';
+    const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: bib });
+    const result = await extractBibKeyOrder(docx);
+    expect(result).toEqual(['key1', 'key2']);
+  });
+
+  test('returns null when no bib key order is stored', async () => {
+    const { docx } = await convertMdToDocx('Hello world.');
+    const result = await extractBibKeyOrder(docx);
+    expect(result).toBeNull();
   });
 });
 

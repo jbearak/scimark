@@ -2284,7 +2284,7 @@ function stripMillis(iso: string): string {
   return iso.replace(/\.\d{3}Z$/, 'Z');
 }
 
-function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageExtensions?: Set<string>): string {
+function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageExtensions?: Set<string>, hasBibliography?: boolean): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n';
   xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n';
@@ -2321,6 +2321,9 @@ function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: bool
   xml += '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>\n';
   if (hasCustomProps) {
     xml += '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>\n';
+  }
+  if (hasBibliography) {
+    xml += '<Override PartName="/word/bibliography.bib" ContentType="text/plain"/>\n';
   }
   xml += '</Types>';
   return xml;
@@ -4462,7 +4465,8 @@ export async function convertMdToDocx(
     zip.file('word/' + mediaPath, data);
   }
 
-  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageExtensions.size > 0 ? state.imageExtensions : undefined));
+  const hasBibliography = !!options?.bibtex;
+  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageExtensions.size > 0 ? state.imageExtensions : undefined, hasBibliography));
   zip.file('_rels/.rels', relsXml(hasCustomProps));
   zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageRelationships.size > 0 ? state.imageRelationships : undefined));
 
