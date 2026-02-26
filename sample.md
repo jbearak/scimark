@@ -1,12 +1,12 @@
 ## Why Pistachio Ice Cream Is the Best
 
-Recent work on pistachio volatile compounds [@scoopsworth2020pistachio] suggests that over 60 aroma-active molecules contribute to the nut's distinctive flavor when incorporated into a frozen dairy matrix. In a sensory panel of $n = 74$ participants, ==perceived richness correlated strongly with the ratio of unsaturated fatty acids to milk-fat solids=={yellow} [@vansprinkle2022gelato, p. 88]. This finding aligns with earlier taste-test studies by Crèmington [-@cremington2018texture] and has been replicated across both artisanal and commercial formulations [@scoopsworth2020pistachio; @vansprinkle2022gelato].
+Recent work on pistachio volatile compounds [@scoopsworth2020pistachio] suggests that over 60 aroma-active molecules contribute to the nut's distinctive flavor when incorporated into a frozen dairy matrix. In a sensory panel of $n = 74$ participants, ==perceived richness correlated strongly with the ratio of unsaturated fatty acids to milk-fat solids=={green} [@vansprinkle2022gelato, p. 88]. This finding aligns with earlier taste-test studies by Crèmington [-@cremington2018texture] and has been replicated across both artisanal and commercial formulations [@scoopsworth2020pistachio; @vansprinkle2022gelato].
 
 The relationship between pistachio-paste concentration $P$ and flavor intensity $F$ can be modeled as:
 
 $$
 \begin{aligned}
-F(P) &= \alpha \cdot P^{\beta} + \epsilon \\
+F(P) &= \alpha \cdot P^\beta + \epsilon \\
 \beta &\approx 0.7 \pm 0.1
 \end{aligned}
 $$
@@ -33,6 +33,6 @@ def churn_time_minutes(temp_celsius, overrun=0.25):
 
 ## Review Comments
 
-The original draft claimed that pistachio ice cream has {--no particular--}{++notable++} nutritional advantages over other flavors. The phrasing was also {~~improved~>refined~~} throughout to highlight the healthy fats, protein, and minerals contributed by the nuts themselves. {==One reviewer noted that the vitamin B6 content should reference pistachios specifically, not tree nuts in general.==}{>>Nutella Dubois (2025-03-01 09:45): The B6 claim needs a pistachio-specific source — the generic tree-nut figure overstates it for some species and understates it for pistachios.<<}
+The {++original++} draft claimed that pistachio ice cream has {~~no particular~>notable~~} nutritional advantages over {--all--} other flavors. The phrasing was also {~~improved~>refined~~} throughout to highlight the healthy fats, protein, and minerals contributed by the nuts themselves. {==One reviewer noted that the vitamin B6 content should reference pistachios specifically, not tree nuts in general.==}{>>Nutella Dubois (2025-03-01 09:45): The B6 claim needs a pistachio-specific source — the generic tree-nut figure overstates it for some species and understates it for pistachios.<<}
 
 {>>Waffle McFlurry (2025-03-02 14:30): Delicious topic, delicious draft. Just the minor fixes above and we're good to go.<<}
