@@ -551,6 +551,15 @@ describe('Overlapping comments: round-trip', () => {
     expect(roundtrip.markdown).toContain('{====text====}');
   });
 
+  test('{==text==} without inner highlight round-trips without double-wrapping', async () => {
+    const md = '{==text==}{>>alice: note<<}';
+    const { docx } = await convertMdToDocx(md, { authorName: 'test' });
+    const roundtrip = await convertDocx(docx);
+    // Should NOT produce {====text====} — the {==...==} is comment syntax, not a highlight
+    expect(roundtrip.markdown).toContain('{==text==}');
+    expect(roundtrip.markdown).not.toContain('{====text====}');
+  });
+
   test('=={==text==}== round-trips as highlighted text', async () => {
     const md = '=={==text==}==';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });

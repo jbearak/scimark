@@ -146,7 +146,7 @@ Manuscript Markdown supports CommonMark plus the implemented [GitHub Flavored Ma
 - **Links**: `[text](url)` plus autolink literals (bare URLs/emails)
 - **Code blocks**: fenced with triple backticks. Optional language annotation (e.g., `` ```stata ``) is preserved on round-trip via the `MANUSCRIPT_CODE_BLOCK_LANGS` custom property in the DOCX. In Word, code blocks use the "Code Block" paragraph style (Consolas, shaded background). Consecutive code blocks are separated by an empty paragraph to prevent merging.
 - **Blockquotes**: `> quoted text`
-- **Tables**: simple tables are emitted as pipe tables (pipe-delimited with alignment support). Tables that contain colspans, rowspans, multi-paragraph cells, or that exceed the configured line width fall back to indented HTML. The line-width threshold is controlled by the `pipe-table-max-line-width` frontmatter field, the VS Code `pipeTableMaxLineWidth` setting, or the CLI `--pipe-table-max-line-width` flag.
+- **Tables**: simple tables are emitted as pipe tables (pipe-delimited with alignment support). Tables that contain colspans, rowspans, multi-paragraph cells, or that exceed the configured line width fall back to indented HTML. The line-width threshold is controlled by the `pipe-table-max-line-width` frontmatter field, the VS Code `pipeTableMaxLineWidth` setting, or the CLI `--pipe-table-max-line-width` flag. Pandoc-style grid tables are also supported for multi-line cells (see below).
 
 ### GitHub Flavored Markdown Extension Notes
 
@@ -169,6 +169,29 @@ Pandoc-style citations using BibTeX keys:
 - Suppress author: `[-@smith2020]`
 
 Citations reference entries in a companion `.bib` file (see [BibTeX Companion File](#bibtex-companion-file) below).
+
+### Grid Tables
+
+Pandoc-style grid tables support multi-line cells that pipe tables cannot represent:
+
+```
++----------+----------+
+| Header 1 | Header 2 |
++==========+==========+
+| Cell 1   | Cell 2   |
+|          | line 2   |
++----------+----------+
+| Cell 3   | Cell 4   |
++----------+----------+
+```
+
+- Column boundaries are defined by `+` positions in the separator line
+- The `=` separator distinguishes header rows from body rows
+- Multiple content lines between separators form a single logical row with multi-line cells
+- Grid tables do not support colspan or rowspan (use HTML tables for spans)
+- On round-trip, grid tables are stored with `sourceFormat: 'grid'` metadata so the format is preserved
+
+When a table with multi-line cells cannot be represented as a pipe table, the converter checks the stored format and emits a grid table if the original was grid, otherwise falls back to HTML.
 
 ### Footnotes
 

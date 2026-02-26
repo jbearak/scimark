@@ -92,6 +92,10 @@ describe('normalizeToUtcIso', () => {
     expect(resultMs).toBeLessThanOrEqual(after + 1000);
   });
 
+  test('converts space-separated date with offset to UTC', () => {
+    expect(normalizeToUtcIso('2025-11-04 12:26-05:00')).toBe('2025-11-04T17:26:00Z');
+  });
+
   test('returns original for unparseable date', () => {
     expect(normalizeToUtcIso('not-a-date')).toBe('not-a-date');
   });

@@ -33,6 +33,7 @@ export interface MdToken {
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
+  sourceFormat?: 'pipe' | 'html' | 'grid'; // original table format for round-trip
 }
 
 export interface MdTableCell {
@@ -985,6 +986,24 @@ export function imageFormatProps(imageFormats: Map<string, string>): CustomPropE
   return props;
 }
 
+export function tableFormatProps(tableFormats: Map<number, string>): CustomPropEntry[] {
+  if (tableFormats.size === 0) return [];
+  const mapping: Record<string, string> = {};
+  for (const [idx, fmt] of tableFormats) {
+    mapping[String(idx)] = fmt;
+  }
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_TABLE_FORMATS_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+
 
 export function parseMd(markdown: string): MdToken[] {
   const md = createMarkdownIt();
@@ -992,7 +1011,8 @@ export function parseMd(markdown: string): MdToken[] {
   // lazy continuation behavior (where a non-`>` line can be absorbed into a
   // preceding blockquote paragraph). For roundtrip fidelity we treat a missing
   // `>` as a hard blockquote boundary
-  const deLazified = deLazifyBlockquotes(markdown);
+  const gridProcessed = preprocessGridTables(markdown);
+  const deLazified = deLazifyBlockquotes(gridProcessed);
   const wrapped = wrapBareLatexEnvironments(deLazified);
   const processed = preprocessCriticMarkup(wrapped);
   const tokens = md.parse(processed, {});
@@ -1060,6 +1080,129 @@ function deLazifyBlockquotes(markdown: string): string {
   }
 
   return out.join('\n');
+}
+
+const GRID_TABLE_SEPARATOR_RE = /^\+[-=]+(\+[-=]+)*\+$/;
+const GRID_TABLE_PLACEHOLDER_PREFIX = '<!-- MANUSCRIPT_GRID_TABLE:';
+
+interface GridTableData {
+  rows: Array<{ cells: string[]; header: boolean }>;
+}
+
+/**
+ * Detect Pandoc-style grid tables in markdown and replace them with
+ * HTML-comment placeholders carrying JSON-encoded table data.
+ * This runs before markdown-it tokenization so the grid table blocks
+ * don't confuse the parser.
+ */
+export function preprocessGridTables(markdown: string): string {
+  const lines = markdown.split('\n');
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    if (GRID_TABLE_SEPARATOR_RE.test(lines[i].trim())) {
+      // Potential grid table start — collect all lines until we leave the table
+      const tableLines: string[] = [];
+      const start = i;
+      while (i < lines.length) {
+        const trimmed = lines[i].trim();
+        if (GRID_TABLE_SEPARATOR_RE.test(trimmed) || (trimmed.startsWith('|') && trimmed.endsWith('|'))) {
+          tableLines.push(lines[i]);
+          i++;
+        } else {
+          break;
+        }
+      }
+
+      // Validate: must start and end with separator, have at least 3 lines
+      if (tableLines.length >= 3 && GRID_TABLE_SEPARATOR_RE.test(tableLines[tableLines.length - 1].trim())) {
+        const parsed = parseGridTable(tableLines);
+        if (parsed && parsed.rows.length > 0) {
+          const json = JSON.stringify(parsed);
+          // Ensure blank lines around the placeholder so markdown-it treats
+          // it as an html_block (Type 2: HTML comment).
+          if (result.length > 0 && result[result.length - 1].trim() !== '') {
+            result.push('');
+          }
+          result.push(GRID_TABLE_PLACEHOLDER_PREFIX + json + ' -->');
+          result.push('');
+          continue;
+        }
+      }
+
+      // Not a valid grid table — emit lines as-is
+      for (let j = start; j < i; j++) {
+        result.push(lines[j]);
+      }
+    } else {
+      result.push(lines[i]);
+      i++;
+    }
+  }
+
+  return result.join('\n');
+}
+
+/**
+ * Parse a block of grid table lines into structured data.
+ * Returns null if the lines don't form a valid grid table.
+ */
+function parseGridTable(lines: string[]): GridTableData | null {
+  // Find column boundaries from the first separator line
+  const firstSep = lines[0].trim();
+  const colBoundaries: number[] = [];
+  for (let c = 0; c < firstSep.length; c++) {
+    if (firstSep[c] === '+') {
+      colBoundaries.push(c);
+    }
+  }
+  if (colBoundaries.length < 2) return null;
+  const numCols = colBoundaries.length - 1;
+
+  // Collect rows: content lines between separator lines form a logical row.
+  // The '=' separator marks all rows above it as header rows.
+  const rows: Array<{ cells: string[]; header: boolean }> = [];
+  let currentContent: string[] = [];
+
+  for (let li = 1; li < lines.length; li++) {
+    const trimmed = lines[li].trim();
+    if (GRID_TABLE_SEPARATOR_RE.test(trimmed)) {
+      // This separator ends the current row
+      if (currentContent.length > 0) {
+        const cells: string[] = [];
+        for (let col = 0; col < numCols; col++) {
+          const left = colBoundaries[col] + 1;
+          const right = colBoundaries[col + 1];
+          const cellLines: string[] = [];
+          for (const contentLine of currentContent) {
+            const raw = contentLine.length >= right
+              ? contentLine.slice(left, right)
+              : contentLine.slice(left);
+            cellLines.push(raw.replace(/^\s*\|?\s*/, '').replace(/\s*$/, ''));
+          }
+          while (cellLines.length > 0 && cellLines[0].trim() === '') cellLines.shift();
+          while (cellLines.length > 0 && cellLines[cellLines.length - 1].trim() === '') cellLines.pop();
+          cells.push(cellLines.join('\n'));
+        }
+        // header=false initially; we'll retroactively mark header rows below
+        rows.push({ cells, header: false });
+      }
+      // If this separator uses '=', all rows above it are header rows
+      if (/=/.test(trimmed)) {
+        for (const row of rows) {
+          row.header = true;
+        }
+      }
+      currentContent = [];
+    } else if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      currentContent.push(lines[li]);
+    } else {
+      return null;
+    }
+  }
+
+  return rows.length > 0 ? { rows } : null;
 }
 
 function stripLeadingAlertMarker(runs: MdRun[]): { alertType?: GfmAlertType; runs: MdRun[] } {
@@ -1250,13 +1393,40 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
         result.push({
           type: 'table',
           runs: [],
-          rows: tableData
+          rows: tableData,
+          sourceFormat: 'pipe',
         });
         i = tableClose + 1;
         break;
       
       case 'html_block': {
         const htmlContent = token.content || '';
+        if (htmlContent.trim().startsWith(GRID_TABLE_PLACEHOLDER_PREFIX)) {
+          const jsonStr = htmlContent.trim().slice(GRID_TABLE_PLACEHOLDER_PREFIX.length, -4); // strip '<!-- MANUSCRIPT_GRID_TABLE:' and ' -->'
+          try {
+            const gridData: GridTableData = JSON.parse(jsonStr);
+            const gridRows: MdTableRow[] = gridData.rows.map(row => ({
+              cells: row.cells.map(cellText => ({
+                runs: cellText ? convertInlineTokens(createMarkdownIt().parseInline(cellText, {})) : [],
+              })),
+              header: row.header,
+            }));
+            result.push({
+              type: 'table',
+              runs: [],
+              rows: gridRows,
+              sourceFormat: 'grid',
+            });
+          } catch {
+            // Invalid JSON — emit as regular HTML comment
+            result.push({
+              type: 'paragraph',
+              runs: [{ type: 'html_comment' as const, text: htmlContent.replace(/\n$/, '') }]
+            });
+          }
+          i++;
+          break;
+        }
         if (/^<!--[\s\S]*?-->\s*$/.test(htmlContent.trim())) {
           result.push({
             type: 'paragraph',
@@ -1300,7 +1470,8 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
                 result.push({
                   type: 'table',
                   runs: [],
-                  rows
+                  rows,
+                  sourceFormat: 'html',
                 });
               }
             }
@@ -2036,6 +2207,8 @@ export interface DocxGenState {
   imageFormats: Map<string, string>; // rId -> syntax ("md" | "html")
   imageExtensions: Set<string>; // collected extensions for content types
   nextImageDocPrId: number;
+  tableIndex: number;
+  tableFormats: Map<number, string>; // table index -> source format ("pipe" | "html" | "grid")
 }
 
 interface CommentEntry {
@@ -2059,7 +2232,7 @@ export function normalizeToUtcIso(dateStr: string, fallbackTz?: string): string 
   if (!dateStr) return stripMillis(new Date().toISOString());
 
   // If the string already has a timezone offset (+ or - after time, or trailing Z), parse directly
-  const hasOffset = /T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})/.test(dateStr);
+  const hasOffset = /[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})/.test(dateStr);
   if (hasOffset) {
     const dt = new Date(dateStr);
     if (!isNaN(dt.getTime())) return stripMillis(dt.toISOString());
@@ -3146,7 +3319,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           options,
           bibEntries,
           citeprocEngine,
-          { highlight: true, highlightColor: run.highlightColor }
+          run.highlight ? { highlight: true, highlightColor: run.highlightColor } : {}
         );
         for (const re of replyEntries) {
           xml += '<w:commentRangeEnd w:id="' + re.replyId + '"/>';
@@ -3782,6 +3955,10 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
       }
     }
     if (token.type === 'table') {
+      if (token.sourceFormat) {
+        state.tableFormats.set(state.tableIndex, token.sourceFormat);
+      }
+      state.tableIndex++;
       body += generateTable(token, state, options, bibEntries, citeprocEngine);
     } else {
       body += generateParagraph(token, state, options, bibEntries, citeprocEngine);
@@ -3967,6 +4144,8 @@ export async function convertMdToDocx(
     imageFormats: new Map(),
     imageExtensions: new Set(),
     nextImageDocPrId: 1,
+    tableIndex: 0,
+    tableFormats: new Map(),
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -4129,6 +4308,7 @@ export async function convertMdToDocx(
   customProps.push(...blockquoteGapProps(state.blockquoteGaps));
   customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
   customProps.push(...imageFormatProps(state.imageFormats));
+  customProps.push(...tableFormatProps(state.tableFormats));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {
     zip.file('docProps/custom.xml', customPropsXml(customProps));

@@ -727,6 +727,122 @@ describe('Integration: tables.docx fixture', () => {
   });
 });
 
+describe('Table format metadata round-trip', () => {
+  test('HTML table format is preserved through MD→DOCX→MD', async () => {
+    const htmlTableMd = '<table>\n<tr><th>H1</th><th>H2</th></tr>\n<tr><td>A</td><td>B</td></tr>\n</table>';
+    const { docx } = await convertMdToDocx(htmlTableMd);
+    const result = await convertDocx(docx);
+    // HTML-sourced table should remain HTML on round-trip
+    expect(result.markdown).toContain('<table>');
+    expect(result.markdown).toContain('H1');
+  });
+
+  test('pipe table format is preserved through MD→DOCX→MD', async () => {
+    const pipeMd = '| H1 | H2 |\n| --- | --- |\n| A | B |';
+    const { docx } = await convertMdToDocx(pipeMd);
+    const result = await convertDocx(docx);
+    // Pipe-sourced table should remain pipe on round-trip
+    expect(result.markdown).toContain('| --- |');
+    expect(result.markdown).toContain('| A |');
+    expect(result.markdown).not.toContain('<table>');
+  });
+});
+
+describe('Grid table renderer', () => {
+  test('grid table is produced for multi-line cells when format is grid', async () => {
+    // Build a table with multi-line cells using HTML (which supports multiple paragraphs)
+    const htmlMd = [
+      '<table>',
+      '<tr><th>Header 1</th><th>Header 2</th></tr>',
+      '<tr><td><p>Line 1</p><p>Line 2</p></td><td>Single</td></tr>',
+      '</table>',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(htmlMd);
+    // Override the stored format to 'grid' for this test
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    // Replace the stored table format from 'html' to 'grid'
+    const customXml = await zip.file('docProps/custom.xml')?.async('string') || '';
+    const updatedXml = customXml.replace(
+      '&quot;html&quot;',
+      '&quot;grid&quot;'
+    );
+    zip.file('docProps/custom.xml', updatedXml);
+    const modifiedDocx = await zip.generateAsync({ type: 'uint8array' });
+
+    const result = await convertDocx(modifiedDocx);
+    // Grid table should have + separators and | cell boundaries
+    expect(result.markdown).toContain('+');
+    expect(result.markdown).toContain('|');
+    // Multi-line cell should appear
+    expect(result.markdown).toContain('Line 1');
+    expect(result.markdown).toContain('Line 2');
+    // Should NOT be an HTML table
+    expect(result.markdown).not.toContain('<table>');
+  });
+
+  test('buildMarkdown renders grid table with header separator', () => {
+    const content: ContentItem[] = [
+      {
+        type: 'table',
+        rows: [
+          { isHeader: true, cells: [{ paragraphs: [[{ type: 'text', text: 'H1', commentIds: new Set(), formatting: DEFAULT_FORMATTING }]] }, { paragraphs: [[{ type: 'text', text: 'H2', commentIds: new Set(), formatting: DEFAULT_FORMATTING }]] }] },
+          { isHeader: false, cells: [{ paragraphs: [[{ type: 'text', text: 'A', commentIds: new Set(), formatting: DEFAULT_FORMATTING }], [{ type: 'text', text: 'B', commentIds: new Set(), formatting: DEFAULT_FORMATTING }]] }, { paragraphs: [[{ type: 'text', text: 'C', commentIds: new Set(), formatting: DEFAULT_FORMATTING }]] }] },
+        ],
+      },
+    ];
+    // Force grid format via tableFormatMapping
+    const tableFormatMapping = new Map([['0', 'grid']]);
+    const md = buildMarkdown(content, new Map(), { pipeTableMaxLineWidth: 0, tableFormatMapping });
+    // Should have grid separators
+    expect(md).toContain('+');
+    expect(md).toContain('| H1');
+    expect(md).toContain('| A');
+    expect(md).toContain('| B');
+    // Header row should use = separator
+    expect(md).toMatch(/\+=+\+/);
+    // Body rows should use - separator
+    expect(md).toMatch(/\+-+\+/);
+  });
+});
+
+describe('Grid table round-trip', () => {
+  test('grid table with multi-line cells round-trips through MD→DOCX→MD', async () => {
+    const gridMd = [
+      '+----------+----------+',
+      '| Header 1 | Header 2 |',
+      '+==========+==========+',
+      '| Cell 1   | Cell 2   |',
+      '|          | line 2   |',
+      '+----------+----------+',
+      '| Cell 3   | Cell 4   |',
+      '+----------+----------+',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(gridMd);
+    const result = await convertDocx(docx);
+    // Should produce a grid table (not HTML)
+    expect(result.markdown).toContain('+');
+    expect(result.markdown).toContain('Header 1');
+    expect(result.markdown).toContain('Cell 2');
+    expect(result.markdown).toContain('line 2');
+    expect(result.markdown).not.toContain('<table>');
+  });
+
+  test('simple grid table without multi-line cells produces pipe table', async () => {
+    const gridMd = [
+      '+------+------+',
+      '| H1   | H2   |',
+      '+======+======+',
+      '| A    | B    |',
+      '+------+------+',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(gridMd);
+    const result = await convertDocx(docx);
+    // Single-line cells: pipe table is preferred
+    expect(result.markdown).toContain('| --- |');
+  });
+});
+
 describe('extractZoteroCitations', () => {
   test('extracts Zotero citations in document order', async () => {
     const citations = await extractZoteroCitations(sampleData);

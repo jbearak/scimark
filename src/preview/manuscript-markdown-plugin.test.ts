@@ -1343,3 +1343,35 @@ describe('Stylesheet declaration', () => {
     expect(cssContent).toContain('.manuscript-markdown-highlight');
   });
 });
+
+describe('Grid table preview', () => {
+  it('renders grid table as HTML table', () => {
+    const gridMd = [
+      '+------+------+',
+      '| H1   | H2   |',
+      '+======+======+',
+      '| A    | B    |',
+      '+------+------+',
+    ].join('\n');
+    const html = renderWithPlugin(gridMd);
+    expect(html).toContain('<table>');
+    expect(html).toContain('<th>');
+    expect(html).toContain('H1');
+    expect(html).toContain('<td>');
+    expect(html).toContain('A');
+  });
+
+  it('renders grid table without header', () => {
+    const gridMd = [
+      '+------+------+',
+      '| A    | B    |',
+      '+------+------+',
+      '| C    | D    |',
+      '+------+------+',
+    ].join('\n');
+    const html = renderWithPlugin(gridMd);
+    expect(html).toContain('<table>');
+    expect(html).toContain('A');
+    expect(html).toContain('D');
+  });
+});

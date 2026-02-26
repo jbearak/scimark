@@ -961,6 +961,10 @@ export async function extractCodeBlockStyling(data: Uint8Array | JSZip): Promise
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_CODE_BLOCK_STYLING');
 }
 
+export async function extractTableFormatMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_TABLE_FORMATS');
+}
+
 export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Promise<number | null> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
   const parsed = await readZipXml(zip, 'docProps/custom.xml');
@@ -2761,7 +2765,7 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
   return lines.join('\n');
 }
 
-type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string> };
+type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string>; tableFormatMapping?: Map<string, string> };
 
 // East Asian Wide / Fullwidth code-point ranges (UAX #11).  Characters in
 // these ranges occupy two terminal columns; everything else is treated as
@@ -2948,16 +2952,148 @@ function stripAlertLeadPrefix(text: string, alertType: GfmAlertType): string {
 
 
 /** Render a table as a GFM pipe table if possible, otherwise fall back to HTML. */
+function tryRenderGridTable(
+  table: { rows: TableRow[] },
+  comments: Map<string, Comment>,
+  renderOpts?: RenderOpts,
+): string | null {
+  const rows = table.rows;
+  if (rows.length === 0) return null;
+
+  // Grid tables don't support colspan/rowspan
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if (cell.colspan && cell.colspan > 1) return null;
+      if (cell.rowspan && cell.rowspan > 1) return null;
+    }
+  }
+
+  const numCols = Math.max(...rows.map(r => r.cells.length));
+
+  // Snapshot emittedIdCommentBodies for rollback
+  const emittedSnapshot = renderOpts?.emittedIdCommentBodies
+    ? new Set(renderOpts.emittedIdCommentBodies) : undefined;
+  const rollback = () => {
+    if (emittedSnapshot && renderOpts?.emittedIdCommentBodies) {
+      renderOpts.emittedIdCommentBodies.clear();
+      for (const v of emittedSnapshot) renderOpts.emittedIdCommentBodies.add(v);
+    }
+  };
+
+  // Render all cells: each cell may have multiple paragraphs → multiple lines
+  const rendered: { lines: string[]; deferred: string[] }[][] = [];
+  for (const row of rows) {
+    const rowCells: { lines: string[]; deferred: string[] }[] = [];
+    for (const cell of row.cells) {
+      const cellLines: string[] = [];
+      const cellDeferred: string[] = [];
+      for (const para of cell.paragraphs) {
+        const r = renderInlineSegment(mergeConsecutiveRuns(para), comments, renderOpts);
+        // Split on newlines within a paragraph (e.g. hard breaks)
+        cellLines.push(...r.text.split('\n'));
+        cellDeferred.push(...r.deferredComments);
+      }
+      if (cellLines.length === 0) cellLines.push('');
+      rowCells.push({ lines: cellLines, deferred: cellDeferred });
+    }
+    // Pad to numCols
+    while (rowCells.length < numCols) {
+      rowCells.push({ lines: [''], deferred: [] });
+    }
+    rendered.push(rowCells);
+  }
+
+  // Compute column widths (minimum 3 for separator dashes)
+  const colWidths: number[] = Array(numCols).fill(3);
+  for (const rowCells of rendered) {
+    for (let c = 0; c < numCols; c++) {
+      for (const line of rowCells[c].lines) {
+        const w = getDisplayWidth(line);
+        if (w > colWidths[c]) colWidths[c] = w;
+      }
+    }
+  }
+
+  // Build separator line
+  const makeSep = (ch: string) =>
+    '+' + colWidths.map(w => ch.repeat(w + 2)).join('+') + '+';
+
+  const normalSep = makeSep('-');
+  const headerSep = makeSep('=');
+
+  // Find header boundary
+  const headerEnd = rows.findIndex(r => !r.isHeader);
+  const hasHeader = headerEnd > 0;
+
+  // Build output lines
+  const lines: string[] = [];
+  const deferredAll: string[] = [];
+
+  lines.push(normalSep);
+
+  for (let ri = 0; ri < rendered.length; ri++) {
+    const rowCells = rendered[ri];
+    // Number of content lines in this row
+    const rowHeight = Math.max(...rowCells.map(c => c.lines.length));
+
+    for (let li = 0; li < rowHeight; li++) {
+      let line = '|';
+      for (let c = 0; c < numCols; c++) {
+        const text = rowCells[c].lines[li] || '';
+        const pad = colWidths[c] - getDisplayWidth(text);
+        line += ' ' + text + ' '.repeat(pad + 1) + '|';
+      }
+      lines.push(line);
+    }
+
+    for (const cell of rowCells) {
+      deferredAll.push(...cell.deferred);
+    }
+
+    // Separator after row
+    if (hasHeader && ri === headerEnd - 1) {
+      lines.push(headerSep);
+    } else {
+      lines.push(normalSep);
+    }
+  }
+
+  // If something went wrong with rendering, rollback
+  if (lines.length <= 2) {
+    rollback();
+    return null;
+  }
+
+  let result = lines.join('\n');
+  if (deferredAll.length > 0) {
+    result += '\n' + deferredAll.join('\n');
+  }
+  return result;
+}
+
 function renderTableOrFallback(
   item: { rows: TableRow[] },
   comments: Map<string, Comment>,
   options?: { pipeTableMaxLineWidth?: number; tableIndent?: string },
   renderOpts?: RenderOpts,
+  storedFormat?: string,
 ): string {
+  // If the original format was HTML, emit HTML directly
+  if (storedFormat === 'html') {
+    return renderHtmlTable(item, comments, options?.tableIndent, renderOpts);
+  }
   const pipeMax = options?.pipeTableMaxLineWidth ?? 120;
+  // Try pipe table first (for pipe and grid source formats, or unknown)
   const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts);
   if (pipeResult !== null) {
     return pipeResult;
+  }
+  // If original was grid, try grid table before falling back to HTML
+  if (storedFormat === 'grid') {
+    const gridResult = tryRenderGridTable(item, comments, renderOpts);
+    if (gridResult !== null) {
+      return gridResult;
+    }
   }
   return renderHtmlTable(item, comments, options?.tableIndent, renderOpts);
 }
@@ -2965,7 +3101,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3080,10 +3216,12 @@ export function buildMarkdown(
     emittedIdCommentBodies,
     noteLabels,
     imageFormatMapping: options?.imageFormatMapping ?? undefined,
+    tableFormatMapping: options?.tableFormatMapping ?? undefined,
   };
 
   const output: string[] = [];
   let i = 0;
+  let tableIndex = 0;
   let lastListType: 'bullet' | 'ordered' | undefined;
   let codeBlockGroupIndex = 0;
   let lastAlertParagraphKey: string | undefined;
@@ -3367,7 +3505,9 @@ export function buildMarkdown(
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
-      output.push(renderTableOrFallback(item, comments, options, renderOpts));
+      const storedFormat = renderOpts?.tableFormatMapping?.get(String(tableIndex));
+      output.push(renderTableOrFallback(item, comments, options, renderOpts, storedFormat));
+      tableIndex++;
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
       pendingAlertPrefixStrip = undefined;
@@ -3506,7 +3646,7 @@ export function formatLocalIsoMinute(ts: string): string {
   }
   const pad = (n: number) => String(n).padStart(2, '0');
   const offsetMinutes = -dt.getTimezoneOffset();
-  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}${formatOffsetString(offsetMinutes)}`;
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}${formatOffsetString(offsetMinutes)}`;
 }
 
 export function getLocalTimezoneOffset(): string {
@@ -3832,7 +3972,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, storedPipeTableMaxLineWidth] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -3845,6 +3985,7 @@ export async function convertDocx(
     extractBlockquoteGapMapping(zip),
     extractBlockquoteAlertStyleMapping(zip),
     extractImageFormatMapping(zip),
+    extractTableFormatMapping(zip),
     extractPipeTableMaxLineWidth(zip),
   ]);
 
@@ -3954,6 +4095,7 @@ export async function convertDocx(
     blockquoteGaps: blockquoteGapMapping,
     blockquoteAlertInlineByGroup: blockquoteAlertStyleMapping,
     imageFormatMapping,
+    tableFormatMapping,
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)

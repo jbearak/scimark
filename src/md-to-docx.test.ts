@@ -10,6 +10,7 @@ import {
   parseMd,
   extractFootnoteDefinitions,
   preprocessCriticMarkup,
+  preprocessGridTables,
   stylesXml,
   applyAlertColorsToTemplate,
   type MdRun,
@@ -48,6 +49,17 @@ function makeState(): DocxGenState {
     citationIds: new Set(),
     citedKeys: new Set(),
     citationItemIds: new Map(),
+    blockquoteGaps: new Map(),
+    blockquotePostContentBlankLines: new Map(),
+    blockquoteAlertMarkerInlineByGroup: new Map(),
+    imageRelationships: new Map(),
+    imageMediaPaths: new Map(),
+    imageBinaries: new Map(),
+    imageFormats: new Map(),
+    imageExtensions: new Set(),
+    nextImageDocPrId: 1,
+    tableIndex: 0,
+    tableFormats: new Map(),
   };
 }
 
@@ -283,6 +295,62 @@ describe('parseMd HTML tables', () => {
     const table = tokens.find(t => t.type === 'table');
     expect(table?.rows?.[0].cells[0].colspan).toBeUndefined();
     expect(table?.rows?.[0].cells[0].rowspan).toBeUndefined();
+  });
+});
+
+describe('parseMd grid tables', () => {
+  it('parses a grid table with header', () => {
+    const markdown = [
+      '+------+------+',
+      '| H1   | H2   |',
+      '+======+======+',
+      '| A    | B    |',
+      '+------+------+',
+    ].join('\n');
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+
+    expect(table).toBeDefined();
+    expect(table?.sourceFormat).toBe('grid');
+    expect(table?.rows).toHaveLength(2);
+    expect(table?.rows?.[0].header).toBe(true);
+    expect(table?.rows?.[0].cells[0].runs[0].text).toBe('H1');
+    expect(table?.rows?.[1].header).toBe(false);
+    expect(table?.rows?.[1].cells[1].runs[0].text).toBe('B');
+  });
+
+  it('parses multi-line cells in grid tables', () => {
+    const markdown = [
+      '+----------+----------+',
+      '| Header 1 | Header 2 |',
+      '+==========+==========+',
+      '| Cell 1   | Cell 2   |',
+      '|          | line 2   |',
+      '+----------+----------+',
+    ].join('\n');
+    const tokens = parseMd(markdown);
+    const table = tokens.find(t => t.type === 'table');
+
+    expect(table).toBeDefined();
+    expect(table?.rows).toHaveLength(2);
+    // Multi-line cell: runs should contain the text
+    const bodyRow = table?.rows?.[1];
+    expect(bodyRow?.cells).toHaveLength(2);
+  });
+
+  it('preprocessGridTables replaces grid tables with placeholders', () => {
+    const markdown = 'Before\n\n+------+------+\n| H1   | H2   |\n+======+======+\n| A    | B    |\n+------+------+\n\nAfter';
+    const result = preprocessGridTables(markdown);
+    expect(result).toContain('<!-- MANUSCRIPT_GRID_TABLE:');
+    expect(result).toContain('Before');
+    expect(result).toContain('After');
+    expect(result).not.toContain('+------+');
+  });
+
+  it('leaves non-grid-table content unchanged', () => {
+    const markdown = '| H1 | H2 |\n| --- | --- |\n| A | B |';
+    const result = preprocessGridTables(markdown);
+    expect(result).toBe(markdown);
   });
 });
 
