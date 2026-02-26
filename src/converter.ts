@@ -1923,7 +1923,7 @@ export async function extractDocumentContent(
               }
               if (!found) {
                 // Zero-width comment range: emit a synthetic empty text item
-                target.push({ type: 'text', text: '', formatting: {}, commentIds: new Set(activeComments), href: undefined });
+                target.push({ type: 'text', text: '', formatting: currentFormatting, commentIds: new Set(activeComments), href: undefined });
               }
             }
             commentStartTargetIndex.delete(id);
