@@ -448,6 +448,16 @@ describe('DOCX→MD→DOCX roundtrip', () => {
     // Should not contain "Sources" heading either
     expect(mdResult.markdown).not.toMatch(/^#+\s*Sources/m);
   });
+
+  test('bibliography does not add trailing blank lines on round-trip', async () => {
+    const md = '---\ncsl: apa\n---\n\nHello [@smith2020effects].\n\n<!-- end -->';
+    const docxResult = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+
+    const mdResult = await convertDocx(docxResult.docx);
+    // Should end with exactly one trailing newline (POSIX), not two
+    expect(mdResult.markdown).toMatch(/<!-- end -->\n$/);
+    expect(mdResult.markdown).not.toMatch(/<!-- end -->\n\n$/);
+  });
 });
 
 // ============================================================================

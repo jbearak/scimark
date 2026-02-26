@@ -2127,6 +2127,14 @@ export async function extractDocumentContent(
             continue; // skip spacer paragraph entirely
           }
 
+          // Skip paragraphs inside bibliography field — text is already suppressed,
+          // but we must also suppress the para markers to avoid trailing blank lines.
+          if (inBibliographyField) {
+            // Still need to walk children so field end markers are processed
+            walk(paraChildren, paraFormatting, target, inTableCell, currentRevision);
+            continue;
+          }
+
           // Always push a new para when heading/list/title/blockquote/codeblock metadata is present (so metadata
           // isn't silently dropped after empty paragraphs).  For plain paragraphs,
           // push only when the previous item isn't already a plain para separator.
@@ -2145,6 +2153,7 @@ export async function extractDocumentContent(
             ? true
             : target.length > 0 && (prevItem!.type !== 'para' || prevIsCodeBlockPara || prevIsStructuralPara);
 
+          const targetLenBeforePara = target.length;
           if (needsPara) {
             const paraItem: ContentItem = { type: 'para' };
             if (headingLevel) paraItem.headingLevel = headingLevel;
@@ -2156,6 +2165,12 @@ export async function extractDocumentContent(
             target.push(paraItem);
           }
           walk(paraChildren, paraFormatting, target, inTableCell, currentRevision);
+          // If walking this paragraph's children entered a bibliography field
+          // (i.e. the field-begin + separate markers were in this paragraph),
+          // remove the para we just pushed — it would become a trailing blank line.
+          if (inBibliographyField && needsPara && target.length > targetLenBeforePara) {
+            target.splice(targetLenBeforePara, 1);
+          }
         } else if (key === 'm:oMathPara') {
           // Display equation — extract m:oMath children from within
           const mathParaChildren = Array.isArray(node[key]) ? node[key] : [node[key]];
