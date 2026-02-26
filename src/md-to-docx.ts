@@ -745,26 +745,26 @@ export function detectListIndent(markdown: string): 'tab' | 'spaces' {
   const tabAfterMarker = /^[-*+]\t/m.test(markdown) || /^\d+\.\t/m.test(markdown);
   return (tabIndented || tabAfterMarker) ? 'tab' : 'spaces';
 }
+function parseBlockquoteLevel(line: string): number {
+  const stripped = line.replace(/^ {0,3}/, '');
+  let level = 0;
+  let j = 0;
+  while (j < stripped.length) {
+    if (stripped[j] === '>') {
+      level++;
+      j++;
+      if (stripped[j] === ' ') j++;
+      continue;
+    }
+    break;
+  }
+  return level;
+}
 
 export function computeBlockquoteGaps(markdown: string): Map<number, number> {
   const gaps = new Map<number, number>();
   const lines = markdown.split('\n');
   const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
-  const blockquoteLevel = (line: string): number => {
-    const stripped = line.replace(/^ {0,3}/, '');
-    let level = 0;
-    let j = 0;
-    while (j < stripped.length) {
-      if (stripped[j] === '>') {
-        level++;
-        j++;
-        if (stripped[j] === ' ') j++;
-        continue;
-      }
-      break;
-    }
-    return level;
-  };
 
   // Identify blockquote group spans (start/end line indices).
   // A new group starts when: (a) a '>' line follows a non-'>' line, or
@@ -777,10 +777,10 @@ export function computeBlockquoteGaps(markdown: string): Map<number, number> {
       const runStart = i;
       // First line of a contiguous '>' run always starts a group
       let groupStart = i;
-      let groupLevel = blockquoteLevel(lines[i]);
+      let groupLevel = parseBlockquoteLevel(lines[i]);
       i++;
       while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
-        const level = blockquoteLevel(lines[i]);
+        const level = parseBlockquoteLevel(lines[i]);
         const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
         const levelChanged = level !== groupLevel;
         if (startsAlertGroup || levelChanged) {
@@ -827,21 +827,6 @@ export function computeBlockquotePostContentBlankLines(markdown: string): Map<nu
   const blanksByGroup = new Map<number, number>();
   const lines = markdown.split('\n');
   const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
-  const blockquoteLevel = (line: string): number => {
-    const stripped = line.replace(/^ {0,3}/, '');
-    let level = 0;
-    let j = 0;
-    while (j < stripped.length) {
-      if (stripped[j] === '>') {
-        level++;
-        j++;
-        if (stripped[j] === ' ') j++;
-        continue;
-      }
-      break;
-    }
-    return level;
-  };
 
   const groups: Array<{ start: number; end: number }> = [];
   let i = 0;
@@ -849,10 +834,10 @@ export function computeBlockquotePostContentBlankLines(markdown: string): Map<nu
     if (/^ {0,3}>/.test(lines[i])) {
       const runStart = i;
       let groupStart = i;
-      let groupLevel = blockquoteLevel(lines[i]);
+      let groupLevel = parseBlockquoteLevel(lines[i]);
       i++;
       while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
-        const level = blockquoteLevel(lines[i]);
+        const level = parseBlockquoteLevel(lines[i]);
         const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
         const levelChanged = level !== groupLevel;
         if (startsAlertGroup || levelChanged) {
@@ -891,21 +876,6 @@ export function computeBlockquoteAlertMarkerInlineByGroup(markdown: string): Map
   const inlineByGroup = new Map<number, boolean>();
   const lines = markdown.split('\n');
   const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](.*)$/i;
-  const blockquoteLevel = (line: string): number => {
-    const stripped = line.replace(/^ {0,3}/, '');
-    let level = 0;
-    let j = 0;
-    while (j < stripped.length) {
-      if (stripped[j] === '>') {
-        level++;
-        j++;
-        if (stripped[j] === ' ') j++;
-        continue;
-      }
-      break;
-    }
-    return level;
-  };
 
   let groupIndex = 0;
   let i = 0;
@@ -913,10 +883,10 @@ export function computeBlockquoteAlertMarkerInlineByGroup(markdown: string): Map
     if (/^ {0,3}>/.test(lines[i])) {
       const runStart = i;
       let groupStart = i;
-      let groupLevel = blockquoteLevel(lines[i]);
+      let groupLevel = parseBlockquoteLevel(lines[i]);
       i++;
       while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
-        const level = blockquoteLevel(lines[i]);
+        const level = parseBlockquoteLevel(lines[i]);
         const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
         const levelChanged = level !== groupLevel;
         if (startsAlertGroup || levelChanged) {
@@ -978,21 +948,6 @@ export function computeBlockquotePreContentBlankLines(markdown: string): Map<num
   const blanksByGroup = new Map<number, number>();
   const lines = markdown.split('\n');
   const alertMarkerRe = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
-  const blockquoteLevel = (line: string): number => {
-    const stripped = line.replace(/^ {0,3}/, '');
-    let level = 0;
-    let j = 0;
-    while (j < stripped.length) {
-      if (stripped[j] === '>') {
-        level++;
-        j++;
-        if (stripped[j] === ' ') j++;
-        continue;
-      }
-      break;
-    }
-    return level;
-  };
 
   const groups: Array<{ start: number; end: number }> = [];
   let i = 0;
@@ -1000,10 +955,10 @@ export function computeBlockquotePreContentBlankLines(markdown: string): Map<num
     if (/^ {0,3}>/.test(lines[i])) {
       const runStart = i;
       let groupStart = i;
-      let groupLevel = blockquoteLevel(lines[i]);
+      let groupLevel = parseBlockquoteLevel(lines[i]);
       i++;
       while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
-        const level = blockquoteLevel(lines[i]);
+        const level = parseBlockquoteLevel(lines[i]);
         const startsAlertGroup = alertMarkerRe.test(lines[i]) && i > runStart;
         const levelChanged = level !== groupLevel;
         if (startsAlertGroup || levelChanged) {
