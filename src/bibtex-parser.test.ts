@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { parseBibtex, serializeBibtex, stripOuterBraces, mergeBibtex, BibtexEntry } from './bibtex-parser';
+import { parseBibtex, serializeBibtex, stripOuterBraces, mergeBibtex, extractRawField, spliceFieldsIntoEntry, BibtexEntry } from './bibtex-parser';
 
 describe('BibTeX Parser', () => {
   it('parses basic entry', () => {
@@ -315,5 +315,78 @@ describe('mergeBibtex', () => {
     const produced = '@article{key1,\n  title = {Title},\n  year = {2020}\n}';
     const result = mergeBibtex('', produced);
     expect(result).toBe(produced);
+  });
+});
+
+describe('extractRawField', () => {
+  it('extracts double-braced value', () => {
+    const entry = '@article{k,\n  title = {{My Title}},\n  year = {2020}\n}';
+    const result = extractRawField(entry, 'title');
+    expect(result).toBe('  title = {{My Title}},');
+  });
+
+  it('extracts quoted value', () => {
+    const entry = '@article{k,\n  title = "My Title",\n  year = {2020}\n}';
+    const result = extractRawField(entry, 'title');
+    expect(result).toBe('  title = "My Title",');
+  });
+
+  it('extracts bare numeric value', () => {
+    const entry = '@article{k,\n  title = {Title},\n  year = 2020,\n  author = {Doe}\n}';
+    const result = extractRawField(entry, 'year');
+    expect(result).toBe('  year = 2020,');
+  });
+
+  it('returns null when field is not present', () => {
+    const entry = '@article{k,\n  title = {Title},\n  year = {2020}\n}';
+    expect(extractRawField(entry, 'abstract')).toBeNull();
+  });
+
+  it('extracts multi-line brace-delimited value', () => {
+    const entry = '@article{k,\n  abstract = {Line one\nLine two\nLine three},\n  year = {2020}\n}';
+    const result = extractRawField(entry, 'abstract');
+    expect(result).toBe('  abstract = {Line one\nLine two\nLine three},');
+  });
+
+  it('handles escaped braces in brace-delimited value', () => {
+    const entry = '@article{k,\n  title = {A \\{special\\} title},\n  year = {2020}\n}';
+    const result = extractRawField(entry, 'title');
+    expect(result).toBe('  title = {A \\{special\\} title},');
+  });
+});
+
+describe('spliceFieldsIntoEntry', () => {
+  it('splices a single field before closing brace', () => {
+    const entry = '@article{k,\n  title = {Title}\n}';
+    const result = spliceFieldsIntoEntry(entry, ['  year = {2020}']);
+    expect(result).toContain('title = {Title}');
+    expect(result).toContain('year = {2020}');
+    expect(result).toEndWith('\n}');
+  });
+
+  it('adds trailing comma to last produced field when missing', () => {
+    const entry = '@article{k,\n  title = {Title}\n}';
+    const result = spliceFieldsIntoEntry(entry, ['  year = {2020}']);
+    // The produced entry's last field "title = {Title}" should get a comma added
+    expect(result).toContain('title = {Title},');
+  });
+
+  it('is a no-op when fieldTexts is empty', () => {
+    const entry = '@article{k,\n  title = {Title}\n}';
+    expect(spliceFieldsIntoEntry(entry, [])).toBe(entry);
+  });
+
+  it('handles entry with trailing comma on last field', () => {
+    const entry = '@article{k,\n  title = {Title},\n}';
+    const result = spliceFieldsIntoEntry(entry, ['  year = {2020}']);
+    expect(result).toContain('year = {2020}');
+    expect(result).toEndWith('\n}');
+  });
+
+  it('strips trailing comma from last spliced field', () => {
+    const entry = '@article{k,\n  title = {Title}\n}';
+    const result = spliceFieldsIntoEntry(entry, ['  abstract = {An abstract},', '  year = {2020},']);
+    // Last spliced field should not end with comma
+    expect(result).toContain('year = {2020}\n}');
   });
 });

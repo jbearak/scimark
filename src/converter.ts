@@ -4483,7 +4483,8 @@ export async function convertDocx(
     bibtex = generateBibTeX(zoteroCitations, keyMap);
   }
 
-  // Post-processing: merge with on-disk .bib — preserves all existing entries/fields
+  // Post-processing: merge with on-disk .bib — preserves all existing entries/fields.
+  // Length check is a fast-path skip; mergeBibtex handles whitespace-only gracefully.
   if (options?.existingBibtex && options.existingBibtex.length > 0) {
     bibtex = mergeBibtex(options.existingBibtex, bibtex);
   }
