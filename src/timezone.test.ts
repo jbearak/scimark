@@ -83,13 +83,8 @@ describe('normalizeToUtcIso', () => {
     expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   });
 
-  test('returns current time for empty string', () => {
-    const before = Date.now();
-    const result = normalizeToUtcIso('');
-    const after = Date.now();
-    const resultMs = new Date(result).getTime();
-    expect(resultMs).toBeGreaterThanOrEqual(before - 1000);
-    expect(resultMs).toBeLessThanOrEqual(after + 1000);
+  test('returns empty string for empty input', () => {
+    expect(normalizeToUtcIso('')).toBe('');
   });
 
   test('converts space-separated date with offset to UTC', () => {

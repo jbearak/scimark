@@ -30,6 +30,8 @@ export interface MdToken {
   alertLast?: boolean;      // last paragraph in an alert block (for spacing)
   blockquoteGroupIndex?: number; // sequential index of the blockquote group this token belongs to
   trailingBlankLine?: boolean;   // for code blocks: blank line follows in source markdown
+  blankLinesBefore?: number;     // for HTML comments: blank lines before this token in source
+  htmlCommentIndex?: number;     // sequential index of HTML comment paragraphs
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
   language?: string;        // for code blocks
@@ -720,7 +722,9 @@ function annotateBlockquoteBoundaries(tokens: MdToken[]): void {
 export function detectListIndent(markdown: string): 'tab' | 'spaces' {
   // Look for nested list items (lines starting with tab followed by - or *)
   const tabIndented = /^\t+[-*+] /m.test(markdown) || /^\t+\d+\. /m.test(markdown);
-  return tabIndented ? 'tab' : 'spaces';
+  // Also detect tab after marker at top-level: `-\t` or `1.\t`
+  const tabAfterMarker = /^[-*+]\t/m.test(markdown) || /^\d+\.\t/m.test(markdown);
+  return (tabIndented || tabAfterMarker) ? 'tab' : 'spaces';
 }
 
 export function computeBlockquoteGaps(markdown: string): Map<number, number> {
@@ -1435,8 +1439,20 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0): MdTok
           break;
         }
         if (/^<!--[\s\S]*?-->\s*$/.test(htmlContent.trim())) {
+          // Compute blank lines before this HTML comment using token.map
+          const thisStart = token.map?.[0] ?? 0;
+          // Find previous token's end line — scan backwards through markdown-it tokens
+          let prevEnd = 0;
+          for (let pi = i - 1; pi >= 0; pi--) {
+            if (tokens[pi].map) {
+              prevEnd = tokens[pi].map[1];
+              break;
+            }
+          }
+          const blankLines = Math.max(0, thisStart - prevEnd);
           result.push({
             type: 'paragraph',
+            blankLinesBefore: blankLines > 0 ? blankLines : undefined,
             runs: [{ type: 'html_comment' as const, text: htmlContent.replace(/\n$/, '') }]
           });
         } else if (isGfmDisallowedRawHtml(htmlContent)) {
@@ -2218,6 +2234,7 @@ export interface DocxGenState {
   tableFormats: Map<number, string>; // table index -> source format ("pipe" | "html" | "grid")
   listIndent: 'tab' | 'spaces'; // indentation style for nested list items
   consecutiveReplyParaIds: Set<string>; // parent paraIds whose replies were in consecutive format
+  htmlCommentGaps: Map<number, number>; // blank-line-before count per HTML comment index (non-default only)
 }
 
 interface CommentEntry {
@@ -2238,7 +2255,7 @@ interface CommentEntry {
  * - Already UTC ISO: returned as-is
  */
 export function normalizeToUtcIso(dateStr: string, fallbackTz?: string): string {
-  if (!dateStr) return stripMillis(new Date().toISOString());
+  if (!dateStr) return '';
 
   // If the string already has a timezone offset (+ or - after time, or trailing Z), parse directly
   const hasOffset = /[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})/.test(dateStr);
@@ -3126,6 +3143,44 @@ function frontmatterBlankLineProps(count: number): CustomPropEntry[] {
   return [{ name: 'MANUSCRIPT_FRONTMATTER_BLANK_LINES', value: String(count) }];
 }
 
+/** Assign sequential htmlCommentIndex to each HTML comment token and return
+ *  a map from index → blankLinesBefore count (only for non-default values). */
+export function annotateHtmlCommentIndices(tokens: MdToken[]): Map<number, number> {
+  const gaps = new Map<number, number>();
+  let idx = 0;
+  for (const token of tokens) {
+    const isHtmlComment = token.type === 'paragraph'
+      && token.runs.length === 1
+      && token.runs[0].type === 'html_comment';
+    if (isHtmlComment) {
+      token.htmlCommentIndex = idx;
+      if (token.blankLinesBefore !== undefined && token.blankLinesBefore !== 1) {
+        gaps.set(idx, token.blankLinesBefore);
+      }
+      idx++;
+    }
+  }
+  return gaps;
+}
+
+function htmlCommentGapProps(gaps: Map<number, number>): CustomPropEntry[] {
+  if (gaps.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, count] of gaps) {
+    mapping[String(index)] = count;
+  }
+  const mappingJson = JSON.stringify(mapping);
+  const CHUNK_SIZE = 240;
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
+    props.push({
+      name: 'MANUSCRIPT_HTML_COMMENT_GAPS_' + (props.length + 1),
+      value: mappingJson.slice(i, i + CHUNK_SIZE),
+    });
+  }
+  return props;
+}
+
 function documentRelsXml(relationships: Map<string, string>, hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageRelationships?: Map<string, { rId: string; mediaPath: string }>): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
@@ -3298,20 +3353,23 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
     } else if (run.type === 'critic_add') {
       const author = run.author || options?.authorName || 'Unknown';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
+      const dateAttr = date ? ' w:date="' + escapeXml(date) + '"' : '';
       const contentXml = generateInlineCriticContent(run.innerRuns, run.text, run, state, options, bibEntries, citeprocEngine);
-      xml += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + contentXml + '</w:ins>';
+      xml += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + contentXml + '</w:ins>';
     } else if (run.type === 'critic_del') {
       const author = run.author || options?.authorName || 'Unknown';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
+      const dateAttr = date ? ' w:date="' + escapeXml(date) + '"' : '';
       const deletedXml = generateDeletedCriticContent(run.innerRuns, run.text, run);
-      xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + deletedXml + '</w:del>';
+      xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + deletedXml + '</w:del>';
     } else if (run.type === 'critic_sub') {
       const author = run.author || options?.authorName || 'Unknown';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
+      const dateAttr = date ? ' w:date="' + escapeXml(date) + '"' : '';
       const deletedXml = generateDeletedCriticContent(run.oldRuns, run.text, run);
       const insertedXml = generateInlineCriticContent(run.newRuns, run.newText || '', run, state, options, bibEntries, citeprocEngine);
-      xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + deletedXml + '</w:del>';
-      xml += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '" w:date="' + escapeXml(date) + '">' + insertedXml + '</w:ins>';
+      xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + deletedXml + '</w:del>';
+      xml += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + insertedXml + '</w:ins>';
     } else if (run.type === 'critic_highlight') {
       if (nextRun?.type === 'critic_comment') {
         const commentId = state.commentId++;
@@ -3856,7 +3914,8 @@ function commentsXml(comments: CommentEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   xml += '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">';
   for (const c of comments) {
-    xml += '<w:comment w:id="' + c.id + '" w:author="' + escapeXml(c.author) + '" w:date="' + escapeXml(c.date) + '">';
+    const dateAttr = c.date ? ' w:date="' + escapeXml(c.date) + '"' : '';
+    xml += '<w:comment w:id="' + c.id + '" w:author="' + escapeXml(c.author) + '"' + dateAttr + '>';
     // Split on \n\n for paragraph breaks within the comment
     const paragraphs = c.text.split('\n\n');
     for (let pi = 0; pi < paragraphs.length; pi++) {
@@ -4076,6 +4135,7 @@ export async function convertMdToDocx(
   const blockquotePostContentBlankLines = computeBlockquotePostContentBlankLines(bodyWithoutFootnotes);
   const blockquoteAlertMarkerInlineByGroup = computeBlockquoteAlertMarkerInlineByGroup(bodyWithoutFootnotes);
   annotateBlockquoteGroupIndices(tokens);
+  const htmlCommentGaps = annotateHtmlCommentIndices(tokens);
 
   // Parse BibTeX if provided
   let bibEntries: Map<string, BibtexEntry> | undefined;
@@ -4197,6 +4257,7 @@ export async function convertMdToDocx(
     tableFormats: new Map(),
     listIndent: detectListIndent(bodyWithoutFootnotes),
     consecutiveReplyParaIds: new Set(),
+    htmlCommentGaps,
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -4362,6 +4423,7 @@ export async function convertMdToDocx(
   customProps.push(...tableFormatProps(state.tableFormats));
   customProps.push(...listIndentProps(state));
   customProps.push(...consecutiveReplyProps(state));
+  customProps.push(...htmlCommentGapProps(state.htmlCommentGaps));
   customProps.push(...frontmatterBlankLineProps(frontmatterBlankLines));
   const hasCustomProps = customProps.length > 0;
   if (hasCustomProps) {

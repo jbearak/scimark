@@ -1106,6 +1106,58 @@ export async function extractBlockquoteGapMapping(data: Uint8Array | JSZip): Pro
   }
 }
 
+// Extract HTML comment gap metadata from custom XML properties.
+// Returns a Map<number, number> mapping HTML comment index → blank-line-before count.
+export async function extractHtmlCommentGapMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+
+  const propPrefix = 'MANUSCRIPT_HTML_COMMENT_GAPS';
+  const parts: Array<{ index: number; value: string }> = [];
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (!name.startsWith(propPrefix)) continue;
+
+    let idx = 1;
+    if (name !== propPrefix) {
+      if (!name.startsWith(propPrefix + '_')) continue;
+      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
+      if (!chunkMatch) continue;
+      idx = parseInt(chunkMatch[1], 10);
+      if (isNaN(idx)) continue;
+    }
+
+    const children = propNode['property'];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (child['vt:lpwstr'] !== undefined) {
+        const val = nodeText(child['vt:lpwstr'] || []);
+        parts.push({ index: idx, value: val });
+      }
+    }
+  }
+
+  if (parts.length === 0) return null;
+
+  parts.sort((a, b) => a.index - b.index);
+  const mappingJson = parts.map(p => p.value).join('');
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<number, number>();
+    for (const [key, count] of Object.entries(parsedJson)) {
+      const commentIdx = parseInt(key, 10);
+      if (isNaN(commentIdx) || typeof count !== 'number') continue;
+      mapping.set(commentIdx, count);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
+
 async function extractNotes(
   zip: JSZip,
   xmlPath: string,
@@ -3217,7 +3269,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; listIndent?: 'tab' | 'spaces' },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3356,6 +3408,8 @@ export function buildMarkdown(
   const codeBlockLangs = options?.codeBlockLangs;
   const blockquoteGaps = options?.blockquoteGaps;
   const blockquoteAlertInlineByGroup = options?.blockquoteAlertInlineByGroup;
+  const htmlCommentGaps = options?.htmlCommentGaps;
+  let htmlCommentIndex = 0;
 
   while (i < mergedContent.length) {
     const item = mergedContent[i];
@@ -3507,6 +3561,26 @@ export function buildMarkdown(
           } else {
             output.push('\n\n');
           }
+        } else if (
+          htmlCommentGaps &&
+          !item.headingLevel &&
+          !item.listMeta &&
+          !item.blockquoteLevel &&
+          !item.isCodeBlock
+        ) {
+          // Check if this paragraph is an HTML comment paragraph
+          const nextItem = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
+          if (nextItem && nextItem.type === 'html_comment') {
+            const gapCount = htmlCommentGaps.get(htmlCommentIndex);
+            if (gapCount !== undefined) {
+              // gapCount blank lines = gapCount+1 newline characters
+              output.push('\n' + '\n'.repeat(gapCount));
+            } else {
+              output.push('\n\n');
+            }
+          } else {
+            output.push('\n\n');
+          }
         } else {
           output.push('\n\n');
         }
@@ -3552,7 +3626,9 @@ export function buildMarkdown(
           : item.listMeta.type === 'bullet'
             ? ' '.repeat(2 * item.listMeta.level)
             : ' '.repeat(3 * item.listMeta.level);
-        const marker = item.listMeta.type === 'bullet' ? '- ' : '1. ';
+        const marker = item.listMeta.type === 'bullet'
+          ? (useTab ? '-\t' : '- ')
+          : (useTab ? '1.\t' : '1. ');
         output.push(indent + marker);
       } else if (item.blockquoteLevel) {
         output.push('> '.repeat(item.blockquoteLevel));
@@ -3635,6 +3711,11 @@ export function buildMarkdown(
       lastBlockquoteLevel = undefined;
       i++;
       continue;
+    }
+
+    // Track HTML comment paragraph index for gap metadata
+    if (item.type === 'html_comment') {
+      htmlCommentIndex++;
     }
 
     const rendered = renderInlineRange(mergedContent, i, comments, { stopBeforeDisplayMath: true }, renderOpts);
@@ -4090,7 +4171,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4108,6 +4189,7 @@ export async function convertDocx(
     extractListIndent(zip),
     extractConsecutiveReplyParaIds(zip),
     extractFrontmatterBlankLines(zip),
+    extractHtmlCommentGapMapping(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -4227,6 +4309,7 @@ export async function convertDocx(
     imageFormatMapping,
     tableFormatMapping,
     listIndent: storedListIndent ?? 'spaces',
+    htmlCommentGaps: htmlCommentGapMapping,
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)

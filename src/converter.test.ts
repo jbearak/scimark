@@ -865,7 +865,7 @@ describe('List indent round-trip', () => {
     const md = '- item 1\n\t- nested\n\t\t- deep';
     const { docx } = await convertMdToDocx(md);
     const result = await convertDocx(docx);
-    expect(result.markdown).toContain('\t- nested');
+    expect(result.markdown).toContain('\t-\tnested');
   });
 
   test('space-indented lists round-trip with spaces', async () => {
@@ -874,6 +874,47 @@ describe('List indent round-trip', () => {
     const result = await convertDocx(docx);
     expect(result.markdown).toContain('  - nested');
     expect(result.markdown).not.toContain('\t');
+  });
+});
+
+describe('Dateless comment round-trip', () => {
+  test('standalone comment without date round-trips without gaining a date', async () => {
+    const md = 'Some text.\n\n{>>This is a comment without a date<<}';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('{>>');
+    // Should NOT contain a parenthesized date like (2026-02-25 23:12)
+    expect(result.markdown).not.toMatch(/\(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\)/);
+  });
+});
+
+describe('Tab-after-marker list round-trip', () => {
+  test('dash-tab list items round-trip with tabs', async () => {
+    const md = '-\tItem one\n-\tItem two\n-\tItem three';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('-\tItem one');
+    expect(result.markdown).toContain('-\tItem two');
+  });
+});
+
+describe('HTML comment blank line round-trip', () => {
+  test('blank lines before HTML comment are preserved', async () => {
+    const md = 'Paragraph one.\n\n\n\n<!-- A comment -->\n\nParagraph two.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // Should have 3 blank lines (4 newlines) before the comment, not 1
+    expect(result.markdown).toContain('Paragraph one.\n\n\n\n<!-- A comment -->');
+  });
+
+  test('zero extra blank lines before HTML comment are preserved', async () => {
+    const md = 'Paragraph one.\n\n<!-- A comment -->\n\nParagraph two.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // Default 1 blank line preserved
+    expect(result.markdown).toContain('Paragraph one.\n\n<!-- A comment -->');
+    // Should NOT have extra blank lines
+    expect(result.markdown).not.toContain('Paragraph one.\n\n\n<!-- A comment -->');
   });
 });
 
