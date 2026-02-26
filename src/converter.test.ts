@@ -896,6 +896,7 @@ describe('Dateless comment round-trip', () => {
     const { docx } = await convertMdToDocx(md);
     const result = await convertDocx(docx);
     expect(result.markdown).toContain('{>>');
+    expect(result.markdown).toContain('{>>This is a comment without a date<<}');
     // Should NOT contain a parenthesized date like (2026-02-25 23:12)
     expect(result.markdown).not.toMatch(/\(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\)/);
   });
@@ -963,6 +964,23 @@ describe('HTML comment blank line round-trip', () => {
     const buf = await buildSyntheticDocx(xml);
     const result = await convertDocx(buf);
     expect(result.markdown).toContain('<!--\n\nLine one\n\nLine two\n\n-->');
+  });
+
+  test('Word-split hidden HTML comment runs are reassembled', async () => {
+    const xml = wrapDocumentXml(
+      '<w:p><w:r><w:t>Before</w:t></w:r></w:p>'
+      + '<w:p>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">\u200B</w:t></w:r>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">&lt;!--</w:t></w:r>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:br/></w:r>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">Line one</w:t><w:br/></w:r>'
+      + '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">--&gt;</w:t></w:r>'
+      + '</w:p>'
+      + '<w:p><w:r><w:t>After</w:t></w:r></w:p>'
+    );
+    const buf = await buildSyntheticDocx(xml);
+    const result = await convertDocx(buf);
+    expect(result.markdown).toContain('<!--\nLine one\n-->');
   });
 });
 

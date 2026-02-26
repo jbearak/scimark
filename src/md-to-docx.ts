@@ -121,6 +121,17 @@ export { PARA_PLACEHOLDER, preprocessCriticMarkup };
 // Custom inline rules
 
 /** Parse author/date/text from comment content string. */
+function isLikelyCommentAuthorLabel(label: string): boolean {
+  const trimmed = label.trim();
+  if (!trimmed) return false;
+  // Word truncates comment author metadata on save; avoid putting long prose
+  // before ":" into w:author where it can be lost. Long labels are treated
+  // as plain comment text instead.
+  if (trimmed.length > 120) return false;
+  if (trimmed.includes('\n')) return false;
+  if (trimmed.split(/\s+/).filter(Boolean).length > 12) return false;
+  return true;
+}
 function parseCommentContent(content: string): { author?: string; date?: string; text: string } {
   const match = content.match(/^([\s\S]+?)\s+\(([^)]+)\):\s*([\s\S]*)$/);
   if (match) {
@@ -128,7 +139,11 @@ function parseCommentContent(content: string): { author?: string; date?: string;
   }
   const authorMatch = content.match(/^([^:]+):\s*([\s\S]*)$/);
   if (authorMatch) {
-    return { author: authorMatch[1].trim(), text: authorMatch[2] };
+    const authorLabel = authorMatch[1].trim();
+    if (isLikelyCommentAuthorLabel(authorLabel)) {
+      return { author: authorLabel, text: authorMatch[2] };
+    }
+    return { text: content };
   }
   if (content.trim()) {
     if (content.includes(':') || content.includes(' ') || /[^a-zA-Z0-9_-]/.test(content)) {
@@ -3357,7 +3372,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
     } else if (run.type === 'critic_highlight') {
       if (nextRun?.type === 'critic_comment') {
         const commentId = state.commentId++;
-        const author = nextRun.author || options?.authorName || 'Unknown';
+        const author = nextRun.author ?? '';
         const date = normalizeToUtcIso(nextRun.date || '', state.timezone);
         const commentBody = nextRun.commentText || '';
         const parentParaId = generateParaId(state);
@@ -3367,7 +3382,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           for (const reply of nextRun.replies) {
             const replyId = state.commentId++;
             const replyParaId = generateParaId(state);
-            const replyAuthor = reply.author || options?.authorName || 'Unknown';
+            const replyAuthor = reply.author ?? '';
             const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
             state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
           }
@@ -3400,7 +3415,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           const replyRun = inputRuns[ri + 1];
           const replyId = state.commentId++;
           const replyParaId = generateParaId(state);
-          const replyAuthor = replyRun.author || options?.authorName || 'Unknown';
+          const replyAuthor = replyRun.author ?? '';
           const replyDate = normalizeToUtcIso(replyRun.date || '', state.timezone);
           state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: replyRun.commentText || '', paraId: replyParaId, parentParaId });
           xml += '<w:commentRangeStart w:id=\"' + replyId + '\"/>';
@@ -3426,7 +3441,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       }
     } else if (run.type === 'critic_comment') {
       const commentId = state.commentId++;
-      const author = run.author || options?.authorName || 'Unknown';
+      const author = run.author ?? '';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
       const commentBody = run.commentText || '';
       const parentParaId = generateParaId(state);
@@ -3439,7 +3454,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         for (const reply of run.replies) {
           const replyId = state.commentId++;
           const replyParaId = generateParaId(state);
-          const replyAuthor = reply.author || options?.authorName || 'Unknown';
+          const replyAuthor = reply.author ?? '';
           const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
           state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
         }
@@ -3534,7 +3549,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       // Only emit the comment entry once per ID (multi-paragraph comments
       // may produce duplicate body markers in the markdown).
       if (!state.comments.some(c => c.id === numericId)) {
-        const author = run.author || options?.authorName || 'Unknown';
+        const author = run.author ?? '';
         const date = normalizeToUtcIso(run.date || '', state.timezone);
         const commentBody = run.commentText || '';
         const parentParaId = generateParaId(state);
@@ -3548,7 +3563,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
             const reply = run.replies[i];
             const replyId = i < preAllocated.length ? preAllocated[i].replyId : state.commentId++;
             const replyParaId = generateParaId(state);
-            const replyAuthor = reply.author || options?.authorName || 'Unknown';
+            const replyAuthor = reply.author ?? '';
             const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
             state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
             if (i >= preAllocated.length) {

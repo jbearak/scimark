@@ -723,7 +723,7 @@ export async function extractComments(data: Uint8Array | JSZip): Promise<Map<str
 
   for (const node of findAllDeep(parsed, 'w:comment')) {
     const id = getAttr(node, 'id');
-    const author = getAttr(node, 'author') || 'Unknown';
+    const author = getAttr(node, 'author');
     const date = getAttr(node, 'date') || '';
     // Collect all w:t text within this comment
     const tNodes = findAllDeep(node['w:comment'] || [], 'w:t');
@@ -1991,6 +1991,9 @@ export async function extractDocumentContent(
               }
             }
             const hiddenPayload = runText.replace(/^\u200B+/, '');
+            const lastItem = target.length > 0 ? target[target.length - 1] : undefined;
+            const canContinueHiddenHtmlComment = lastItem?.type === 'html_comment'
+              && commentSetsEqual(lastItem.commentIds, activeComments);
             if (hiddenPayload.trimStart().startsWith('<!--')) {
               const payload = hiddenPayload;
               target.push({
@@ -1999,6 +2002,14 @@ export async function extractDocumentContent(
                 commentIds: new Set(activeComments),
               });
               continue; // skip normal walk for this run
+            }
+            // Word may split a hidden HTML comment across many vanish runs on
+            // save (first run "<!--", following runs for lines/breaks/"-->").
+            // Reassemble contiguous hidden fragments into the preceding
+            // html_comment item instead of dropping continuation runs.
+            if (canContinueHiddenHtmlComment && hiddenPayload.length > 0) {
+              lastItem.text += hiddenPayload;
+              continue;
             }
             // Extract blockquote group index from hidden tag (encoded by md→docx
             // for gap metadata correlation) and attach to the most recent para item.
@@ -2454,19 +2465,25 @@ function formatDateSuffix(date: string | undefined): string {
   } catch { return ` (${date})`; }
 }
 
+function formatCommentAttribution(author: string | undefined, date: string | undefined, text: string): string {
+  const trimmedAuthor = (author || '').trim();
+  if (!trimmedAuthor) return text;
+  return `${trimmedAuthor}${formatDateSuffix(date)}: ${text}`;
+}
+
 function formatCommentBody(_cid: string, c: Comment): string {
   if (c.consecutiveReplies && c.replies && c.replies.length > 0) {
     // Consecutive format: each reply is a separate {>>...<<} block
-    let body = `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+    let body = `{>>${formatCommentAttribution(c.author, c.date, c.text)}<<}`;
     for (const reply of c.replies) {
-      body += `{>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+      body += `{>>${formatCommentAttribution(reply.author, reply.date, reply.text)}<<}`;
     }
     return body;
   }
-  let body = `{>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
+  let body = `{>>${formatCommentAttribution(c.author, c.date, c.text)}`;
   if (c.replies && c.replies.length > 0) {
     for (const reply of c.replies) {
-      body += `\n  {>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+      body += `\n  {>>${formatCommentAttribution(reply.author, reply.date, reply.text)}<<}`;
     }
     body += '\n<<}';
   } else {
@@ -2478,16 +2495,16 @@ function formatCommentBody(_cid: string, c: Comment): string {
 function formatCommentBodyWithId(cid: string, c: Comment): string {
   if (c.consecutiveReplies && c.replies && c.replies.length > 0) {
     // Consecutive format: each reply is a separate {>>...<<} block
-    let body = `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}<<}`;
+    let body = `{#${cid}>>${formatCommentAttribution(c.author, c.date, c.text)}<<}`;
     for (const reply of c.replies) {
-      body += `{>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+      body += `{>>${formatCommentAttribution(reply.author, reply.date, reply.text)}<<}`;
     }
     return body;
   }
-  let body = `{#${cid}>>${c.author}${formatDateSuffix(c.date)}: ${c.text}`;
+  let body = `{#${cid}>>${formatCommentAttribution(c.author, c.date, c.text)}`;
   if (c.replies && c.replies.length > 0) {
     for (const reply of c.replies) {
-      body += `\n  {>>${reply.author}${formatDateSuffix(reply.date)}: ${reply.text}<<}`;
+      body += `\n  {>>${formatCommentAttribution(reply.author, reply.date, reply.text)}<<}`;
     }
     body += '\n<<}';
   } else {

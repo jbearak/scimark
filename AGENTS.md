@@ -13,6 +13,8 @@ LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 
 - Template literal corruption: never use `$$` in code touched by tool text-replacement operations — `$` is special in replacement strings and `$$` gets corrupted. Use string concatenation instead.
 - Word-save blockquotes: Word may rewrite `GitHub` style paragraphs to `GitHubBlockquote` and split hidden `\u200B_bqgN` metadata across multiple hidden runs. Keep blockquote style detection and hidden-run parsing robust to that rewrite.
+- Comment attribution parsing: do not treat long prose before `:` as a comment author label; Word truncates long `w:author` values on save, which can silently drop comment text.
+- Hidden HTML comments: Word may split one hidden HTML comment run into many vanish runs; docx→md must concatenate contiguous hidden fragments (including `w:br`) until the full `<!-- ... -->` payload is reconstructed.
 
 Per-module learnings live as comments in the corresponding source files.
 
