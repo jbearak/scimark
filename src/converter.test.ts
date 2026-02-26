@@ -3759,11 +3759,32 @@ describe('extractStoredBibtex', () => {
     const result = await extractStoredBibtex(docx);
     expect(result).toBeNull();
   });
+
+  test('[Content_Types].xml includes bibliography override when .bib is stored', async () => {
+    const JSZip = (await import('jszip')).default;
+    const bib = '@article{key1,\n  author = {A},\n}';
+    const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: bib });
+    const zip = await JSZip.loadAsync(docx);
+    const contentTypes = await zip.file('[Content_Types].xml')?.async('string');
+    expect(contentTypes).toContain('PartName="/word/bibliography.bib"');
+    expect(contentTypes).toContain('ContentType="text/plain"');
+  });
+
+  test('[Content_Types].xml omits bibliography override when no .bib', async () => {
+    const JSZip = (await import('jszip')).default;
+    const { docx } = await convertMdToDocx('Hello world.');
+    const zip = await JSZip.loadAsync(docx);
+    const contentTypes = await zip.file('[Content_Types].xml')?.async('string');
+    expect(contentTypes).not.toContain('bibliography.bib');
+  });
 });
 
 describe('extractBibKeyOrder', () => {
-  test('reads chunked MANUSCRIPT_BIB_KEY_ORDER_* from DOCX ZIP', async () => {
+  // Key order includes all entries from the .bib, not just cited ones.
+  // This preserves uncited entries across round-trips.
+  test('reads chunked MANUSCRIPT_BIB_KEY_ORDER_* from DOCX ZIP (includes uncited keys)', async () => {
     const bib = '@article{key1,\n  author = {A},\n}\n\n@article{key2,\n  author = {B},\n}';
+    // Only key1 is cited, but key2 is still in the bib — both keys should be stored
     const { docx } = await convertMdToDocx('Hello [@key1].', { bibtex: bib });
     const result = await extractBibKeyOrder(docx);
     expect(result).toEqual(['key1', 'key2']);

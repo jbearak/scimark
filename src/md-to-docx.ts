@@ -2284,7 +2284,20 @@ function stripMillis(iso: string): string {
   return iso.replace(/\.\d{3}Z$/, 'Z');
 }
 
-function contentTypesXml(hasList: boolean, hasComments: boolean, hasTheme?: boolean, hasCustomProps?: boolean, hasFootnotes?: boolean, hasEndnotes?: boolean, hasCommentsExtended?: boolean, imageExtensions?: Set<string>, hasBibliography?: boolean): string {
+interface ContentTypesOptions {
+  hasList: boolean;
+  hasComments: boolean;
+  hasTheme?: boolean;
+  hasCustomProps?: boolean;
+  hasFootnotes?: boolean;
+  hasEndnotes?: boolean;
+  hasCommentsExtended?: boolean;
+  imageExtensions?: Set<string>;
+  hasBibliography?: boolean;
+}
+
+function contentTypesXml(opts: ContentTypesOptions): string {
+  const { hasList, hasComments, hasTheme, hasCustomProps, hasFootnotes, hasEndnotes, hasCommentsExtended, imageExtensions, hasBibliography } = opts;
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n';
   xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n';
@@ -4465,8 +4478,17 @@ export async function convertMdToDocx(
     zip.file('word/' + mediaPath, data);
   }
 
-  const hasBibliography = !!options?.bibtex;
-  zip.file('[Content_Types].xml', contentTypesXml(state.hasList, state.hasComments, hasTheme, hasCustomProps, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageExtensions.size > 0 ? state.imageExtensions : undefined, hasBibliography));
+  zip.file('[Content_Types].xml', contentTypesXml({
+    hasList: state.hasList,
+    hasComments: state.hasComments,
+    hasTheme,
+    hasCustomProps,
+    hasFootnotes: state.hasFootnotes,
+    hasEndnotes: state.hasEndnotes,
+    hasCommentsExtended,
+    imageExtensions: state.imageExtensions.size > 0 ? state.imageExtensions : undefined,
+    hasBibliography: !!options?.bibtex,
+  }));
   zip.file('_rels/.rels', relsXml(hasCustomProps));
   zip.file('word/_rels/document.xml.rels', documentRelsXml(state.relationships, state.hasList, state.hasComments, hasTheme, state.hasFootnotes, state.hasEndnotes, hasCommentsExtended, state.imageRelationships.size > 0 ? state.imageRelationships : undefined));
 
