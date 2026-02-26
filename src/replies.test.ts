@@ -177,11 +177,28 @@ describe('Comment reply threads: MD→DOCX', () => {
     const extXml = await extFile!.async('string');
     expect(extXml).toContain('w15:paraIdParent');
 
+    // Threaded comments package parts required for Word to preserve replies
+    expect(zip.file('word/commentsIds.xml')).not.toBeNull();
+    expect(zip.file('word/commentsExtensible.xml')).not.toBeNull();
+    expect(zip.file('word/people.xml')).not.toBeNull();
+
+    const relsXml = await zip.file('word/_rels/document.xml.rels')!.async('string');
+    expect(relsXml).toContain('commentsExtended');
+    expect(relsXml).toContain('commentsIds');
+    expect(relsXml).toContain('commentsExtensible');
+    expect(relsXml).toContain('relationships/people');
+
+    const contentTypesXml = await zip.file('[Content_Types].xml')!.async('string');
+    expect(contentTypesXml).toContain('/word/commentsExtended.xml');
+    expect(contentTypesXml).toContain('/word/commentsIds.xml');
+    expect(contentTypesXml).toContain('/word/commentsExtensible.xml');
+    expect(contentTypesXml).toContain('/word/people.xml');
+
     // Check that w14:paraId is on the first <w:p> of each comment
     expect(commentsXml).toContain('w14:paraId');
   });
 
-  test('emits reply range markers in document.xml', async () => {
+  test('anchors parent and reply comment ranges in document.xml', async () => {
     const md = `This is {#1}some text{/1}
 
 {#1>>Alice (2024-01-15T14:30-05:00): Parent comment
@@ -197,15 +214,13 @@ describe('Comment reply threads: MD→DOCX', () => {
     expect(docXml).toContain('w:commentRangeStart w:id="0"');
     expect(docXml).toContain('w:commentRangeEnd w:id="0"');
 
-    // Reply comments should also have range markers duplicated alongside parent
-    expect(docXml).toContain('w:commentRangeStart w:id="1"');
-    expect(docXml).toContain('w:commentRangeEnd w:id="1"');
-    expect(docXml).toContain('w:commentRangeStart w:id="2"');
-    expect(docXml).toContain('w:commentRangeEnd w:id="2"');
-
-    // Reply range ends should include commentReference elements
-    expect(docXml).toContain('w:commentReference w:id="1"');
-    expect(docXml).toContain('w:commentReference w:id="2"');
+    // Reply comments should also be anchored so Word retains threading metadata on save.
+    expect(docXml).toContain('w:commentRangeStart w:id=\"1\"');
+    expect(docXml).toContain('w:commentRangeEnd w:id=\"1\"');
+    expect(docXml).toContain('w:commentReference w:id=\"1\"');
+    expect(docXml).toContain('w:commentRangeStart w:id=\"2\"');
+    expect(docXml).toContain('w:commentRangeEnd w:id=\"2\"');
+    expect(docXml).toContain('w:commentReference w:id=\"2\"');
   });
 
   test('parses markdown without replies (no commentsExtended.xml)', async () => {
@@ -219,6 +234,9 @@ describe('Comment reply threads: MD→DOCX', () => {
     // No commentsExtended.xml since there are no replies
     const extFile = zip.file('word/commentsExtended.xml');
     expect(extFile).toBeNull();
+    expect(zip.file('word/commentsIds.xml')).toBeNull();
+    expect(zip.file('word/commentsExtensible.xml')).toBeNull();
+    expect(zip.file('word/people.xml')).toBeNull();
   });
 });
 
