@@ -950,16 +950,7 @@ export function blockquoteGapProps(gaps: Map<number, number>): CustomPropEntry[]
   for (const [index, count] of gaps) {
     mapping[String(index)] = count;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_BLOCKQUOTE_GAPS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_GAPS_', JSON.stringify(mapping));
 }
 export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boolean>): CustomPropEntry[] {
   if (inlineByGroup.size === 0) return [];
@@ -967,16 +958,7 @@ export function blockquoteAlertMarkerStyleProps(inlineByGroup: Map<number, boole
   for (const [index, isInline] of inlineByGroup) {
     mapping[String(index)] = isInline ? 1 : 0;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE_', JSON.stringify(mapping));
 }
 
 export function imageFormatProps(imageFormats: Map<string, string>): CustomPropEntry[] {
@@ -985,16 +967,7 @@ export function imageFormatProps(imageFormats: Map<string, string>): CustomPropE
   for (const [rId, syntax] of imageFormats) {
     mapping[rId] = syntax;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_IMAGE_FORMATS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_IMAGE_FORMATS_', JSON.stringify(mapping));
 }
 
 export function tableFormatProps(tableFormats: Map<number, string>): CustomPropEntry[] {
@@ -1003,16 +976,7 @@ export function tableFormatProps(tableFormats: Map<number, string>): CustomPropE
   for (const [idx, fmt] of tableFormats) {
     mapping[String(idx)] = fmt;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_TABLE_FORMATS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_TABLE_FORMATS_', JSON.stringify(mapping));
 }
 
 
@@ -3018,6 +2982,18 @@ interface CustomPropEntry {
   value: string;
 }
 
+/** Chunk a string value into numbered custom properties: PREFIX_1, PREFIX_2, … */
+function chunkCustomProps(prefix: string, data: string, chunkSize = 240): CustomPropEntry[] {
+  const props: CustomPropEntry[] = [];
+  for (let i = 0; i < data.length; i += chunkSize) {
+    props.push({
+      name: prefix + (props.length + 1),
+      value: data.slice(i, i + chunkSize),
+    });
+  }
+  return props;
+}
+
 function customPropsXml(properties: CustomPropEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">\n';
@@ -3066,16 +3042,7 @@ function commentIdMappingProps(commentIdMap: Map<string, number>): CustomPropEnt
   for (const [mdId, numericId] of commentIdMap) {
     mapping[String(numericId)] = mdId;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_COMMENT_IDS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_COMMENT_IDS_', JSON.stringify(mapping));
 }
 
 function footnoteIdMappingProps(footnoteLabelToId: Map<string, number>): CustomPropEntry[] {
@@ -3094,16 +3061,7 @@ function footnoteIdMappingProps(footnoteLabelToId: Map<string, number>): CustomP
   for (const [label, numericId] of footnoteLabelToId) {
     mapping[String(numericId)] = label;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_FOOTNOTE_IDS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_FOOTNOTE_IDS_', JSON.stringify(mapping));
 }
 
 function codeBlockLanguageProps(codeBlockLanguages: Map<number, string>): CustomPropEntry[] {
@@ -3112,16 +3070,7 @@ function codeBlockLanguageProps(codeBlockLanguages: Map<number, string>): Custom
   for (const [index, language] of codeBlockLanguages) {
     mapping[String(index)] = language;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_CODE_BLOCK_LANGS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_CODE_BLOCK_LANGS_', JSON.stringify(mapping));
 }
 
 function codeBlockStylingProps(fm: Frontmatter): CustomPropEntry[] {
@@ -3157,29 +3106,13 @@ function frontmatterBlankLineProps(count: number): CustomPropEntry[] {
 
 function bibKeyOrderProps(bibEntries: Map<string, BibtexEntry> | undefined): CustomPropEntry[] {
   if (!bibEntries || bibEntries.size === 0) return [];
-  const csv = [...bibEntries.keys()].join(',');
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < csv.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_BIB_KEY_ORDER_' + (props.length + 1),
-      value: csv.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_BIB_KEY_ORDER_', [...bibEntries.keys()].join(','));
 }
 
 function bibDataProps(bibtex: string | undefined): CustomPropEntry[] {
   if (!bibtex || bibtex.trim().length === 0) return [];
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < bibtex.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_BIB_DATA_' + (props.length + 1),
-      value: bibtex.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  // Larger chunk size: .bib data can be 10–50+ KB (vs 240 for small metadata).
+  return chunkCustomProps('MANUSCRIPT_BIB_DATA_', bibtex, 4000);
 }
 
 /** Assign sequential htmlCommentIndex to each HTML comment token and return
@@ -3208,16 +3141,7 @@ function htmlCommentGapProps(gaps: Map<number, number>): CustomPropEntry[] {
   for (const [index, count] of gaps) {
     mapping[String(index)] = count;
   }
-  const mappingJson = JSON.stringify(mapping);
-  const CHUNK_SIZE = 240;
-  const props: CustomPropEntry[] = [];
-  for (let i = 0; i < mappingJson.length; i += CHUNK_SIZE) {
-    props.push({
-      name: 'MANUSCRIPT_HTML_COMMENT_GAPS_' + (props.length + 1),
-      value: mappingJson.slice(i, i + CHUNK_SIZE),
-    });
-  }
-  return props;
+  return chunkCustomProps('MANUSCRIPT_HTML_COMMENT_GAPS_', JSON.stringify(mapping));
 }
 
 interface DocumentRelsOptions {

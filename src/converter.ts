@@ -6,7 +6,7 @@ import { wrapColoredHighlight } from './formatting';
 import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
 import { gfmAlertTitle, parseGfmAlertMarker, toGfmAlertMarker, type GfmAlertType } from './gfm';
 import { emuToPixels, isSupportedImageFormat, resolveImageFilename } from './image-utils';
-import { mergeBibtex } from './bibtex-parser';
+import { parseBibtex, mergeBibtex } from './bibtex-parser';
 
 // --- Implementation notes ---
 // Table parsing:
@@ -845,25 +845,40 @@ export async function extractZoteroPrefs(data: Uint8Array | JSZip): Promise<Zote
     }
   }
 }
-export async function extractBlockquoteAlertStyleMapping(data: Uint8Array | JSZip): Promise<Map<number, boolean> | null> {
+/**
+ * Read chunked custom property values from a DOCX ZIP and join them into a single string.
+ * Handles two naming conventions:
+ * - Strict: PREFIX_1, PREFIX_2, … (prefix ends with '_')
+ * - Flexible: PREFIX (index 1), PREFIX_2, PREFIX_3, … (prefix without trailing '_')
+ * Returns null if no matching properties are found.
+ */
+async function extractChunkedCustomProp(data: Uint8Array | JSZip, propPrefix: string): Promise<string | null> {
   const zip = data instanceof JSZip ? data : await loadZip(data);
   const parsed = await readZipXml(zip, 'docProps/custom.xml');
   if (!parsed) return null;
 
-  const propPrefix = 'MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE';
+  const strict = propPrefix.endsWith('_');
   const parts: Array<{ index: number; value: string }> = [];
   const propertyNodes = findAllDeep(parsed, 'property');
   for (const propNode of propertyNodes) {
     const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
     if (!name.startsWith(propPrefix)) continue;
 
-    let idx = 1;
-    if (name !== propPrefix) {
-      if (!name.startsWith(propPrefix + '_')) continue;
-      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
+    let idx: number;
+    if (strict) {
+      const chunkMatch = name.slice(propPrefix.length).match(/^(\d+)$/);
       if (!chunkMatch) continue;
       idx = parseInt(chunkMatch[1], 10);
       if (isNaN(idx)) continue;
+    } else {
+      idx = 1;
+      if (name !== propPrefix) {
+        if (!name.startsWith(propPrefix + '_')) continue;
+        const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
+        if (!chunkMatch) continue;
+        idx = parseInt(chunkMatch[1], 10);
+        if (isNaN(idx)) continue;
+      }
     }
 
     const children = propNode['property'];
@@ -877,9 +892,13 @@ export async function extractBlockquoteAlertStyleMapping(data: Uint8Array | JSZi
   }
 
   if (parts.length === 0) return null;
-
   parts.sort((a, b) => a.index - b.index);
-  const mappingJson = parts.map(p => p.value).join('');
+  return parts.map(p => p.value).join('');
+}
+
+export async function extractBlockquoteAlertStyleMapping(data: Uint8Array | JSZip): Promise<Map<number, boolean> | null> {
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_BLOCKQUOTE_ALERT_STYLE');
+  if (!mappingJson) return null;
   try {
     const parsedJson = JSON.parse(mappingJson);
     if (!parsedJson || typeof parsedJson !== 'object') return null;
@@ -899,39 +918,8 @@ async function extractIdMappingFromCustomXml(
   data: Uint8Array | JSZip,
   propPrefix: string,
 ): Promise<Map<string, string> | null> {
-  const zip = data instanceof JSZip ? data : await loadZip(data);
-  const parsed = await readZipXml(zip, 'docProps/custom.xml');
-  if (!parsed) return null;
-
-  const parts: Array<{ index: number; value: string }> = [];
-  const propertyNodes = findAllDeep(parsed, 'property');
-  for (const propNode of propertyNodes) {
-    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
-    if (!name.startsWith(propPrefix)) continue;
-
-    let idx = 1;
-    if (name !== propPrefix) {
-      if (!name.startsWith(propPrefix + '_')) continue;
-      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
-      if (!chunkMatch) continue;
-      idx = parseInt(chunkMatch[1], 10);
-      if (isNaN(idx)) continue;
-    }
-
-    const children = propNode['property'];
-    if (!Array.isArray(children)) continue;
-    for (const child of children) {
-      if (child['vt:lpwstr'] !== undefined) {
-        const val = nodeText(child['vt:lpwstr'] || []);
-        parts.push({ index: idx, value: val });
-      }
-    }
-  }
-
-  if (parts.length === 0) return null;
-
-  parts.sort((a, b) => a.index - b.index);
-  const mappingJson = parts.map(p => p.value).join('');
+  const mappingJson = await extractChunkedCustomProp(data, propPrefix);
+  if (!mappingJson) return null;
   try {
     const parsedJson = JSON.parse(mappingJson);
     if (!parsedJson || typeof parsedJson !== 'object') return null;
@@ -1033,70 +1021,16 @@ export async function extractFrontmatterBlankLines(data: Uint8Array | JSZip): Pr
 
 /** Layer 2: read comma-separated bib key order from chunked MANUSCRIPT_BIB_KEY_ORDER_* custom props. */
 export async function extractBibKeyOrder(data: Uint8Array | JSZip): Promise<string[] | null> {
-  const zip = data instanceof JSZip ? data : await loadZip(data);
-  const parsed = await readZipXml(zip, 'docProps/custom.xml');
-  if (!parsed) return null;
-
-  const propPrefix = 'MANUSCRIPT_BIB_KEY_ORDER_';
-  const parts: Array<{ index: number; value: string }> = [];
-  const propertyNodes = findAllDeep(parsed, 'property');
-  for (const propNode of propertyNodes) {
-    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
-    if (!name.startsWith(propPrefix)) continue;
-
-    const chunkMatch = name.slice(propPrefix.length).match(/^(\d+)$/);
-    if (!chunkMatch) continue;
-    const idx = parseInt(chunkMatch[1], 10);
-    if (isNaN(idx)) continue;
-
-    const children = propNode['property'];
-    if (!Array.isArray(children)) continue;
-    for (const child of children) {
-      if (child['vt:lpwstr'] !== undefined) {
-        const val = nodeText(child['vt:lpwstr'] || []);
-        parts.push({ index: idx, value: val });
-      }
-    }
-  }
-
-  if (parts.length === 0) return null;
-  parts.sort((a, b) => a.index - b.index);
-  const csv = parts.map(p => p.value).join('');
+  const csv = await extractChunkedCustomProp(data, 'MANUSCRIPT_BIB_KEY_ORDER_');
+  if (!csv) return null;
   const keys = csv.split(',').map(k => k.trim()).filter(Boolean);
   return keys.length > 0 ? keys : null;
 }
 
 /** Layer 1: read full .bib text from chunked MANUSCRIPT_BIB_DATA_* custom props. */
 export async function extractBibData(data: Uint8Array | JSZip): Promise<string | null> {
-  const zip = data instanceof JSZip ? data : await loadZip(data);
-  const parsed = await readZipXml(zip, 'docProps/custom.xml');
-  if (!parsed) return null;
-
-  const propPrefix = 'MANUSCRIPT_BIB_DATA_';
-  const parts: Array<{ index: number; value: string }> = [];
-  const propertyNodes = findAllDeep(parsed, 'property');
-  for (const propNode of propertyNodes) {
-    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
-    if (!name.startsWith(propPrefix)) continue;
-
-    const chunkMatch = name.slice(propPrefix.length).match(/^(\d+)$/);
-    if (!chunkMatch) continue;
-    const idx = parseInt(chunkMatch[1], 10);
-    if (isNaN(idx)) continue;
-
-    const children = propNode['property'];
-    if (!Array.isArray(children)) continue;
-    for (const child of children) {
-      if (child['vt:lpwstr'] !== undefined) {
-        const val = nodeText(child['vt:lpwstr'] || []);
-        parts.push({ index: idx, value: val });
-      }
-    }
-  }
-
-  if (parts.length === 0) return null;
-  parts.sort((a, b) => a.index - b.index);
-  const text = parts.map(p => p.value).join('');
+  const text = await extractChunkedCustomProp(data, 'MANUSCRIPT_BIB_DATA_');
+  if (!text) return null;
   return text.trim().length > 0 ? text : null;
 }
 
@@ -1127,40 +1061,8 @@ export async function extractPipeTableMaxLineWidth(data: Uint8Array | JSZip): Pr
 // that group and the next.  Uses the same chunked-JSON pattern as code block
 // language props, with key prefix MANUSCRIPT_BLOCKQUOTE_GAPS.
 export async function extractBlockquoteGapMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
-  const zip = data instanceof JSZip ? data : await loadZip(data);
-  const parsed = await readZipXml(zip, 'docProps/custom.xml');
-  if (!parsed) return null;
-
-  const propPrefix = 'MANUSCRIPT_BLOCKQUOTE_GAPS';
-  const parts: Array<{ index: number; value: string }> = [];
-  const propertyNodes = findAllDeep(parsed, 'property');
-  for (const propNode of propertyNodes) {
-    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
-    if (!name.startsWith(propPrefix)) continue;
-
-    let idx = 1;
-    if (name !== propPrefix) {
-      if (!name.startsWith(propPrefix + '_')) continue;
-      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
-      if (!chunkMatch) continue;
-      idx = parseInt(chunkMatch[1], 10);
-      if (isNaN(idx)) continue;
-    }
-
-    const children = propNode['property'];
-    if (!Array.isArray(children)) continue;
-    for (const child of children) {
-      if (child['vt:lpwstr'] !== undefined) {
-        const val = nodeText(child['vt:lpwstr'] || []);
-        parts.push({ index: idx, value: val });
-      }
-    }
-  }
-
-  if (parts.length === 0) return null;
-
-  parts.sort((a, b) => a.index - b.index);
-  const mappingJson = parts.map(p => p.value).join('');
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_BLOCKQUOTE_GAPS');
+  if (!mappingJson) return null;
   try {
     const parsedJson = JSON.parse(mappingJson);
     if (!parsedJson || typeof parsedJson !== 'object') return null;
@@ -1179,40 +1081,8 @@ export async function extractBlockquoteGapMapping(data: Uint8Array | JSZip): Pro
 // Extract HTML comment gap metadata from custom XML properties.
 // Returns a Map<number, number> mapping HTML comment index → blank-line-before count.
 export async function extractHtmlCommentGapMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
-  const zip = data instanceof JSZip ? data : await loadZip(data);
-  const parsed = await readZipXml(zip, 'docProps/custom.xml');
-  if (!parsed) return null;
-
-  const propPrefix = 'MANUSCRIPT_HTML_COMMENT_GAPS';
-  const parts: Array<{ index: number; value: string }> = [];
-  const propertyNodes = findAllDeep(parsed, 'property');
-  for (const propNode of propertyNodes) {
-    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
-    if (!name.startsWith(propPrefix)) continue;
-
-    let idx = 1;
-    if (name !== propPrefix) {
-      if (!name.startsWith(propPrefix + '_')) continue;
-      const chunkMatch = name.slice(propPrefix.length + 1).match(/^(\d+)$/);
-      if (!chunkMatch) continue;
-      idx = parseInt(chunkMatch[1], 10);
-      if (isNaN(idx)) continue;
-    }
-
-    const children = propNode['property'];
-    if (!Array.isArray(children)) continue;
-    for (const child of children) {
-      if (child['vt:lpwstr'] !== undefined) {
-        const val = nodeText(child['vt:lpwstr'] || []);
-        parts.push({ index: idx, value: val });
-      }
-    }
-  }
-
-  if (parts.length === 0) return null;
-
-  parts.sort((a, b) => a.index - b.index);
-  const mappingJson = parts.map(p => p.value).join('');
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_HTML_COMMENT_GAPS');
+  if (!mappingJson) return null;
   try {
     const parsedJson = JSON.parse(mappingJson);
     if (!parsedJson || typeof parsedJson !== 'object') return null;
@@ -4488,9 +4358,19 @@ export async function convertDocx(
   // Layer 3: regenerate from Zotero citations (backward compatible)
   let bibtex: string;
   if (storedBibData) {
-    // Layer 1: use stored .bib as base, merge in any new Zotero entries
+    // Layer 1: stored .bib is authoritative — preserve verbatim.
+    // Only append genuinely new Zotero entries (citations added in Word).
+    const storedKeys = new Set(parseBibtex(storedBibData).keys());
     const generated = generateBibTeX(zoteroCitations, keyMap);
-    bibtex = mergeBibtex(storedBibData, generated);
+    const newEntries = generated
+      .split(/\n\n+/)
+      .filter(entry => {
+        const m = entry.match(/@\w+\{([^,\s]+)/);
+        return m && !storedKeys.has(m[1]);
+      });
+    bibtex = newEntries.length > 0
+      ? storedBibData.trimEnd() + '\n\n' + newEntries.join('\n\n')
+      : storedBibData;
   } else if (bibKeyOrder) {
     // Layer 2: regenerate but sort to match original key order
     bibtex = generateBibTeX(zoteroCitations, keyMap, bibKeyOrder);

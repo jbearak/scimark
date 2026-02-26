@@ -213,13 +213,8 @@ describe('docs round-trip: md -> docx -> md', () => {
 
       // --- Bibtex preservation ---
       if (fixture.bibtex) {
-        // Layer 1 stores full .bib in custom properties — same citekeys AND same entry count.
-        const originalKeys = [...fixture.bibtex.matchAll(/^@\w+\{([^,]+),/gm)].map(m => m[1]).sort();
-        const roundTrippedKeys = [...mdResult.bibtex.matchAll(/^@\w+\{([^,]+),/gm)].map(m => m[1]).sort();
-        expect(roundTrippedKeys).toEqual(originalKeys);
-        const originalEntryCount = (fixture.bibtex.match(/^@\w+\{/gm) || []).length;
-        const roundTrippedEntryCount = (mdResult.bibtex.match(/^@\w+\{/gm) || []).length;
-        expect(roundTrippedEntryCount).toBe(originalEntryCount);
+        // Layer 1 stores full .bib in custom properties — exact equality.
+        expect(mdResult.bibtex).toBe(fixture.bibtex);
       }
 
       // --- Word preservation ---
@@ -308,13 +303,8 @@ describe('double round-trip: md -> docx -> md -> docx -> md', () => {
     expect(r1.warnings).toEqual([]);
     const m1 = await convertDocx(r1.docx);
 
-    // RT1 output .bib should contain the same citation keys and entry count as the original
-    const originalKeys = [...sampleBib.matchAll(/^@\w+\{([^,]+),/gm)].map(m => m[1]).sort();
-    const rt1Keys = [...m1.bibtex.matchAll(/^@\w+\{([^,]+),/gm)].map(m => m[1]).sort();
-    expect(rt1Keys).toEqual(originalKeys);
-    const originalEntryCount = (sampleBib.match(/^@\w+\{/gm) || []).length;
-    const rt1EntryCount = (m1.bibtex.match(/^@\w+\{/gm) || []).length;
-    expect(rt1EntryCount).toBe(originalEntryCount);
+    // RT1 output .bib should be identical to original (Layer 1: stored in custom props)
+    expect(m1.bibtex).toBe(sampleBib);
 
     // RT2: md -> docx -> md (using RT1 output)
     const r2 = await convertMdToDocx(m1.markdown, { bibtex: m1.bibtex });
@@ -344,13 +334,8 @@ describe('double round-trip: md -> docx -> md -> docx -> md', () => {
     expect(r1.warnings).toEqual([]);
     const m1 = await convertDocx(r1.docx);
 
-    // Layer 1 stores full .bib in custom properties — all entries (including uncited) survive.
-    const originalKeys = [...draftBib.matchAll(/@\w+\{([^,]+),/g)].map(m => m[1]).sort();
-    const rt1Keys = [...m1.bibtex.matchAll(/@\w+\{([^,]+),/g)].map(m => m[1]).sort();
-    expect(rt1Keys).toEqual(originalKeys);
-    const originalEntryCount = (draftBib.match(/@\w+\{/g) || []).length;
-    const rt1EntryCount = (m1.bibtex.match(/@\w+\{/g) || []).length;
-    expect(rt1EntryCount).toBe(originalEntryCount);
+    // RT1 output .bib should be identical to original (Layer 1: stored in custom props)
+    expect(m1.bibtex).toBe(draftBib);
 
     // RT2: md -> docx -> md (using RT1 output)
     const r2 = await convertMdToDocx(m1.markdown, { bibtex: m1.bibtex });

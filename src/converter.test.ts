@@ -3773,6 +3773,13 @@ describe('extractBibData', () => {
     expect(result.bibtex).toContain('@article{myentry,');
     expect(result.bibtex).toContain('My Custom Entry');
   });
+
+  test('XML-special characters in .bib survive chunked property round-trip', async () => {
+    const bib = '@article{special1,\n  author = {O\'Brien, J. & Partners},\n  title = {{Results for x < 50 & y > 100}},\n  year = {2020},\n}';
+    const { docx } = await convertMdToDocx('Text [@special1].', { bibtex: bib });
+    const result = await extractBibData(docx);
+    expect(result).toBe(bib);
+  });
 });
 
 describe('convertDocx existingBibtex (post-processing merge)', () => {
