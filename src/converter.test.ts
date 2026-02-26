@@ -767,7 +767,7 @@ describe('Table format metadata round-trip', () => {
   });
 
   test('pipe table empty cells do not gain doubled spaces on round-trip', async () => {
-    const pipeMd = '| H1 | H2 | H3 |\\n| --- | --- | --- |\\n| A | | C |';
+    const pipeMd = '| H1 | H2 | H3 |\n| --- | --- | --- |\n| A | | C |';
     const { docx } = await convertMdToDocx(pipeMd);
     const result = await convertDocx(docx);
     expect(result.markdown).toContain('| A | | C |');
@@ -2807,7 +2807,7 @@ describe('DOCX footnote extraction', () => {
     const buf = await buildSyntheticDocx(docXml, { 'word/footnotes.xml': footnotesXml });
     const result = await convertDocx(buf);
 
-    expect(result.markdown).toContain('[^1]:\n\n    $$\n    E=mc^2\n    $$');
+    expect(result.markdown).toContain('[^1]:\n\n    ' + '$' + '$' + '\n    E=mc^2\n    ' + '$' + '$');
   });
 
   test('footnote body with text then display math does not duplicate equation', async () => {

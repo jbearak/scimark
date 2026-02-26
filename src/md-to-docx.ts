@@ -134,7 +134,7 @@ function isLikelyCommentAuthorLabel(label: string): boolean {
 }
 function parseCommentContent(content: string): { author?: string; date?: string; text: string } {
   const match = content.match(/^([\s\S]+?)\s+\(([^)]+)\):\s*([\s\S]*)$/);
-  if (match) {
+  if (match && isLikelyCommentAuthorLabel(match[1])) {
     return { author: match[1], date: match[2], text: match[3] };
   }
   const authorMatch = content.match(/^([^:]+):\s*([\s\S]*)$/);

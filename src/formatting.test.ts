@@ -1349,7 +1349,7 @@ describe('compactTable', () => {
       '| H1 | H2 | H3 |',
       '| --- | --- | --- |',
       '| A | | C |',
-    ].join('\\n');
+    ].join('\n');
     const result = compactTable(input);
     if (!result.newText.includes('| A | | C |')) {
       throw new Error('Expected compact empty-cell row, got: ' + result.newText);
