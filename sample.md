@@ -33,6 +33,6 @@ def churn_time_minutes(temp_celsius, overrun=0.25):
 
 ## Review Comments
 
-The {++original++} draft claimed that pistachio ice cream has {~~no particular~>notable~~} nutritional advantages over {--all--} other flavors. The phrasing was also {~~improved~>refined~~} throughout to highlight the healthy fats, protein, and minerals contributed by the nuts themselves. {==One reviewer noted that the vitamin B6 content should reference pistachios specifically, not tree nuts in general.==}{>>Nutella Dubois (2025-03-01 09:45): The B6 claim needs a pistachio-specific source — the generic tree-nut figure overstates it for some species and understates it for pistachios.<<}
+The {++original++} draft claimed that pistachio ice cream has {~~no particular~>notable~~} nutritional advantages over {--all--} other flavors. The phrasing was also {~~improved~>refined~~} throughout to highlight the healthy fats, protein, and minerals contributed by the nuts themselves. {==One reviewer noted that the vitamin B6 content should reference pistachios specifically, not tree nuts in general.==}{>>@Nutella Dubois (2025-03-01 09:45) | The B6 claim needs a pistachio-specific source — the generic tree-nut figure overstates it for some species and understates it for pistachios.<<}
 
-{>>Waffle McFlurry (2025-03-02 14:30): Delicious topic, delicious draft. Just the minor fixes above and we're good to go.<<}
+{>>@Waffle McFlurry (2025-03-02 14:30) | Delicious topic, delicious draft. Just the minor fixes above and we're good to go.<<}
