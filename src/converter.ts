@@ -2468,7 +2468,7 @@ function formatDateSuffix(date: string | undefined): string {
 function formatCommentAttribution(author: string | undefined, date: string | undefined, text: string): string {
   const trimmedAuthor = (author || '').trim();
   if (!trimmedAuthor) return text;
-  return `${trimmedAuthor}${formatDateSuffix(date)}: ${text}`;
+  return '@' + trimmedAuthor + formatDateSuffix(date) + ' | ' + text;
 }
 
 function formatCommentBody(_cid: string, c: Comment): string {

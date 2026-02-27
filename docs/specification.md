@@ -387,7 +387,7 @@ Unrecognized color values fall back to the configured default.
 Comments can include author name and timestamp:
 
 ```markdown
-{>>alice (2024-01-15 14:30): This needs revision<<}
+{>>@alice (2024-01-15 14:30) | This needs revision<<}
 ```
 
 #### Configuration
@@ -415,7 +415,7 @@ Standard CriticMarkup comment syntax (`{==text==}{>>comment<<}`) does not suppor
 
 `{#id>>comment text<<}`
 
-The `#id` appears between `{` and `>>`, extending the existing comment syntax. Author and date parsing inside the body is unchanged.
+The `#id` appears between `{` and `>>`, extending the existing comment syntax. Author attribution uses `@Author (Date) | text` format — see [Comment Attribution](#comment-attribution).
 
 #### Examples
 
@@ -425,8 +425,8 @@ The `#id` appears between `{` and `>>`, extending the existing comment syntax. A
 This is the first sentence of a {#1}paragraph. {#2}This is the second
 sentence of a paragraph.{/2}{/1}
 
-{#1>>alice (2024-01-15 14:30): This is comment 1.<<}
-{#2>>bob (2024-01-15 14:31): This is comment 2.<<}
+{#1>>@alice (2024-01-15 14:30) | This is comment 1.<<}
+{#2>>@bob (2024-01-15 14:31) | This is comment 2.<<}
 ```
 
 Comment 1 covers "paragraph. This is the second sentence of a paragraph." while comment 2 covers only "This is the second sentence of a paragraph." — their ranges overlap.
@@ -436,8 +436,8 @@ Non-numeric identifiers also work:
 ```markdown
 {#outer}The entire {#inner}important{/inner} sentence.{/outer}
 
-{#outer>>alice: General note<<}
-{#inner>>bob: Key word<<}
+{#outer>>@alice | General note<<}
+{#inner>>@bob | Key word<<}
 ```
 
 ##### Non-overlapping with IDs
@@ -445,7 +445,7 @@ Non-numeric identifiers also work:
 When `alwaysUseCommentIds` is enabled, even non-overlapping comments use ID syntax:
 
 ```markdown
-{#1}highlighted text{/1}{#1>>alice: note<<}
+{#1}highlighted text{/1}{#1>>@alice | note<<}
 ```
 
 ##### Non-nested overlapping comments

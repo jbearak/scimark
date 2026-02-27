@@ -61,8 +61,8 @@ describe('Comment reply threads: DOCX→MD', () => {
     expect(md).toContain('<<}');
 
     // Each parent comment body with replies should have the pattern:
-    // {#N>>author (date): text
-    //   {>>reply author (date): reply text<<}
+    // {#N>>@author (date) | text
+    //   {>>@reply author (date) | reply text<<}
     // <<}
     const parentWithReplies = /\{#\d+>>[\s\S]*?\n\s+\{>>[\s\S]*?<<\}\n<<\}/;
     expect(parentWithReplies.test(md)).toBe(true);
@@ -137,9 +137,9 @@ describe('Comment reply threads: MD→DOCX', () => {
   test('parses nested reply syntax and generates separate comments', async () => {
     const md = `This is {#1}some text{/1}
 
-{#1>>Alice (2024-01-15T14:30-05:00): Parent comment
-  {>>Bob (2024-01-16T10:00-05:00): First reply<<}
-  {>>Carol (2024-01-17T09:00-05:00): Second reply<<}
+{#1>>@Alice (2024-01-15T14:30-05:00) | Parent comment
+  {>>@Bob (2024-01-16T10:00-05:00) | First reply<<}
+  {>>@Carol (2024-01-17T09:00-05:00) | Second reply<<}
 <<}`;
 
     const result = await convertMdToDocx(md);
@@ -201,9 +201,9 @@ describe('Comment reply threads: MD→DOCX', () => {
   test('anchors parent and reply comment ranges in document.xml', async () => {
     const md = `This is {#1}some text{/1}
 
-{#1>>Alice (2024-01-15T14:30-05:00): Parent comment
-  {>>Bob (2024-01-16T10:00-05:00): First reply<<}
-  {>>Carol (2024-01-17T09:00-05:00): Second reply<<}
+{#1>>@Alice (2024-01-15T14:30-05:00) | Parent comment
+  {>>@Bob (2024-01-16T10:00-05:00) | First reply<<}
+  {>>@Carol (2024-01-17T09:00-05:00) | Second reply<<}
 <<}`;
 
     const result = await convertMdToDocx(md);
@@ -226,7 +226,7 @@ describe('Comment reply threads: MD→DOCX', () => {
   test('parses markdown without replies (no commentsExtended.xml)', async () => {
     const md = `This is {#1}some text{/1}
 
-{#1>>Alice (2024-01-15T14:30-05:00): Just a comment<<}`;
+{#1>>@Alice (2024-01-15T14:30-05:00) | Just a comment<<}`;
 
     const result = await convertMdToDocx(md);
     const zip = await JSZip.loadAsync(result.docx);
@@ -244,9 +244,9 @@ describe('Comment reply threads: round-trip', () => {
   test('MD→DOCX→MD preserves reply structure (single comment)', async () => {
     const md = `This is {#1}some text{/1}
 
-{#1>>Alice (2024-01-15T14:30-05:00): Parent comment
-  {>>Bob (2024-01-16T10:00-05:00): First reply<<}
-  {>>Carol (2024-01-17T09:00-05:00): Second reply<<}
+{#1>>@Alice (2024-01-15T14:30-05:00) | Parent comment
+  {>>@Bob (2024-01-16T10:00-05:00) | First reply<<}
+  {>>@Carol (2024-01-17T09:00-05:00) | Second reply<<}
 <<}`;
 
     // MD → DOCX
@@ -271,10 +271,10 @@ describe('Comment reply threads: round-trip', () => {
   test('MD→DOCX→MD preserves reply structure (overlapping comments)', async () => {
     const md = `This is {#1}{#2}some text{/1} more text{/2}
 
-{#1>>Alice (2024-01-15T14:30-05:00): Parent comment
-  {>>Bob (2024-01-16T10:00-05:00): Reply to Alice<<}
+{#1>>@Alice (2024-01-15T14:30-05:00) | Parent comment
+  {>>@Bob (2024-01-16T10:00-05:00) | Reply to Alice<<}
 <<}
-{#2>>Dave (2024-01-15T15:00-05:00): Another comment<<}`;
+{#2>>@Dave (2024-01-15T15:00-05:00) | Another comment<<}`;
 
     // MD → DOCX
     const { docx } = await convertMdToDocx(md);
@@ -297,9 +297,9 @@ describe('Comment reply threads: round-trip', () => {
 
 describe('preprocessCriticMarkup: nested replies', () => {
   test('preserves paragraph breaks inside comment with nested replies', () => {
-    const input = `{#1>>Alice (2024-01-15): Parent
+    const input = `{#1>>@Alice (2024-01-15) | Parent
 
-  {>>Bob: Reply<<}
+  {>>@Bob | Reply<<}
 <<}`;
     const result = preprocessCriticMarkup(input);
     // The \n\n between "Parent" and the reply should be replaced with placeholder
@@ -310,8 +310,8 @@ describe('preprocessCriticMarkup: nested replies', () => {
 
 describe('Non-ID comment replies (inline {>>...<<})', () => {
   test('non-ID comment with replies round-trips through MD→DOCX→MD', async () => {
-    const md = `{==some text==}{>>Alice (2024-01-15T14:30-05:00): Parent comment
-  {>>Bob (2024-01-16T10:00-05:00): Reply<<}
+    const md = `{==some text==}{>>@Alice (2024-01-15T14:30-05:00) | Parent comment
+  {>>@Bob (2024-01-16T10:00-05:00) | Reply<<}
 <<}`;
 
     const { docx } = await convertMdToDocx(md);
@@ -331,26 +331,26 @@ describe('Non-ID comment replies (inline {>>...<<})', () => {
 
 describe('Consecutive reply format preservation', () => {
   test('consecutive reply format round-trips as consecutive', async () => {
-    const md = `{==some text==}{>>Alice (2024-01-15T14:30-05:00): Parent comment<<}{>>Bob (2024-01-16T10:00-05:00): Reply<<}`;
+    const md = `{==some text==}{>>@Alice (2024-01-15T14:30-05:00) | Parent comment<<}{>>@Bob (2024-01-16T10:00-05:00) | Reply<<}`;
 
     const { docx } = await convertMdToDocx(md);
     const result = await convertDocx(docx);
 
     // Should preserve consecutive format (no nested indentation)
-    expect(result.markdown).toContain('Parent comment<<}{>>Bob');
+    expect(result.markdown).toContain('Parent comment<<}{>>@Bob');
     expect(result.markdown).not.toContain('\n  {>>');
   });
 
   test('nested reply format round-trips as nested', async () => {
-    const md = `{==some text==}{>>Alice (2024-01-15T14:30-05:00): Parent comment
-  {>>Bob (2024-01-16T10:00-05:00): Reply<<}
+    const md = `{==some text==}{>>@Alice (2024-01-15T14:30-05:00) | Parent comment
+  {>>@Bob (2024-01-16T10:00-05:00) | Reply<<}
 <<}`;
 
     const { docx } = await convertMdToDocx(md);
     const result = await convertDocx(docx);
 
     // Should preserve nested format
-    expect(result.markdown).toContain('\n  {>>Bob');
+    expect(result.markdown).toContain('\n  {>>@Bob');
     expect(result.markdown).toContain('\n<<}');
   });
 });
@@ -402,7 +402,7 @@ describe('No-reply regression', () => {
     const md = buildMarkdown(content, comments);
     // Should use traditional inline syntax since no overlapping
     expect(md).toContain('{==Hello world==}');
-    expect(md).toContain('{>>Alice');
+    expect(md).toContain('{>>@Alice');
     expect(md).toContain('<<}');
     // Should NOT have nested reply pattern
     expect(md).not.toContain('\n  {>>');

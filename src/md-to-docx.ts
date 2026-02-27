@@ -120,38 +120,33 @@ export { PARA_PLACEHOLDER, preprocessCriticMarkup };
 
 // Custom inline rules
 
-/** Parse author/date/text from comment content string. */
-function isLikelyCommentAuthorLabel(label: string): boolean {
-  const trimmed = label.trim();
-  if (!trimmed) return false;
-  // Word truncates comment author metadata on save; avoid putting long prose
-  // before ":" into w:author where it can be lost. Long labels are treated
-  // as plain comment text instead.
-  if (trimmed.length > 120) return false;
-  if (trimmed.includes('\n')) return false;
-  if (trimmed.split(/\s+/).filter(Boolean).length > 12) return false;
-  return true;
-}
+/** Parse author/date/text from comment content string.
+ *
+ * Uses `@Author (Date) | text` / `@Author | text` syntax.
+ * If content does not start with `@`, the entire string is plain comment text.
+ *
+ * Whitespace around `(`, `)`, and `|` is flexible: zero or more spaces are
+ * accepted so that hand-edited markdown still round-trips correctly.
+ */
 function parseCommentContent(content: string): { author?: string; date?: string; text: string } {
-  const match = content.match(/^([\s\S]+?)\s+\(([^)]+)\):\s*([\s\S]*)$/);
-  if (match && isLikelyCommentAuthorLabel(match[1])) {
-    return { author: match[1], date: match[2], text: match[3] };
-  }
-  const authorMatch = content.match(/^([^:]+):\s*([\s\S]*)$/);
-  if (authorMatch) {
-    const authorLabel = authorMatch[1].trim();
-    if (isLikelyCommentAuthorLabel(authorLabel)) {
-      return { author: authorLabel, text: authorMatch[2] };
+  if (content.startsWith('@')) {
+    // Try @Author (Date) | text  — \s* allows missing/extra whitespace
+    const match = content.match(/^@(.+?)\s*\(([^)]+)\)\s*\|\s*([\s\S]*)$/);
+    if (match) {
+      const author = match[1].trim();
+      const date = match[2].trim();
+      if (author) return { author, ...(date ? { date } : {}), text: match[3] };
     }
-    return { text: content };
-  }
-  if (content.trim()) {
-    if (content.includes(':') || content.includes(' ') || /[^a-zA-Z0-9_-]/.test(content)) {
-      return { text: content };
+    // Try @Author | text
+    const simpleMatch = content.match(/^@([^|]+?)\s*\|\s*([\s\S]*)$/);
+    if (simpleMatch) {
+      const author = simpleMatch[1].trim();
+      if (author) return { author, text: simpleMatch[2] };
     }
-    return { author: content, text: '' };
   }
-  return { text: '' };
+  // No @ prefix → entire content is comment text
+  if (!content.trim()) return { text: '' };
+  return { text: content };
 }
 
 /**
