@@ -20,9 +20,8 @@ A specification, converter, and VS Code extension for roundtrip research paper a
 
 ### Installation
 
-Install from the [releases page](https://github.com/jbearak/manuscript-markdown/releases), or [build from source](docs/development.md). 
+Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jbearak.manuscript-markdown) or [OpenVSX Registry](https://open-vsx.org/extension/jbearak/manuscript-markdown). Alternatively, download the `.vsix` package from the [releases page](https://github.com/jbearak/manuscript-markdown/releases), or [build from source](https://github.com/jbearak/manuscript-markdown/blob/main/docs/development.md).
 
-<!-- Download from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jbearak.manuscript-markdown), (OpenVSX Registry)[https://open-vsx.org/extension/jbearak/manuscript-markdown], -->
 
 ### Usage
 

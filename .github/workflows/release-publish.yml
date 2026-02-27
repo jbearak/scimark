@@ -11,11 +11,6 @@ name: Release Publish
         description: 'Tag to release (e.g., v1.2.3)'
         required: true
         type: string
-      publish_vscode:
-        description: 'Publish to VS Code Marketplace'
-        required: false
-        type: boolean
-        default: false
 
 # Serialize by tag so retries/second runs don't collide.
 concurrency:
@@ -124,10 +119,14 @@ jobs:
           fi
 
       - name: Publish to VS Code Marketplace
-        if: ${{ inputs.publish_vscode }}
         run: bunx @vscode/vsce publish --packagePath *.vsix
         env:
-          VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to OpenVSX
+        run: bunx ovsx publish *.vsix
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
       - name: Create GitHub Release
         # Tag v2.5.0 -> commit a06a81a03ee405af7f2048a818ed3f03bbf83c7b
