@@ -41,7 +41,7 @@ With attribution:
 {>>@alice (2024-01-15 14:30) | Consider rephrasing this section<<}
 ```
 
-The `@` prefix and `|` separator make attribution unambiguous — comments like `{>>Note: this is important<<}` are always treated as plain text since they don't start with `@`.
+The `@` prefix and `|` separator make attribution unambiguous — comments like `{>>Note: this is important<<}` are never misparsed as having an author, since they don't start with `@`.
 
 ### Highlight `{==text==}`
 
