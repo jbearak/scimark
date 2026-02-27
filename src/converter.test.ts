@@ -126,7 +126,7 @@ describe('DOCX table conversion', () => {
     const buf = await zip.generateAsync({ type: 'uint8array' });
     const result = await convertDocx(buf, 'authorYearTitle', { pipeTableMaxLineWidth: 500 });
 
-    expect(result.markdown).toContain('{====annotated====}{>>@Reviewer (2025-01-01 00:00) \\| note<<}');
+    expect(result.markdown).toContain(`{====annotated====}{>>@Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}) \\| note<<}`);
     expect(result.markdown).toContain('@smith2020cell, p. 20');
     expect(result.markdown).toContain('$x$');
     // Simple table renders as pipe table (explicit high width to avoid fragility)
