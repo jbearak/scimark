@@ -132,10 +132,17 @@ function parseCommentContent(content: string): { author?: string; date?: string;
   if (content.startsWith('@')) {
     // Try @Author (Date) | text  — \s* allows missing/extra whitespace
     const match = content.match(/^@(.+?)\s*\(([^)]+)\)\s*\|\s*([\s\S]*)$/);
-    if (match) return { author: match[1].trim(), date: match[2].trim(), text: match[3] };
+    if (match) {
+      const author = match[1].trim();
+      const date = match[2].trim();
+      if (author) return { author, ...(date ? { date } : {}), text: match[3] };
+    }
     // Try @Author | text
     const simpleMatch = content.match(/^@([^|]+?)\s*\|\s*([\s\S]*)$/);
-    if (simpleMatch) return { author: simpleMatch[1].trim(), text: simpleMatch[2] };
+    if (simpleMatch) {
+      const author = simpleMatch[1].trim();
+      if (author) return { author, text: simpleMatch[2] };
+    }
   }
   // No @ prefix → entire content is comment text
   if (!content.trim()) return { text: '' };

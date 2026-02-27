@@ -30,7 +30,7 @@ This is {~~old text~>new text~~}.
 
 ### Comment `{>>text<<}`
 
-Adds a comment annotation. With author attribution enabled, comments include the author name and timestamp using `@Author | text` syntax.
+Adds a comment annotation. With author attribution enabled, comments support `@Author | text` (author only) and `@Author (Date) | text` (author + timestamp).
 
 ```markdown
 This needs review.{>>Consider rephrasing this section<<}

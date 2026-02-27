@@ -410,15 +410,21 @@ describe('Formatting Module Property Tests', () => {
       fc.assert(
         fc.property(fc.string({ minLength: 1 }), (username) => {
           const result = wrapSelection('', '{>>', '<<}', 3, username);
+          const trimmed = username.trim();
+
+          if (!trimmed) {
+            // Whitespace-only names are treated as no author
+            return result.newText === '{>><<}' && result.cursorOffset === 3;
+          }
 
           // Expected format: {>>@Username | <<}
-          const expectedText = `{>>@${username} | <<}`;
+          const expectedText = `{>>@${trimmed} | <<}`;
           const structureCorrect = result.newText === expectedText;
 
           // Cursor should be positioned after "@Username | " (after the pipe and space)
-          const expectedCursorPos = 3 + username.length + 4; // 3 for '{>>', username length, 4 for '@', ' ', '|', ' '
+          const expectedCursorPos = 3 + trimmed.length + 4; // 3 for '{>>', trimmed length, 4 for '@', ' ', '|', ' '
           const cursorCorrect = result.cursorOffset === expectedCursorPos;
-          
+
           return structureCorrect && cursorCorrect;
         }),
         { numRuns: 100 }
@@ -433,16 +439,25 @@ describe('Formatting Module Property Tests', () => {
       fc.assert(
         fc.property(fc.string(), fc.string({ minLength: 1 }), (text, username) => {
           const result = highlightAndComment(text, username);
+          const trimmed = username.trim();
+
+          if (!trimmed) {
+            // Whitespace-only names are treated as no author
+            const expectedText = `{==${text}==}{>><<}`;
+            const highlightLength = `{==${text}==}`.length;
+            return result.newText === expectedText && result.cursorOffset === highlightLength + 3;
+          }
 
           // Expected format: {==text==}{>>@Username | <<}
-          const expectedText = `{==${text}==}{>>@${username} | <<}`;
+          const expectedText = `{==${text}==}{>>@${trimmed} | <<}`;
           const structureCorrect = result.newText === expectedText;
 
           // Cursor should be positioned after "@Username | " in the comment section
           const highlightLength = `{==${text}==}`.length;
-          const expectedCursorPos = highlightLength + 3 + username.length + 4; // highlight + '{>>' + username + 4 for '@', ' ', '|', ' '
+          const authorPrefixLen = trimmed.length + 4; // '@', ' ', '|', ' '
+          const expectedCursorPos = highlightLength + 3 + authorPrefixLen;
           const cursorCorrect = result.cursorOffset === expectedCursorPos;
-          
+
           return structureCorrect && cursorCorrect;
         }),
         { numRuns: 100 }
@@ -471,16 +486,18 @@ describe('Formatting Module Property Tests', () => {
           ),
           (username) => {
             const result = wrapSelection('', '{>>', '<<}', 3, username);
-            
-            // The username should appear exactly as provided in the output
-            const expectedText = `{>>@${username} | <<}`;
+            const trimmed = username.trim();
+
+            if (!trimmed) {
+              // Whitespace-only names are treated as no author
+              return result.newText === '{>><<}';
+            }
+
+            // The trimmed username should appear in the output
+            const expectedText = `{>>@${trimmed} | <<}`;
             const structureCorrect = result.newText === expectedText;
 
-            // Verify the username is not escaped or modified
-            const extractedUsername = result.newText.slice(4, 4 + username.length);
-            const usernamePreserved = extractedUsername === username;
-            
-            return structureCorrect && usernamePreserved;
+            return structureCorrect;
           }
         ),
         { numRuns: 100 }

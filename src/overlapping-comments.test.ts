@@ -496,10 +496,8 @@ describe('Overlapping comments: round-trip', () => {
     expect(roundtrip.markdown).toContain('{/intro-note}');
     expect(roundtrip.markdown).toContain('{#second-note}');
     expect(roundtrip.markdown).toContain('{/second-note}');
-    expect(roundtrip.markdown).toContain('{#intro-note>>@alice');
-    expect(roundtrip.markdown).toContain('first<<}');
-    expect(roundtrip.markdown).toContain('{#second-note>>@bob');
-    expect(roundtrip.markdown).toContain('second<<}');
+    expect(roundtrip.markdown).toContain('{#intro-note>>@alice | first<<}');
+    expect(roundtrip.markdown).toContain('{#second-note>>@bob | second<<}');
   });
 
   test('preserves overlapping non-numeric IDs through md→docx→md', async () => {
@@ -510,10 +508,8 @@ describe('Overlapping comments: round-trip', () => {
     expect(roundtrip.markdown).toContain('{#conclusion-remark}');
     expect(roundtrip.markdown).toContain('{/intro-note}');
     expect(roundtrip.markdown).toContain('{/conclusion-remark}');
-    expect(roundtrip.markdown).toContain('{#intro-note>>@alice');
-    expect(roundtrip.markdown).toContain('first<<}');
-    expect(roundtrip.markdown).toContain('{#conclusion-remark>>@bob');
-    expect(roundtrip.markdown).toContain('second<<}');
+    expect(roundtrip.markdown).toContain('{#intro-note>>@alice | first<<}');
+    expect(roundtrip.markdown).toContain('{#conclusion-remark>>@bob | second<<}');
   });
 
   test('falls back to numeric IDs when mapping custom property is missing', async () => {
@@ -528,8 +524,8 @@ describe('Overlapping comments: round-trip', () => {
     expect(roundtrip.markdown).toContain('{/1}');
     expect(roundtrip.markdown).toContain('{#2}');
     expect(roundtrip.markdown).toContain('{/2}');
-    expect(roundtrip.markdown).toContain('{#1>>@alice');
-    expect(roundtrip.markdown).toContain('{#2>>@bob');
+    expect(roundtrip.markdown).toContain('{#1>>@alice | first<<}');
+    expect(roundtrip.markdown).toContain('{#2>>@bob | second<<}');
     expect(roundtrip.markdown).not.toContain('{#intro-note}');
   });
 
