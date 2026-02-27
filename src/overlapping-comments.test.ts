@@ -45,7 +45,7 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     ];
     const result = buildMarkdown(content, comments);
     expect(result).toContain('{==hello==}');
-    expect(result).toContain('{>>alice: comment 1<<}');
+    expect(result).toContain('{>>@alice | comment 1<<}');
     expect(result).not.toContain('{#');
     expect(result).not.toContain('{/');
   });
@@ -77,8 +77,8 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     expect(result).toContain('{/1}');
     expect(result).toContain('{/2}');
     // Comment bodies deferred after paragraph text
-    expect(result).toContain('{#1>>alice: comment 1<<}');
-    expect(result).toContain('{#2>>bob: comment 2<<}');
+    expect(result).toContain('{#1>>@alice | comment 1<<}');
+    expect(result).toContain('{#2>>@bob | comment 2<<}');
     // Should NOT use traditional syntax
     expect(result).not.toContain('{==');
   });
@@ -151,7 +151,7 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     expect(result).toContain('{#1}');
     expect(result).toContain('hello');
     expect(result).toContain('{/1}');
-    expect(result).toContain('{#1>>alice: note<<}');
+    expect(result).toContain('{#1>>@alice | note<<}');
     expect(result).not.toContain('{==');
   });
 
@@ -178,8 +178,8 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     const date1 = formatLocalIsoMinute('2024-01-15T14:30:00Z');
     const date2 = formatLocalIsoMinute('2024-01-15T14:31:00Z');
     // IDs remapped to 1-indexed
-    expect(result).toContain(`{#1>>alice (${date1}): note<<}`);
-    expect(result).toContain(`{#2>>bob (${date2}): reply<<}`);
+    expect(result).toContain(`{#1>>@alice (${date1}) | note<<}`);
+    expect(result).toContain(`{#2>>@bob (${date2}) | reply<<}`);
   });
 
   test('highlight formatting is preserved in ID-based mode', () => {
@@ -220,7 +220,7 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     ];
     const result = buildMarkdown(content, comments);
     expect(result).toContain('{====text====}');
-    expect(result).toContain('{>>alice: note<<}');
+    expect(result).toContain('{>>@alice | note<<}');
   });
 
   test('table-only comments are remapped to 1-indexed IDs', () => {
@@ -252,7 +252,7 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
 
     const result = buildMarkdown(content as any, comments, { alwaysUseCommentIds: true });
     expect(result).toContain('{#1}cell text{/1}');
-    expect(result).toContain('{#1>>alice: table note<<}');
+    expect(result).toContain('{#1>>@alice | table note<<}');
     expect(result).not.toContain('{#47}');
     expect(result).not.toContain('{/47}');
     expect(result).not.toContain('{#47>>');
@@ -283,10 +283,10 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     const result = buildMarkdown(content as any, comments);
     expect(result).toContain('{#1}p1 {/1}');
     expect(result).toContain('{#1}{#2}p2{/1}{/2}');
-    expect(result).toContain('{#1>>alice: note A<<}');
-    expect(result).toContain('{#2>>bob: note B<<}');
-    expect(result).not.toContain('{>>alice: note A<<}');
-    expect((result.match(/alice: note A/g) || []).length).toBe(1);
+    expect(result).toContain('{#1>>@alice | note A<<}');
+    expect(result).toContain('{#2>>@bob | note B<<}');
+    expect(result).not.toContain('{>>@alice | note A<<}');
+    expect((result.match(/@alice \| note A/g) || []).length).toBe(1);
   });
 
   test('mapped IDs are reused and new unmapped IDs get non-colliding numeric IDs', () => {
@@ -306,14 +306,14 @@ describe('Overlapping comments: docx-to-md (buildMarkdown)', () => {
     expect(result).toContain('{/intro-note}');
     expect(result).toContain('{#1}');
     expect(result).toContain('{/1}');
-    expect(result).toContain('{#intro-note>>alice: mapped<<}');
-    expect(result).toContain('{#1>>bob: new from word<<}');
+    expect(result).toContain('{#intro-note>>@alice | mapped<<}');
+    expect(result).toContain('{#1>>@bob | new from word<<}');
   });
 });
 
 describe('Overlapping comments: md-to-docx (parseMd)', () => {
   test('parses {#id} range start marker', () => {
-    const tokens = parseMd('text {#1}marked{/1}{#1>>alice: note<<}');
+    const tokens = parseMd('text {#1}marked{/1}{#1>>@alice | note<<}');
     const runs = tokens[0]?.runs;
     expect(runs).toBeDefined();
     const rangeStart = runs!.find(r => r.type === 'comment_range_start');
@@ -322,7 +322,7 @@ describe('Overlapping comments: md-to-docx (parseMd)', () => {
   });
 
   test('parses {/id} range end marker', () => {
-    const tokens = parseMd('text {#1}marked{/1}{#1>>alice: note<<}');
+    const tokens = parseMd('text {#1}marked{/1}{#1>>@alice | note<<}');
     const runs = tokens[0]?.runs;
     const rangeEnd = runs!.find(r => r.type === 'comment_range_end');
     expect(rangeEnd).toBeDefined();
@@ -330,7 +330,7 @@ describe('Overlapping comments: md-to-docx (parseMd)', () => {
   });
 
   test('parses {#id>>...<<} comment body with ID', () => {
-    const tokens = parseMd('{#myid>>alice (2024-01-15T14:30): This is a comment<<}');
+    const tokens = parseMd('{#myid>>@alice (2024-01-15T14:30) | This is a comment<<}');
     const runs = tokens[0]?.runs;
     const body = runs!.find(r => r.type === 'comment_body_with_id');
     expect(body).toBeDefined();
@@ -352,7 +352,7 @@ describe('Overlapping comments: md-to-docx (parseMd)', () => {
   });
 
   test('overlapping comment syntax parsed alongside regular text', () => {
-    const md = 'This is {#1}first {#2}second{/2} third{/1}\n\n{#1>>alice: comment 1<<}\n\n{#2>>bob: comment 2<<}';
+    const md = 'This is {#1}first {#2}second{/2} third{/1}\n\n{#1>>@alice | comment 1<<}\n\n{#2>>@bob | comment 2<<}';
     const tokens = parseMd(md);
     const firstParaRuns = tokens[0]?.runs;
     expect(firstParaRuns).toBeDefined();
@@ -364,7 +364,7 @@ describe('Overlapping comments: md-to-docx (parseMd)', () => {
   });
 
   test('{====text====} parses as critic_highlight with highlight=true', () => {
-    const tokens = parseMd('{====text====}{>>alice: note<<}');
+    const tokens = parseMd('{====text====}{>>@alice | note<<}');
     const runs = tokens[0]?.runs;
     expect(runs).toBeDefined();
     const hl = runs!.find(r => r.type === 'critic_highlight' && r.text === 'text');
@@ -373,7 +373,7 @@ describe('Overlapping comments: md-to-docx (parseMd)', () => {
   });
 
   test('{====text=={green}==} parses as critic_highlight with highlight and color', () => {
-    const tokens = parseMd('{====text=={green}==}{>>alice: note<<}');
+    const tokens = parseMd('{====text=={green}==}{>>@alice | note<<}');
     const runs = tokens[0]?.runs;
     expect(runs).toBeDefined();
     const hl = runs!.find(r => r.type === 'critic_highlight' && r.text === 'text');
@@ -458,7 +458,7 @@ describe('Overlapping comments: OOXML generation', () => {
 
 describe('Overlapping comments: preprocessing', () => {
   test('preprocessCriticMarkup handles {#id>>...<<} with paragraph breaks', () => {
-    const input = '{#1>>alice: first\n\nsecond<<}';
+    const input = '{#1>>@alice | first\n\nsecond<<}';
     const result = preprocessCriticMarkup(input);
     expect(result).not.toContain('\n\n');
     expect(result).toContain('{#1>>');
@@ -468,56 +468,56 @@ describe('Overlapping comments: preprocessing', () => {
 
 describe('Overlapping comments: round-trip', () => {
   test('non-overlapping comments round-trip through md-to-docx', async () => {
-    const md = '{==highlighted==}{>>alice: note<<}';
+    const md = '{==highlighted==}{>>@alice | note<<}';
     const result = await convertMdToDocx(md, { authorName: 'test' });
     expect(result.docx).toBeDefined();
     expect(result.docx.length).toBeGreaterThan(0);
   });
 
   test('ID-based comments produce valid DOCX', async () => {
-    const md = '{#1}text{/1}{#1>>alice: note<<}';
+    const md = '{#1}text{/1}{#1>>@alice | note<<}';
     const result = await convertMdToDocx(md, { authorName: 'test' });
     expect(result.docx).toBeDefined();
     expect(result.docx.length).toBeGreaterThan(0);
   });
 
   test('overlapping ID-based comments produce valid DOCX', async () => {
-    const md = '{#1}first {#2}overlap{/2} last{/1}\n\n{#1>>alice: comment one<<}\n\n{#2>>bob: comment two<<}';
+    const md = '{#1}first {#2}overlap{/2} last{/1}\n\n{#1>>@alice | comment one<<}\n\n{#2>>@bob | comment two<<}';
     const result = await convertMdToDocx(md, { authorName: 'test' });
     expect(result.docx).toBeDefined();
     expect(result.docx.length).toBeGreaterThan(0);
   });
 
   test('preserves non-numeric comment IDs through md→docx→md', async () => {
-    const md = '{#intro-note}A {#second-note}B{/second-note} C{/intro-note}\n\n{#intro-note>>alice: first<<}\n\n{#second-note>>bob: second<<}';
+    const md = '{#intro-note}A {#second-note}B{/second-note} C{/intro-note}\n\n{#intro-note>>@alice | first<<}\n\n{#second-note>>@bob | second<<}';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });
     const roundtrip = await convertDocx(docx);
     expect(roundtrip.markdown).toContain('{#intro-note}');
     expect(roundtrip.markdown).toContain('{/intro-note}');
     expect(roundtrip.markdown).toContain('{#second-note}');
     expect(roundtrip.markdown).toContain('{/second-note}');
-    expect(roundtrip.markdown).toContain('{#intro-note>>alice');
+    expect(roundtrip.markdown).toContain('{#intro-note>>@alice');
     expect(roundtrip.markdown).toContain('first<<}');
-    expect(roundtrip.markdown).toContain('{#second-note>>bob');
+    expect(roundtrip.markdown).toContain('{#second-note>>@bob');
     expect(roundtrip.markdown).toContain('second<<}');
   });
 
   test('preserves overlapping non-numeric IDs through md→docx→md', async () => {
-    const md = '{#intro-note}A {#conclusion-remark}B{/conclusion-remark} C{/intro-note}\n\n{#intro-note>>alice: first<<}\n\n{#conclusion-remark>>bob: second<<}';
+    const md = '{#intro-note}A {#conclusion-remark}B{/conclusion-remark} C{/intro-note}\n\n{#intro-note>>@alice | first<<}\n\n{#conclusion-remark>>@bob | second<<}';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });
     const roundtrip = await convertDocx(docx);
     expect(roundtrip.markdown).toContain('{#intro-note}');
     expect(roundtrip.markdown).toContain('{#conclusion-remark}');
     expect(roundtrip.markdown).toContain('{/intro-note}');
     expect(roundtrip.markdown).toContain('{/conclusion-remark}');
-    expect(roundtrip.markdown).toContain('{#intro-note>>alice');
+    expect(roundtrip.markdown).toContain('{#intro-note>>@alice');
     expect(roundtrip.markdown).toContain('first<<}');
-    expect(roundtrip.markdown).toContain('{#conclusion-remark>>bob');
+    expect(roundtrip.markdown).toContain('{#conclusion-remark>>@bob');
     expect(roundtrip.markdown).toContain('second<<}');
   });
 
   test('falls back to numeric IDs when mapping custom property is missing', async () => {
-    const md = '{#intro-note}A {#second-note}B{/second-note} C{/intro-note}\n\n{#intro-note>>alice: first<<}\n\n{#second-note>>bob: second<<}';
+    const md = '{#intro-note}A {#second-note}B{/second-note} C{/intro-note}\n\n{#intro-note>>@alice | first<<}\n\n{#second-note>>@bob | second<<}';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(docx);
@@ -528,13 +528,13 @@ describe('Overlapping comments: round-trip', () => {
     expect(roundtrip.markdown).toContain('{/1}');
     expect(roundtrip.markdown).toContain('{#2}');
     expect(roundtrip.markdown).toContain('{/2}');
-    expect(roundtrip.markdown).toContain('{#1>>alice');
-    expect(roundtrip.markdown).toContain('{#2>>bob');
+    expect(roundtrip.markdown).toContain('{#1>>@alice');
+    expect(roundtrip.markdown).toContain('{#2>>@bob');
     expect(roundtrip.markdown).not.toContain('{#intro-note}');
   });
 
   test('stores comment ID mapping in docProps/custom.xml', async () => {
-    const md = '{#intro-note}text{/intro-note}\n\n{#intro-note>>alice: note<<}';
+    const md = '{#intro-note}text{/intro-note}\n\n{#intro-note>>@alice | note<<}';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(docx);
@@ -545,14 +545,14 @@ describe('Overlapping comments: round-trip', () => {
   });
 
   test('{====text====} round-trips with highlighted text in comment', async () => {
-    const md = '{====text====}{>>alice: note<<}';
+    const md = '{====text====}{>>@alice | note<<}';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });
     const roundtrip = await convertDocx(docx);
     expect(roundtrip.markdown).toContain('{====text====}');
   });
 
   test('{==text==} without inner highlight round-trips without double-wrapping', async () => {
-    const md = '{==text==}{>>alice: note<<}';
+    const md = '{==text==}{>>@alice | note<<}';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });
     const roundtrip = await convertDocx(docx);
     // Should NOT produce {====text====} — the {==...==} is comment syntax, not a highlight
@@ -568,18 +568,18 @@ describe('Overlapping comments: round-trip', () => {
   });
 
   test('consecutive {>>...<<} blocks are threaded as parent-reply', async () => {
-    const md = '{==text==}{>>alice (2024-01-01 00:00): parent note<<}{>>bob (2024-01-02 00:00): reply note<<}';
+    const md = '{==text==}{>>@alice (2024-01-01 00:00) | parent note<<}{>>@bob (2024-01-02 00:00) | reply note<<}';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });
     const roundtrip = await convertDocx(docx);
     expect(roundtrip.markdown).toContain('parent note');
     expect(roundtrip.markdown).toContain('reply note');
     // Reply should be nested inside the parent comment block
-    expect(roundtrip.markdown).toContain('{>>alice');
-    expect(roundtrip.markdown).toMatch(/\{>>bob.*reply note/);
+    expect(roundtrip.markdown).toContain('{>>@alice');
+    expect(roundtrip.markdown).toMatch(/\{>>@bob.*reply note/);
   });
 
   test('standalone {>>comment<<} round-trips without anchor', async () => {
-    const md = 'Before.\n\n{>>alice (2024-01-01 00:00): standalone note<<}\n\nAfter.';
+    const md = 'Before.\n\n{>>@alice (2024-01-01 00:00) | standalone note<<}\n\nAfter.';
     const { docx } = await convertMdToDocx(md, { authorName: 'test' });
     const roundtrip = await convertDocx(docx);
     expect(roundtrip.markdown).toContain('{>>');

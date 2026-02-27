@@ -126,7 +126,7 @@ describe('DOCX table conversion', () => {
     const buf = await zip.generateAsync({ type: 'uint8array' });
     const result = await convertDocx(buf, 'authorYearTitle', { pipeTableMaxLineWidth: 500 });
 
-    expect(result.markdown).toContain('{====annotated====}{>>Reviewer');
+    expect(result.markdown).toContain('{====annotated====}{>>@Reviewer');
     expect(result.markdown).toContain('@smith2020cell, p. 20');
     expect(result.markdown).toContain('$x$');
     // Simple table renders as pipe table (explicit high width to avoid fragility)
@@ -353,8 +353,8 @@ describe('DOCX table conversion', () => {
     expect(paraMatch).not.toBeNull();
     expect(paraMatch?.[1]).toBe('{#1}commented{/1}');
     expect(paraMatch?.[1]).not.toContain('{#1>>');
-    expect(tableMarkdown).toContain('{#1>>Reviewer: note<<}');
-    expect(tableMarkdown).toContain('</p>\n      {#1>>Reviewer: note<<}');
+    expect(tableMarkdown).toContain('{#1>>@Reviewer | note<<}');
+    expect(tableMarkdown).toContain('</p>\n      {#1>>@Reviewer | note<<}');
   });
 });
 
@@ -1625,7 +1625,7 @@ describe('buildMarkdown', () => {
     ];
 
     const result = buildMarkdown(content, comments);
-    expect(result).toBe(`{==normal **bold**==}{>>Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}): note<<}`);
+    expect(result).toBe(`{==normal **bold**==}{>>@Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}) | note<<}`);
   });
 
   test('highlighted commented text produces nested {====text====} delimiters', () => {
@@ -1642,7 +1642,7 @@ describe('buildMarkdown', () => {
     ];
 
     const result = buildMarkdown(content, comments);
-    expect(result).toBe(`{====highlighted====}{>>Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}): note<<}`);
+    expect(result).toBe(`{====highlighted====}{>>@Reviewer (${formatLocalIsoMinute('2025-01-01T00:00:00Z')}) | note<<}`);
   });
 
   test('highlight spanning into a comment region is preserved with ID-based syntax', () => {

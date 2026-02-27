@@ -28,7 +28,7 @@ export function wrapSelection(
   
   // If this is a comment (prefix is '{>>') and we have an author name, insert it
   if (prefix === '{>>' && authorName) {
-    const authorPrefix = `${authorName}: `;
+    const authorPrefix = '@' + authorName + ' | ';
     newText = prefix + authorPrefix + text + suffix;
     // Adjust cursor offset to account for author prefix length
     if (adjustedCursorOffset !== undefined) {
@@ -129,7 +129,7 @@ export function formatHeading(text: string, level: number): TextTransformation {
  */
 export function highlightAndComment(text: string, authorName?: string | null): TextTransformation {
   const highlighted = `{==${text}==}`;
-  const authorPrefix = authorName ? `${authorName}: ` : '';
+  const authorPrefix = authorName ? '@' + authorName + ' | ' : '';
   const withComment = highlighted + `{>>${authorPrefix}<<}`;
   const cursorOffset = highlighted.length + 3 + authorPrefix.length; // Position after author prefix
   
@@ -141,7 +141,7 @@ export function highlightAndComment(text: string, authorName?: string | null): T
 
 
 /**
- * Wraps text with ID-based comment syntax: {#id}text{/id}{#id>>author: <<}
+ * Wraps text with ID-based comment syntax: {#id}text{/id}{#id>>@author | <<}
  * Used when alwaysUseCommentIds is enabled.
  * @param text - The text to comment on
  * @param authorName - Optional author name to include in comment
@@ -152,7 +152,7 @@ export function highlightAndCommentWithId(text: string, authorName?: string | nu
   const id = Date.now().toString(36);
   const rangeStart = `{#${id}}`;
   const rangeEnd = `{/${id}}`;
-  const authorPrefix = authorName ? `${authorName}: ` : '';
+  const authorPrefix = authorName ? '@' + authorName + ' | ' : '';
   const commentBody = `{#${id}>>${authorPrefix}<<}`;
   const withComment = rangeStart + text + rangeEnd + commentBody;
   const cursorOffset = rangeStart.length + text.length + rangeEnd.length + `{#${id}>>`.length + authorPrefix.length;
@@ -190,7 +190,7 @@ export function formatBoldItalic(text: string): TextTransformation {
  */
 export function substituteAndComment(text: string, authorName?: string | null): TextTransformation {
   const substitution = `{~~${text}~>~~}`;
-  const authorPrefix = authorName ? `${authorName}: ` : '';
+  const authorPrefix = authorName ? '@' + authorName + ' | ' : '';
   const withComment = substitution + `{>>${authorPrefix}<<}`;
   const cursorOffset = substitution.length + 3 + authorPrefix.length; // Position after author prefix
   
@@ -208,7 +208,7 @@ export function substituteAndComment(text: string, authorName?: string | null): 
  */
 export function additionAndComment(text: string, authorName?: string | null): TextTransformation {
   const addition = `{++${text}++}`;
-  const authorPrefix = authorName ? `${authorName}: ` : '';
+  const authorPrefix = authorName ? '@' + authorName + ' | ' : '';
   const withComment = addition + `{>>${authorPrefix}<<}`;
   const cursorOffset = addition.length + 3 + authorPrefix.length; // Position after author prefix
   
@@ -226,7 +226,7 @@ export function additionAndComment(text: string, authorName?: string | null): Te
  */
 export function deletionAndComment(text: string, authorName?: string | null): TextTransformation {
   const deletion = `{--${text}--}`;
-  const authorPrefix = authorName ? `${authorName}: ` : '';
+  const authorPrefix = authorName ? '@' + authorName + ' | ' : '';
   const withComment = deletion + `{>>${authorPrefix}<<}`;
   const cursorOffset = deletion.length + 3 + authorPrefix.length; // Position after author prefix
   

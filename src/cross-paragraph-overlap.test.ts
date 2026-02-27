@@ -22,7 +22,7 @@ describe('Cross-paragraph comment overlap bug fix', () => {
     const markdown = buildMarkdown(content, comments);
 
     // Count occurrences of comment A's body
-    const commentABodyPattern = /\{#?\d*>>alice.*?note A.*?<<\}/g;
+    const commentABodyPattern = /\{#?\d*>>@alice.*?\| note A.*?<<\}/g;
     const matches = markdown.match(commentABodyPattern);
 
     // Should appear exactly once (not twice)
@@ -36,7 +36,7 @@ describe('Cross-paragraph comment overlap bug fix', () => {
     expect(markdown).toContain('{/2}');
 
     // Should not contain traditional syntax for comment A
-    expect(markdown).not.toMatch(/\{==text in para 1==\}\{>>alice.*?note A.*?<<\}/);
+    expect(markdown).not.toMatch(/\{==text in para 1==\}\{>>@alice.*?\| note A.*?<<\}/);
   });
 
   test('should handle three-way overlap across multiple paragraphs', () => {
@@ -59,9 +59,9 @@ describe('Cross-paragraph comment overlap bug fix', () => {
     const markdown = buildMarkdown(content, comments);
 
     // Each comment body should appear exactly once
-    const commentAMatches = markdown.match(/\{#?\d*>>alice.*?note A.*?<<\}/g);
-    const commentBMatches = markdown.match(/\{#?\d*>>bob.*?note B.*?<<\}/g);
-    const commentCMatches = markdown.match(/\{#?\d*>>charlie.*?note C.*?<<\}/g);
+    const commentAMatches = markdown.match(/\{#?\d*>>@alice.*?\| note A.*?<<\}/g);
+    const commentBMatches = markdown.match(/\{#?\d*>>@bob.*?\| note B.*?<<\}/g);
+    const commentCMatches = markdown.match(/\{#?\d*>>@charlie.*?\| note C.*?<<\}/g);
 
     expect(commentAMatches!.length).toBe(1);
     expect(commentBMatches!.length).toBe(1);
@@ -85,8 +85,8 @@ describe('Cross-paragraph comment overlap bug fix', () => {
     const markdown = buildMarkdown(content, comments);
 
     // Non-overlapping comments should use traditional syntax
-    expect(markdown).toContain('{>>alice');
-    expect(markdown).toContain('{>>bob');
+    expect(markdown).toContain('{>>@alice');
+    expect(markdown).toContain('{>>@bob');
     expect(markdown).not.toContain('{#1}');
     expect(markdown).not.toContain('{#2}');
   });

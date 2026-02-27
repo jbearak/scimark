@@ -30,7 +30,7 @@ This is {~~old text~>new text~~}.
 
 ### Comment `{>>text<<}`
 
-Adds a comment annotation. With author attribution enabled, comments include the author name and timestamp.
+Adds a comment annotation. With author attribution enabled, comments include the author name and timestamp using `@Author | text` syntax.
 
 ```markdown
 This needs review.{>>Consider rephrasing this section<<}
@@ -38,8 +38,10 @@ This needs review.{>>Consider rephrasing this section<<}
 
 With attribution:
 ```markdown
-{>>alice (2024-01-15 14:30): Consider rephrasing this section<<}
+{>>@alice (2024-01-15 14:30) | Consider rephrasing this section<<}
 ```
+
+The `@` prefix and `|` separator make attribution unambiguous — comments like `{>>Note: this is important<<}` are always treated as plain text since they don't start with `@`.
 
 ### Highlight `{==text==}`
 

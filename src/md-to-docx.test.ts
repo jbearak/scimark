@@ -1498,14 +1498,14 @@ describe('parseMd multi-paragraph CriticMarkup', () => {
   });
 
   it('parses multi-paragraph comment with author attribution', () => {
-    const tokens = parseMd('{>>Alice (2024-01-15T10:00:00Z): para 1\n\npara 2<<}');
+    const tokens = parseMd('{>>@Alice (2024-01-15T10:00:00Z) | para 1\n\npara 2<<}');
     const commentRuns = tokens.flatMap(t => t.runs).filter(r => r.type === 'critic_comment');
     expect(commentRuns.length).toBe(1);
     expect(commentRuns[0].author).toBe('Alice');
     expect(commentRuns[0].date).toBe('2024-01-15T10:00:00Z');
   });
 
-  it('treats long prose before a colon as comment text, not author attribution', () => {
+  it('treats text without @ prefix as plain comment text, not author attribution', () => {
     const prose = 'Right now the section starts with detailed distributions (early 2020s, then early 2000s), and the reader has to work through several paragraphs before the big picture is clear. Giving that big picture first would help a lot: for example';
     const tokens = parseMd('{>>' + prose + '<<}');
     const commentRuns = tokens.flatMap(t => t.runs).filter(r => r.type === 'critic_comment');
@@ -1515,7 +1515,7 @@ describe('parseMd multi-paragraph CriticMarkup', () => {
   });
 
   it('does not leak placeholder into comment text', () => {
-    const tokens = parseMd('{>>Alice (2024-01-15T10:00:00Z): para 1\n\npara 2<<}');
+    const tokens = parseMd('{>>@Alice (2024-01-15T10:00:00Z) | para 1\n\npara 2<<}');
     const commentRuns = tokens.flatMap(t => t.runs).filter(r => r.type === 'critic_comment');
     expect(commentRuns[0].commentText).not.toContain('\u0000');
     expect(commentRuns[0].commentText).not.toContain('PARA');
