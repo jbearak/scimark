@@ -731,18 +731,21 @@ describe('fileEntryDisplayName', () => {
 });
 
 describe('resolveFileEntryPath', () => {
+	const absPath = process.platform === 'win32' ? 'C:\\docs\\path.pdf' : '/absolute/path.pdf';
+	const bibDir = process.platform === 'win32' ? 'C:\\home\\user\\refs' : '/home/user/refs';
+
 	test('returns absolute paths unchanged', () => {
-		expect(resolveFileEntryPath('/absolute/path.pdf', '/bib/dir')).toBe('/absolute/path.pdf');
+		expect(resolveFileEntryPath(absPath, bibDir)).toBe(absPath);
 	});
 
 	test('resolves relative paths against bib directory', () => {
-		const result = resolveFileEntryPath('paper.pdf', '/home/user/refs');
-		expect(result).toBe('/home/user/refs/paper.pdf');
+		const result = resolveFileEntryPath('paper.pdf', bibDir);
+		expect(result).toBe(path.join(bibDir, 'paper.pdf'));
 	});
 
 	test('resolves nested relative paths', () => {
-		const result = resolveFileEntryPath('files/paper.pdf', '/home/user/refs');
-		expect(result).toBe('/home/user/refs/files/paper.pdf');
+		const result = resolveFileEntryPath('files/paper.pdf', bibDir);
+		expect(result).toBe(path.join(bibDir, 'files', 'paper.pdf'));
 	});
 });
 
