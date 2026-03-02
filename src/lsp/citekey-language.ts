@@ -3,7 +3,7 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { promisify } from 'util';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { BibtexEntry, parseBibtex } from '../bibtex-parser';
+import { BibtexEntry, parseBibtex, stripOuterBraces } from '../bibtex-parser';
 import { computeCodeRegions, isInsideCodeRegion, type CodeRegion } from '../code-regions';
 import { Frontmatter, normalizeBibPath, parseFrontmatter } from '../frontmatter';
 
@@ -568,7 +568,7 @@ function splitOnUnescaped(str: string, sep: string): string[] {
  * Colons and semicolons in paths can be escaped with backslash.
  */
 export function parseFileFieldValue(rawValue: string): BibFileEntry[] {
-	const value = rawValue.trim().replace(/^\{+|\}+$/g, '').trim();
+	const value = stripOuterBraces(rawValue.trim()).trim();
 	if (!value) return [];
 
 	const entries: BibFileEntry[] = [];
