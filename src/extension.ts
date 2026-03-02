@@ -88,6 +88,10 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register bib file open/reveal commands (used by hover links)
 	context.subscriptions.push(
 		vscode.commands.registerCommand('manuscript-markdown.openBibFile', async (filePath: string) => {
+			if (typeof filePath !== 'string' || !filePath.trim()) {
+				vscode.window.showErrorMessage('No file path provided');
+				return;
+			}
 			const uri = vscode.Uri.file(filePath);
 			try {
 				await vscode.workspace.fs.stat(uri);
@@ -97,6 +101,10 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}),
 		vscode.commands.registerCommand('manuscript-markdown.revealBibFile', async (filePath: string) => {
+			if (typeof filePath !== 'string' || !filePath.trim()) {
+				vscode.window.showErrorMessage('No file path provided');
+				return;
+			}
 			const uri = vscode.Uri.file(filePath);
 			try {
 				await vscode.workspace.fs.stat(uri);
