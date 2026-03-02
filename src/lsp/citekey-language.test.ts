@@ -616,6 +616,21 @@ describe('parseFileFieldValue', () => {
 		expect(entries[0].filePath).toBe('C:/Users/test/paper.pdf');
 	});
 
+	test('handles bare Windows drive-letter path without description', () => {
+		const entries = parseFileFieldValue('C:/Users/test/paper.pdf:PDF');
+		expect(entries).toHaveLength(1);
+		expect(entries[0].description).toBe('');
+		expect(entries[0].filePath).toBe('C:/Users/test/paper.pdf');
+		expect(entries[0].fileType).toBe('PDF');
+	});
+
+	test('does not treat multi-char first segment as drive letter', () => {
+		const entries = parseFileFieldValue('Paper:/path/to/file.pdf:PDF');
+		expect(entries).toHaveLength(1);
+		expect(entries[0].description).toBe('Paper');
+		expect(entries[0].filePath).toBe('/path/to/file.pdf');
+	});
+
 	test('handles escaped semicolons', () => {
 		const entries = parseFileFieldValue(':path/to/file\\;v2.pdf:PDF');
 		expect(entries).toHaveLength(1);

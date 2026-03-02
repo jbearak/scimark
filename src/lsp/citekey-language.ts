@@ -584,9 +584,17 @@ export function parseFileFieldValue(rawValue: string): BibFileEntry[] {
 		if (parts.length >= 3) {
 			// Standard format: Description:Path:Type
 			// Path may contain colons (e.g. Windows drive letter), so join middle parts
-			description = parts[0].trim();
+			const first = parts[0].trim();
 			fileType = parts[parts.length - 1].trim();
-			filePath = parts.slice(1, -1).join(':').trim();
+			// Detect bare Windows drive letter: single letter followed by /path
+			if (first.length === 1 && /^[A-Za-z]$/.test(first) && parts.length >= 3
+				&& /^[/\\]/.test(parts[1])) {
+				// No description — first part is the drive letter
+				filePath = parts.slice(0, -1).join(':').trim();
+			} else {
+				description = first;
+				filePath = parts.slice(1, -1).join(':').trim();
+			}
 		} else if (parts.length === 2) {
 			// Two parts: treat as Path:Type
 			filePath = parts[0].trim();
