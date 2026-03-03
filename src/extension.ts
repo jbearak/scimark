@@ -93,7 +93,7 @@ async function readDocxFile(uri: vscode.Uri): Promise<Uint8Array> {
 		throw new Error('File access denied by user');
 	}
 	const picks = await vscode.window.showOpenDialog({
-		defaultUri: vscode.Uri.file(realPath),
+		defaultUri: vscode.Uri.file(path.dirname(realPath)),
 		filters: { 'Word Documents': ['docx'] },
 		canSelectMany: false,
 		openLabel: 'Grant Access',
