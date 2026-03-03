@@ -93,6 +93,9 @@ async function readDocxFile(uri: vscode.Uri): Promise<Uint8Array> {
 		throw new Error('File access denied by user');
 	}
 	const picks = await vscode.window.showOpenDialog({
+		// defaultUri only accepts a directory — showOpenDialog cannot pre-select a
+		// file. We can't use a native NSOpenPanel (e.g. via osascript) because only
+		// VS Code's own dialog grants the sandbox permission token needed to read.
 		defaultUri: vscode.Uri.file(path.dirname(realPath)),
 		filters: { 'Word Documents': ['docx'] },
 		canSelectMany: false,
