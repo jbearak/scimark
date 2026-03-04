@@ -148,10 +148,13 @@ async function writeFileThroughSymlink(symlinkUri: vscode.Uri, data: Uint8Array)
 		throw new Error('File write access denied by user');
 	}
 	const picked = await vscode.window.showSaveDialog({
-		defaultUri: vscode.Uri.file(path.dirname(realPath)),
+		defaultUri: vscode.Uri.file(realPath),
 	});
 	if (!picked) {
 		throw new Error('No save location selected');
+	}
+	if (picked.fsPath !== realPath) {
+		throw new Error('Save location must match the symlink target: ' + realPath);
 	}
 	await vscode.workspace.fs.writeFile(picked, data);
 }
@@ -1265,6 +1268,10 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 	}
 
 	if (docxOutput.unlinkSymlink) {
+		const stat = await fs.promises.lstat(docxOutput.uri.fsPath);
+		if (!stat.isSymbolicLink()) {
+			throw new Error('Expected symlink but found regular file: ' + docxOutput.uri.fsPath);
+		}
 		await fs.promises.unlink(docxOutput.uri.fsPath);
 	}
 

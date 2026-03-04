@@ -105,7 +105,7 @@ describe('isSymlink', () => {
 	});
 
 	it('returns false for a non-existent path', async () => {
-		expect(await isSymlink('/tmp/nonexistent-path-' + Date.now())).toBe(false);
+		expect(await isSymlink(path.join(os.tmpdir(), 'nonexistent-path-' + Date.now()))).toBe(false);
 	});
 });
 
