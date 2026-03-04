@@ -500,8 +500,18 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 
 				if (unlinkBeforeWrite) {
-					if (mdExists && await isSymlink(mdUri.fsPath)) await fs.promises.unlink(mdUri.fsPath);
-					if (bibExists && await isSymlink(bibUri.fsPath)) await fs.promises.unlink(bibUri.fsPath);
+					if (mdExists) {
+						if (!await isSymlink(mdUri.fsPath)) {
+							throw new Error('Expected symlink at ' + mdUri.fsPath + ' but found regular file; aborting to avoid overwriting');
+						}
+						await fs.promises.unlink(mdUri.fsPath);
+					}
+					if (bibExists) {
+						if (!await isSymlink(bibUri.fsPath)) {
+							throw new Error('Expected symlink at ' + bibUri.fsPath + ' but found regular file; aborting to avoid overwriting');
+						}
+						await fs.promises.unlink(bibUri.fsPath);
+					}
 				}
 
 				const mdData = new TextEncoder().encode(result.markdown);
