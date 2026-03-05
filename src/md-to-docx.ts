@@ -3249,7 +3249,33 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
             state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: reply.text, paraId: replyParaId, parentParaId });
           }
         }
+        // Collect consecutive-reply IDs before emitting XML so all
+        // rangeStarts can be grouped together (overlapping the parent range).
+        ri++;
+        const consecutiveReplyIds: number[] = [];
+        let absorbedConsecutiveReply = false;
+        while (ri + 1 < inputRuns.length && inputRuns[ri + 1].type === 'critic_comment') {
+          const replyRun = inputRuns[ri + 1];
+          const replyId = state.commentId++;
+          consecutiveReplyIds.push(replyId);
+          const replyParaId = generateParaId(state);
+          const replyAuthor = replyRun.author ?? '';
+          const replyDate = normalizeToUtcIso(replyRun.date || '', state.timezone);
+          state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: replyRun.commentText || '', paraId: replyParaId, parentParaId });
+          absorbedConsecutiveReply = true;
+          ri++;
+        }
+        if (absorbedConsecutiveReply) {
+          state.consecutiveReplyParaIds.add(parentParaId);
+        }
+        const allReplyIds = [...nestedReplyIds, ...consecutiveReplyIds];
+        // Word requires reply ranges to overlap with the parent range for
+        // proper threading display — open all ranges together, then close
+        // parent first followed by replies (matching real Word output).
         xml += '<w:commentRangeStart w:id=\"' + commentId + '\"/>';
+        for (const rid of allReplyIds) {
+          xml += '<w:commentRangeStart w:id=\"' + rid + '\"/>';
+        }
         xml += generateInlineCriticContent(
           run.innerRuns,
           run.text,
@@ -3262,28 +3288,9 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         );
         xml += '<w:commentRangeEnd w:id=\"' + commentId + '\"/>';
         xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + commentId + '\"/></w:r>';
-        for (const replyAnchorId of nestedReplyIds) {
-          xml += '<w:commentRangeStart w:id=\"' + replyAnchorId + '\"/>';
-          xml += '<w:commentRangeEnd w:id=\"' + replyAnchorId + '\"/>';
-          xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + replyAnchorId + '\"/></w:r>';
-        }
-        ri++;
-        let absorbedConsecutiveReply = false;
-        while (ri + 1 < inputRuns.length && inputRuns[ri + 1].type === 'critic_comment') {
-          const replyRun = inputRuns[ri + 1];
-          const replyId = state.commentId++;
-          const replyParaId = generateParaId(state);
-          const replyAuthor = replyRun.author ?? '';
-          const replyDate = normalizeToUtcIso(replyRun.date || '', state.timezone);
-          state.comments.push({ id: replyId, author: replyAuthor, date: replyDate, text: replyRun.commentText || '', paraId: replyParaId, parentParaId });
-          xml += '<w:commentRangeStart w:id=\"' + replyId + '\"/>';
-          xml += '<w:commentRangeEnd w:id=\"' + replyId + '\"/>';
-          xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + replyId + '\"/></w:r>';
-          absorbedConsecutiveReply = true;
-          ri++;
-        }
-        if (absorbedConsecutiveReply) {
-          state.consecutiveReplyParaIds.add(parentParaId);
+        for (const rid of allReplyIds) {
+          xml += '<w:commentRangeEnd w:id=\"' + rid + '\"/>';
+          xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + rid + '\"/></w:r>';
         }
       } else {
         xml += generateInlineCriticContent(
@@ -3320,7 +3327,11 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         }
       }
 
-        xml += '<w:commentRangeStart w:id=\"' + commentId + '\"/>';
+      // Open all ranges together so replies overlap with the parent range
+      xml += '<w:commentRangeStart w:id=\"' + commentId + '\"/>';
+      for (const rid of standaloneReplyIds) {
+        xml += '<w:commentRangeStart w:id=\"' + rid + '\"/>';
+      }
       if (run.text) {
         xml += generateInlineCriticContent(
           run.innerRuns,
@@ -3333,12 +3344,11 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
           run.highlight ? { highlight: true, highlightColor: run.highlightColor } : {}
         );
       }
-        xml += '<w:commentRangeEnd w:id=\"' + commentId + '\"/>';
-        xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + commentId + '\"/></w:r>';
-      for (const replyAnchorId of standaloneReplyIds) {
-        xml += '<w:commentRangeStart w:id=\"' + replyAnchorId + '\"/>';
-        xml += '<w:commentRangeEnd w:id=\"' + replyAnchorId + '\"/>';
-        xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + replyAnchorId + '\"/></w:r>';
+      xml += '<w:commentRangeEnd w:id=\"' + commentId + '\"/>';
+      xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + commentId + '\"/></w:r>';
+      for (const rid of standaloneReplyIds) {
+        xml += '<w:commentRangeEnd w:id=\"' + rid + '\"/>';
+        xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + rid + '\"/></w:r>';
       }
     } else if (run.type === 'footnote_ref') {
       const label = run.footnoteLabel || '';
