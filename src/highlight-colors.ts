@@ -214,7 +214,7 @@ export function extractHighlightRanges(text: string, defaultColor: string): Map<
   // Colored highlights ==text=={color} and default highlights ==text==
   // Run on masked text so `=` and `}` in CriticMarkup delimiters don't block matches
   const masked = maskCriticDelimiters(text);
-  const hlRe = /(?<!\{)==([^}=]+)==(?:\{([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\})?/g;
+  const hlRe = /(?<![{=])==([^}=]+)==(?:\{([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\})?/g;
   while ((m = hlRe.exec(masked)) !== null) {
     const mStart = m.index;
     const mEnd = mStart + m[0].length;
@@ -363,7 +363,7 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
       // Look for == that is NOT preceded by { at j-1 in the original text
       if (text.charCodeAt(j) === 0x3D && j + 1 < regionEnd && text.charCodeAt(j + 1) === 0x3D) {
         // Check negative lookbehind: not preceded by {
-        if (j > 0 && text.charCodeAt(j - 1) === 0x7B) {
+        if (j > 0 && (text.charCodeAt(j - 1) === 0x7B || text.charCodeAt(j - 1) === 0x3D)) {
           j++;
           continue;
         }
@@ -482,7 +482,7 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
     // span across CriticMarkup spans.
     if (text.charCodeAt(i) === 0x3D && i + 1 < len && text.charCodeAt(i + 1) === 0x3D) {
       // Check negative lookbehind: not preceded by {
-      if (i === 0 || text.charCodeAt(i - 1) !== 0x7B) {
+      if (i === 0 || (text.charCodeAt(i - 1) !== 0x7B && text.charCodeAt(i - 1) !== 0x3D)) {
         // Scan forward for content, skipping CriticMarkup delimiters.
         // In the masked approach, delimiters become spaces (which pass [^}=]+).
         // Here we skip over them and check that non-delimiter chars match [^}=]+.
