@@ -1236,9 +1236,13 @@ async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri
 	if (!templateDocx) {
 		const existingDocxUri = vscode.Uri.file(input.basePath + '.docx');
 		if (await fileExists(existingDocxUri)) {
-			const data = await vscode.workspace.fs.readFile(existingDocxUri);
-			templateDocx = new Uint8Array(data);
-			usedAutoTemplate = true;
+			try {
+				templateDocx = new Uint8Array(await readDocxFile(existingDocxUri));
+				usedAutoTemplate = true;
+			} catch {
+				// User cancelled the file-access dialog — abort export
+				return;
+			}
 		}
 	}
 
