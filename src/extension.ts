@@ -542,7 +542,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('manuscript-markdown.exportToWord', async (uri?: vscode.Uri) => {
 			try {
-				await exportMdToDocx(context, uri);
+				await exportMdToDocx(uri);
 			} catch (err: any) {
 				vscode.window.showErrorMessage('Export to Word failed: ' + err.message);
 			}
@@ -563,7 +563,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 				const templateData = await vscode.workspace.fs.readFile(templateFiles[0]);
 				const templateDocx = new Uint8Array(templateData);
-				await exportMdToDocx(context, uri, templateDocx);
+				await exportMdToDocx(uri, templateDocx);
 			} catch (err: any) {
 				vscode.window.showErrorMessage('Export to Word failed: ' + err.message);
 			}
@@ -1225,20 +1225,18 @@ async function resolveDocxOutputUri(basePath: string): Promise<DocxOutputResolut
 	return { uri: docxUri, unlinkSymlink: false, writeThrough: false };
 }
 
-async function exportMdToDocx(context: vscode.ExtensionContext, uri?: vscode.Uri, templateDocx?: Uint8Array): Promise<void> {
+async function exportMdToDocx(uri?: vscode.Uri, templateDocx?: Uint8Array): Promise<void> {
 	const input = await getMdExportInput(uri);
 	if (!input) {
 		return;
 	}
 
 	// Auto-use existing .docx as style template when no explicit template is provided
-	let usedAutoTemplate = false;
 	if (!templateDocx) {
 		const existingDocxUri = vscode.Uri.file(input.basePath + '.docx');
 		if (await fileExists(existingDocxUri)) {
 			try {
 				templateDocx = new Uint8Array(await readDocxFile(existingDocxUri));
-				usedAutoTemplate = true;
 			} catch {
 				// User cancelled the file-access dialog — abort export
 				return;
