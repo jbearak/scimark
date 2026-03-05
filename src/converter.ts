@@ -4072,6 +4072,12 @@ export function generateBibTeX(
         alreadyEmitted.add('editor');
       }
 
+      // Institution from custom x-institution field (roundtrip preservation)
+      const xInstitution = meta.fullItemData?.['x-institution'];
+      if (typeof xInstitution === 'string' && xInstitution) {
+        fields.push(`  institution = {${escapeBibtex(xInstitution)}}`);
+      }
+
       // Additional CSL→BibTeX fields from fullItemData
       for (const [cslField, bibtexField] of Object.entries(CSL_TO_BIBTEX)) {
         if (alreadyEmitted.has(cslField)) continue;

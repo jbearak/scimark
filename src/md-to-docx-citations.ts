@@ -461,15 +461,17 @@ export function buildItemData(entry: BibtexEntry): any {
   if (title) itemData.title = title;
 
   const author = entry.fields.get('author');
+  const institution = entry.fields.get('institution');
   if (author) {
     itemData.author = parseAuthors(author);
-  } else {
+  } else if (institution) {
     // Fallback for entries (commonly @techreport) that credit an organization
     // via `institution` instead of `author`; map to CSL literal name form.
-    const institution = entry.fields.get('institution');
-    if (institution) {
-      itemData.author = [{ literal: institution }];
-    }
+    itemData.author = [{ literal: institution }];
+  }
+  // Preserve institution in a custom field for roundtrip fidelity.
+  if (institution) {
+    itemData['x-institution'] = institution;
   }
 
   const year = entry.fields.get('year');

@@ -471,6 +471,7 @@ describe('buildItemData with institution fallback (no author)', () => {
     };
     const data = buildItemData(entry);
     expect(data.author).toEqual([{ literal: 'National Center for Health Statistics' }]);
+    expect(data['x-institution']).toBe('National Center for Health Statistics');
   });
 
   it('prefers author over institution when both present', () => {
@@ -485,6 +486,7 @@ describe('buildItemData with institution fallback (no author)', () => {
     };
     const data = buildItemData(entry);
     expect(data.author).toEqual([{ family: 'Smith', given: 'John' }]);
+    expect(data['x-institution']).toBe('Some Institute');
   });
 
   it('does not set author when neither author nor institution present', () => {
@@ -615,6 +617,23 @@ describe('roundtrip: institutional author + extra fields', () => {
     expect(result.bibtex).toContain('url = {https://www.who.int/report}');
     expect(result.bibtex).toContain('note = {Important report}');
     // Entry type should round-trip
+    expect(result.bibtex).toContain('@techreport{');
+  });
+
+  it('preserves institution field through MD → DOCX → MD roundtrip', async () => {
+    const md = `Report citation [@nchs2014].
+`;
+    const bib = `@techreport{nchs2014,
+  institution = {National Center for Health Statistics},
+  title = {{National Survey of Family Growth}},
+  year = {2014},
+}`;
+
+    const docxResult = await convertMdToDocx(md, { bibtex: bib });
+    const result = await convertDocx(docxResult.docx);
+
+    // Institution field should survive the roundtrip
+    expect(result.bibtex).toContain('institution = {National Center for Health Statistics}');
     expect(result.bibtex).toContain('@techreport{');
   });
 
