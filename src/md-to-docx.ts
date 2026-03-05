@@ -3235,9 +3235,14 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         const parentParaId = generateParaId(state);
         state.comments.push({ id: commentId, author, date, text: commentBody, paraId: parentParaId });
         state.hasComments = true;
+        // Store allocated reply IDs so anchor generation uses exact IDs
+        // (not commentId+1 which could drift if generateInlineCriticContent
+        // allocates intervening IDs for track-change revisions).
+        const nestedReplyIds: number[] = [];
         if (nextRun.replies && nextRun.replies.length > 0) {
           for (const reply of nextRun.replies) {
             const replyId = state.commentId++;
+            nestedReplyIds.push(replyId);
             const replyParaId = generateParaId(state);
             const replyAuthor = reply.author ?? '';
             const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
@@ -3257,14 +3262,10 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         );
         xml += '<w:commentRangeEnd w:id=\"' + commentId + '\"/>';
         xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + commentId + '\"/></w:r>';
-        if (nextRun.replies && nextRun.replies.length > 0) {
-          let replyAnchorId = commentId + 1;
-          for (let i = 0; i < nextRun.replies.length; i++) {
+        for (const replyAnchorId of nestedReplyIds) {
           xml += '<w:commentRangeStart w:id=\"' + replyAnchorId + '\"/>';
           xml += '<w:commentRangeEnd w:id=\"' + replyAnchorId + '\"/>';
           xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + replyAnchorId + '\"/></w:r>';
-            replyAnchorId++;
-          }
         }
         ri++;
         let absorbedConsecutiveReply = false;
@@ -3306,10 +3307,12 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       state.comments.push({ id: commentId, author, date, text: commentBody, paraId: parentParaId });
       state.hasComments = true;
 
-      // Generate reply entries
+      // Generate reply entries — store allocated IDs for anchor generation
+      const standaloneReplyIds: number[] = [];
       if (run.replies && run.replies.length > 0) {
         for (const reply of run.replies) {
           const replyId = state.commentId++;
+          standaloneReplyIds.push(replyId);
           const replyParaId = generateParaId(state);
           const replyAuthor = reply.author ?? '';
           const replyDate = normalizeToUtcIso(reply.date || '', state.timezone);
@@ -3332,14 +3335,10 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       }
         xml += '<w:commentRangeEnd w:id=\"' + commentId + '\"/>';
         xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + commentId + '\"/></w:r>';
-      if (run.replies && run.replies.length > 0) {
-        let replyAnchorId = commentId + 1;
-        for (let i = 0; i < run.replies.length; i++) {
-          xml += '<w:commentRangeStart w:id=\"' + replyAnchorId + '\"/>';
-          xml += '<w:commentRangeEnd w:id=\"' + replyAnchorId + '\"/>';
-          xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + replyAnchorId + '\"/></w:r>';
-          replyAnchorId++;
-        }
+      for (const replyAnchorId of standaloneReplyIds) {
+        xml += '<w:commentRangeStart w:id=\"' + replyAnchorId + '\"/>';
+        xml += '<w:commentRangeEnd w:id=\"' + replyAnchorId + '\"/>';
+        xml += '<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"' + replyAnchorId + '\"/></w:r>';
       }
     } else if (run.type === 'footnote_ref') {
       const label = run.footnoteLabel || '';
