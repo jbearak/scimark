@@ -1855,7 +1855,7 @@ function extractTableCells(tokens: any[]): MdTableCell[] {
   return cells;
 }
 
-function extractHtmlTables(html: string): MdTableRow[][] {
+export function extractHtmlTables(html: string): MdTableRow[][] {
   const tables: MdTableRow[][] = [];
   // Regex-based extraction intentionally does not support nested <table> blocks.
   // This converter targets simple manuscript tables (<table>/<tr>/<th>/<td>).

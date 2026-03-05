@@ -1422,3 +1422,90 @@ describe('compactTable', () => {
       throw new Error('Expected 2 cells, got ' + parsed.rows[2].cells.length);
   });
 });
+
+describe('HTML table support for Expand/Compact Table', () => {
+  it('simple HTML → expanded pipe table', () => {
+    const html = '<table><tr><th>Name</th><th>Age</th></tr><tr><td>Alice</td><td>30</td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('| Name')) throw new Error('Expected pipe table header, got: ' + result.newText);
+    if (!result.newText.includes('| Alice')) throw new Error('Expected pipe table body');
+    // Should have separator
+    if (!result.newText.includes('---')) throw new Error('Expected separator row');
+    // Should be padded
+    if (!result.newText.includes('| Name  |')) throw new Error('Expected padded header, got: ' + result.newText);
+  });
+
+  it('simple HTML → compact pipe table', () => {
+    const html = '<table><tr><th>Name</th><th>Age</th></tr><tr><td>Alice</td><td>30</td></tr></table>';
+    const result = compactTable(html);
+    if (!result.newText.includes('| Name |')) throw new Error('Expected compact header');
+    if (!result.newText.includes('| --- |')) throw new Error('Expected minimal separator');
+  });
+
+  it('HTML with bold, italic, code → markdown formatting in cells', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td><b>bold</b> and <i>italic</i> and <code>code</code></td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('**bold**')) throw new Error('Expected bold markdown');
+    if (!result.newText.includes('*italic*')) throw new Error('Expected italic markdown');
+    if (!result.newText.includes('`code`')) throw new Error('Expected code markdown');
+  });
+
+  it('HTML with <a href> → [text](url) in cells', () => {
+    const html = '<table><tr><th>Link</th></tr><tr><td><a href="https://example.com">click</a></td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('[click](https://example.com)')) throw new Error('Expected link markdown, got: ' + result.newText);
+  });
+
+  it('HTML with | in cell text → escaped \\| in pipe table', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td>a|b</td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('a\\|b')) throw new Error('Expected escaped pipe, got: ' + result.newText);
+  });
+
+  it('HTML with <p> multi-paragraph cells → grid table output', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td><p>para1</p><p>para2</p></td></tr></table>';
+    const result = reflowTable(html);
+    // Grid tables use + borders
+    if (!result.newText.includes('+')) throw new Error('Expected grid table with + borders, got: ' + result.newText);
+    if (!result.newText.includes('para1')) throw new Error('Expected para1');
+    if (!result.newText.includes('para2')) throw new Error('Expected para2');
+  });
+
+  it('HTML with colspan → returns original text unchanged', () => {
+    const html = '<table><tr><td colspan="2">wide</td></tr><tr><td>a</td><td>b</td></tr></table>';
+    const result = reflowTable(html);
+    if (result.newText !== html) throw new Error('Expected original text for colspan table');
+  });
+
+  it('HTML with rowspan → returns original text unchanged', () => {
+    const html = '<table><tr><td rowspan="2">tall</td><td>a</td></tr><tr><td>b</td></tr></table>';
+    const result = compactTable(html);
+    if (result.newText !== html) throw new Error('Expected original text for rowspan table');
+  });
+
+  it('non-HTML text → returns original text unchanged', () => {
+    const plain = 'This is just some text without any tables.';
+    const result = reflowTable(plain);
+    if (result.newText !== plain) throw new Error('Expected original text for non-HTML');
+  });
+
+  it('HTML table with no <th> rows → first row treated as header', () => {
+    const html = '<table><tr><td>A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>';
+    const result = reflowTable(html);
+    // First row should be header, followed by separator
+    const lines = result.newText.split('\n');
+    if (!lines[0].includes('A')) throw new Error('Expected first row as header');
+    if (!lines[1].includes('---')) throw new Error('Expected separator after header');
+    if (!lines[2].includes('1')) throw new Error('Expected body row');
+  });
+
+  it('roundtrip: compactTable(reflowTable(htmlInput)) produces consistent output', () => {
+    const html = '<table><tr><th>Name</th><th>Value</th></tr><tr><td>foo</td><td>bar</td></tr></table>';
+    const expanded = reflowTable(html);
+    const compacted = compactTable(expanded.newText);
+    // Re-expanding the compacted result should match
+    const reExpanded = reflowTable(compacted.newText);
+    if (reExpanded.newText !== expanded.newText)
+      throw new Error('Roundtrip inconsistent:\n' + expanded.newText + '\nvs\n' + reExpanded.newText);
+  });
+});

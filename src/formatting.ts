@@ -1,3 +1,5 @@
+import { extractHtmlTables, type MdRun } from './md-to-docx';
+
 export interface TextTransformation {
   newText: string;
   cursorOffset?: number; // Optional cursor position relative to start
@@ -613,6 +615,167 @@ function formatGridContentRow(cells: string[], columnWidths: number[], pad: bool
   return '| ' + rendered.join(' | ') + ' |';
 }
 
+function runsToMarkdown(runs: MdRun[]): string {
+  let result = '';
+  for (const run of runs) {
+    if (run.type === 'softbreak') {
+      result += '\n';
+      continue;
+    }
+    if (run.type !== 'text') {
+      result += run.text;
+      continue;
+    }
+    let t = run.text;
+    if (run.code) {
+      result += '`' + t + '`';
+      continue;
+    }
+    if (run.bold) t = '**' + t + '**';
+    if (run.italic) t = '*' + t + '*';
+    if (run.strikethrough) t = '~~' + t + '~~';
+    if (run.underline) t = '[' + t + ']{.underline}';
+    if (run.superscript) t = '<sup>' + t + '</sup>';
+    if (run.subscript) t = '<sub>' + t + '</sub>';
+    if (run.href) t = '[' + t + '](' + run.href + ')';
+    result += t;
+  }
+  return result;
+}
+
+function convertHtmlTable(text: string, pad: boolean): string | null {
+  if (!/<table\b/i.test(text)) return null;
+  const tables = extractHtmlTables(text);
+  if (tables.length === 0) return null;
+  const rows = tables[0];
+
+  // Reject colspan/rowspan
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if ((cell.colspan && cell.colspan > 1) || (cell.rowspan && cell.rowspan > 1)) return null;
+    }
+  }
+
+  // Convert cells to markdown text
+  const mdRows: { cells: string[]; header: boolean }[] = rows.map(row => ({
+    cells: row.cells.map(cell => runsToMarkdown(cell.runs)),
+    header: row.header,
+  }));
+
+  // Check if any cell contains newlines → grid table
+  const hasMultiLine = mdRows.some(row => row.cells.some(c => c.includes('\n')));
+
+  if (hasMultiLine) {
+    return buildGridTable(mdRows, pad);
+  }
+  return buildPipeTable(mdRows, pad);
+}
+
+function buildPipeTable(mdRows: { cells: string[]; header: boolean }[], pad: boolean): string {
+  const colCount = Math.max(...mdRows.map(r => r.cells.length));
+  // Escape pipes in cell text
+  const escaped = mdRows.map(row => ({
+    ...row,
+    cells: Array.from({ length: colCount }, (_, i) =>
+      (row.cells[i] ?? '').replace(/\|/g, '\\|')
+    ),
+  }));
+
+  // Split into header rows and body rows
+  const headerRows = escaped.filter(r => r.header);
+  const bodyRows = escaped.filter(r => !r.header);
+  // If no header rows, treat first row as header
+  const finalHeader = headerRows.length > 0 ? headerRows : [escaped[0]];
+  const finalBody = headerRows.length > 0 ? bodyRows : escaped.slice(1);
+
+  const allRows = [...finalHeader, ...finalBody];
+
+  if (pad) {
+    const colWidths = new Array(colCount).fill(3);
+    for (const row of allRows) {
+      for (let i = 0; i < colCount; i++) {
+        colWidths[i] = Math.max(colWidths[i], row.cells[i].length);
+      }
+    }
+    const lines: string[] = [];
+    for (const row of finalHeader) {
+      lines.push(formatContentRow(row.cells, colWidths));
+    }
+    lines.push(formatSeparatorRow(colWidths));
+    for (const row of finalBody) {
+      lines.push(formatContentRow(row.cells, colWidths));
+    }
+    return lines.join('\n');
+  } else {
+    const fmtRow = (cells: string[]): string => {
+      let line = '|';
+      for (const cell of cells) {
+        line += (cell.length === 0 ? ' |' : ' ' + cell + ' |');
+      }
+      return line;
+    };
+    const lines: string[] = [];
+    for (const row of finalHeader) {
+      lines.push(fmtRow(row.cells));
+    }
+    const sepCells = Array.from({ length: colCount }, () => '---');
+    lines.push(fmtRow(sepCells));
+    for (const row of finalBody) {
+      lines.push(fmtRow(row.cells));
+    }
+    return lines.join('\n');
+  }
+}
+
+function buildGridTable(mdRows: { cells: string[]; header: boolean }[], pad: boolean): string {
+  const colCount = Math.max(...mdRows.map(r => r.cells.length));
+  // Split each cell into lines
+  const splitRows = mdRows.map(row => ({
+    header: row.header,
+    cellLines: Array.from({ length: colCount }, (_, i) =>
+      (row.cells[i] ?? '').split('\n')
+    ),
+  }));
+
+  // Compute column widths
+  const colWidths = new Array(colCount).fill(1);
+  for (const row of splitRows) {
+    for (let c = 0; c < colCount; c++) {
+      for (const line of row.cellLines[c]) {
+        colWidths[c] = Math.max(colWidths[c], line.length);
+      }
+    }
+  }
+
+  const borderRow = (style: GridBorderStyle): string => formatGridBorderRow(colWidths, style);
+
+  const lines: string[] = [];
+  for (let r = 0; r < splitRows.length; r++) {
+    const row = splitRows[r];
+    const prevIsHeader = r > 0 && splitRows[r - 1].header;
+    // Border before this row
+    if (r === 0) {
+      lines.push(borderRow('dash'));
+    } else {
+      lines.push(borderRow(prevIsHeader && !row.header ? 'equal' : 'dash'));
+    }
+    // Content lines for this row
+    const maxLines = Math.max(...row.cellLines.map(cl => cl.length));
+    for (let l = 0; l < maxLines; l++) {
+      const cells = row.cellLines.map((cl, c) => {
+        const text = cl[l] ?? '';
+        return pad ? text.padEnd(colWidths[c]) : text;
+      });
+      lines.push('| ' + cells.join(' | ') + ' |');
+    }
+  }
+  // Final border
+  const lastIsHeader = splitRows[splitRows.length - 1]?.header;
+  lines.push(borderRow(lastIsHeader ? 'equal' : 'dash'));
+
+  return lines.join('\n');
+}
+
 /**
  * Compacts a markdown table by removing padding whitespace.
  * Each cell is trimmed and separated by ` | ` with no extra padding.
@@ -669,6 +832,9 @@ export function compactTable(text: string): TextTransformation {
     return { newText: lines.join('\n') };
   }
 
+  const htmlCompact = convertHtmlTable(text, false);
+  if (htmlCompact !== null) return { newText: htmlCompact };
+
   return { newText: text };
 }
 
@@ -708,6 +874,9 @@ export function reflowTable(text: string): TextTransformation {
     lines.push(formatGridBorderRow(grid.columnWidths, grid.borderStyles[grid.rows.length] || 'dash'));
     return { newText: lines.join('\n') };
   }
+
+  const htmlReflow = convertHtmlTable(text, true);
+  if (htmlReflow !== null) return { newText: htmlReflow };
 
   // Not a valid table, return original text
   return { newText: text };
