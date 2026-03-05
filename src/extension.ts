@@ -447,13 +447,15 @@ export function activate(context: vscode.ExtensionContext) {
 				const hasBibtex = Boolean(result.bibtex);
 				const mdExists = await fileExists(mdUri);
 				const bibExists = hasBibtex ? await fileExists(bibUri) : false;
-				const conflictScenario = getOutputConflictScenario(mdExists, bibExists);
+				const mdIsSymlink = await isSymlink(mdUri.fsPath);
+				const bibIsSymlink = hasBibtex ? await isSymlink(bibUri.fsPath) : false;
+				const mdConflict = mdExists || mdIsSymlink;
+				const bibConflict = bibExists || bibIsSymlink;
+				const conflictScenario = getOutputConflictScenario(mdConflict, bibConflict);
 
 				let unlinkBeforeWrite = false;
 				let writeThrough = false;
 				if (conflictScenario) {
-					const mdIsSymlink = mdExists && await isSymlink(mdUri.fsPath);
-					const bibIsSymlink = bibExists && await isSymlink(bibUri.fsPath);
 					const hasSymlink = mdIsSymlink || bibIsSymlink;
 
 					let choice: string | undefined;
@@ -505,8 +507,8 @@ export function activate(context: vscode.ExtensionContext) {
 					// Only unlink files that are actually symlinks; non-symlink files
 					// (e.g. when scenario === 'both' but only one is a symlink) are
 					// left in place and overwritten normally.
-					if (mdExists && await isSymlink(mdUri.fsPath)) { await fs.promises.unlink(mdUri.fsPath); }
-					if (bibExists && await isSymlink(bibUri.fsPath)) { await fs.promises.unlink(bibUri.fsPath); }
+					if (mdIsSymlink) { await fs.promises.unlink(mdUri.fsPath); }
+					if (bibIsSymlink) { await fs.promises.unlink(bibUri.fsPath); }
 				}
 
 				const mdData = new TextEncoder().encode(result.markdown);
@@ -1171,11 +1173,10 @@ interface DocxOutputResolution {
 async function resolveDocxOutputUri(basePath: string): Promise<DocxOutputResolution | undefined> {
 	let docxUri = vscode.Uri.file(basePath + '.docx');
 	const docxExists = await fileExists(docxUri);
-	if (!docxExists) {
+	const docxIsSymlink = await isSymlink(docxUri.fsPath);
+	if (!docxExists && !docxIsSymlink) {
 		return { uri: docxUri, unlinkSymlink: false, writeThrough: false };
 	}
-
-	const docxIsSymlink = await isSymlink(docxUri.fsPath);
 
 	let choice: string | undefined;
 	if (docxIsSymlink) {
