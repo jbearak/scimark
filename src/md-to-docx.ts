@@ -2710,6 +2710,23 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:name w:val="endnote reference"/>\n' +
     '<w:rPr><w:vertAlign w:val="superscript"/></w:rPr>\n' +
     '</w:style>\n' +
+    '<w:style w:type="character" w:styleId="CommentReference">\n' +
+    '<w:name w:val="annotation reference"/>\n' +
+    '<w:basedOn w:val="DefaultParagraphFont"/>\n' +
+    '<w:uiPriority w:val="99"/>\n' +
+    '<w:semiHidden/>\n' +
+    '<w:unhideWhenUsed/>\n' +
+    '<w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>\n' +
+    '</w:style>\n' +
+    '<w:style w:type="paragraph" w:styleId="CommentText">\n' +
+    '<w:name w:val="annotation text"/>\n' +
+    '<w:basedOn w:val="Normal"/>\n' +
+    '<w:uiPriority w:val="99"/>\n' +
+    '<w:semiHidden/>\n' +
+    '<w:unhideWhenUsed/>\n' +
+    '<w:pPr><w:spacing w:line="240" w:lineRule="auto"/></w:pPr>\n' +
+    '<w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>\n' +
+    '</w:style>\n' +
     '</w:styles>';
 }
 
@@ -3771,6 +3788,8 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
 function generateParaId(state: DocxGenState): string {
   return (state.nextParaId++).toString(16).toUpperCase().padStart(8, '0');
 }
+
+
 function authorInitials(author: string): string {
   const initials = author
     .split(/\s+/)
@@ -4163,7 +4182,7 @@ export async function convertMdToDocx(
     citationItemIds: new Map(),
     timezone: frontmatter.timezone,
     replyRanges: [],
-    nextParaId: 1,
+    nextParaId: 0x10000000,
     codeBlockIndex: 0,
     codeBlockLanguages: new Map(),
     citedKeys: new Set(),
