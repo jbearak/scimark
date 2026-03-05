@@ -3245,8 +3245,12 @@ function formatCriticInnerRuns(runs: MdRun[] | undefined, outer: MdRun, forced: 
       formatted.push(run);
       continue;
     }
-    if (run.type === 'critic_add' || run.type === 'critic_del' || run.type === 'critic_sub' || run.type === 'critic_comment') {
-      formatted.push(run);
+    if (run.type === 'critic_add' || run.type === 'critic_del' || run.type === 'critic_sub' || run.type === 'critic_comment' || run.type === 'critic_highlight') {
+      const updated = { ...run };
+      if (updated.innerRuns) updated.innerRuns = formatCriticInnerRuns(updated.innerRuns, outer, forced);
+      if (updated.oldRuns) updated.oldRuns = formatCriticInnerRuns(updated.oldRuns, outer, forced);
+      if (updated.newRuns) updated.newRuns = formatCriticInnerRuns(updated.newRuns, outer, forced);
+      formatted.push(updated);
       continue;
     }
     if (run.type !== 'text') continue;
@@ -3294,6 +3298,21 @@ function generateDeletedCriticContent(
     }
     if (run.type === 'math') {
       xml += generateMathXml(run.text, !!run.display);
+      continue;
+    }
+    if (run.type === 'critic_add' || run.type === 'critic_del') {
+      xml += generateDeletedCriticContent(run.innerRuns, run.text, run);
+      continue;
+    }
+    if (run.type === 'critic_sub') {
+      xml += generateDeletedCriticContent(run.oldRuns, run.text, run);
+      if (run.newText) xml += generateDeletedCriticContent(run.newRuns, run.newText, run);
+      continue;
+    }
+    if (run.type === 'critic_highlight' || run.type === 'critic_comment') {
+      if (run.type === 'critic_highlight' && run.text) {
+        xml += generateDeletedCriticContent(run.innerRuns, run.text, run);
+      }
       continue;
     }
     if (run.type !== 'text' || !run.text) continue;
