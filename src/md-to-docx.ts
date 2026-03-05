@@ -3784,18 +3784,20 @@ function authorInitials(author: string): string {
 
 function commentsXml(comments: CommentEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-  xml += '<w:comments xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" mc:Ignorable=\"w14\">';
+  xml += '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w14 w15 w16cid">';
   for (const c of comments) {
     const dateAttr = c.date ? ' w:date="' + escapeXml(c.date) + '"' : '';
     const initials = authorInitials(c.author);
-    const initialsAttr = initials ? ' w:initials=\"' + escapeXml(initials) + '\"' : '';
-    xml += '<w:comment w:id=\"' + c.id + '\" w:author=\"' + escapeXml(c.author) + '\"' + initialsAttr + dateAttr + '>';
-    // Split on \n\n for paragraph breaks within the comment
+    const initialsAttr = initials ? ' w:initials="' + escapeXml(initials) + '"' : '';
+    xml += '<w:comment w:id="' + c.id + '" w:author="' + escapeXml(c.author) + '"' + initialsAttr + dateAttr + '>';
+    // Split on \n\n for paragraph breaks within the comment.
+    // Per OOXML spec, commentsExtended.xml links via the paraId of the
+    // LAST paragraph in each comment, so place w14:paraId there.
     const paragraphs = c.text.split('\n\n');
     for (let pi = 0; pi < paragraphs.length; pi++) {
-      // Add w14:paraId to the first paragraph
-      const paraIdAttr = pi === 0 ? ' w14:paraId="' + c.paraId + '"' : '';
-      xml += '<w:p' + paraIdAttr + '><w:r><w:t xml:space="preserve">' + escapeXml(paragraphs[pi]) + '</w:t></w:r></w:p>';
+      const isLast = pi === paragraphs.length - 1;
+      const paraIdAttr = isLast ? ' w14:paraId="' + c.paraId + '" w14:textId="77777777"' : '';
+      xml += '<w:p' + paraIdAttr + '><w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r><w:r><w:t xml:space="preserve">' + escapeXml(paragraphs[pi]) + '</w:t></w:r></w:p>';
     }
     xml += '</w:comment>';
   }
