@@ -943,13 +943,15 @@ function getLocationPathKey(uri: string): string {
 
 function getEntryDetail(entry: BibtexEntry): string | undefined {
 	const author = entry.fields.get('author');
+	const institution = entry.fields.get('institution');
 	const year = entry.fields.get('year');
 	const formatted = author ? formatBibAuthorsPlain(author) : undefined;
-	if (formatted && year) {
-		return `${formatted} (${year})`;
+	const displayName = formatted || institution;
+	if (displayName && year) {
+		return `${displayName} (${year})`;
 	}
-	if (formatted) {
-		return formatted;
+	if (displayName) {
+		return displayName;
 	}
 	if (year) {
 		return year;

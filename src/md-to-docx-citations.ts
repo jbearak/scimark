@@ -464,6 +464,8 @@ export function buildItemData(entry: BibtexEntry): any {
   if (author) {
     itemData.author = parseAuthors(author);
   } else {
+    // Fallback for entries (commonly @techreport) that credit an organization
+    // via `institution` instead of `author`; map to CSL literal name form.
     const institution = entry.fields.get('institution');
     if (institution) {
       itemData.author = [{ literal: institution }];
@@ -620,6 +622,7 @@ export function generateFallbackText(keys: string[], entries: Map<string, Bibtex
       // suppress-author: year only, no author name
       text = '';
     } else {
+      // Prefer institution over raw citekey for display text (mirrors buildItemData fallback).
       const institution = entry.fields.get('institution');
       text = institution || key;
     }
