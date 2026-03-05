@@ -555,7 +555,7 @@ function createCriticInnerMarkdownIt(): MarkdownIt {
   const md = createMarkdownIt();
   // Inner parsing should recurse into regular inline formatting, but not into
   // other top-level custom syntaxes that carry separate document semantics.
-  md.inline.ruler.disable(['comment_range', 'critic_markup', 'footnote_ref', 'citation', 'math']);
+  md.inline.ruler.disable(['comment_range', 'footnote_ref', 'citation']);
   return md;
 }
 
@@ -607,6 +607,18 @@ function normalizeCriticInnerRuns(runs: MdRun[]): MdRun[] {
           highlightColor: run.highlightColor,
         }));
       }
+      continue;
+    }
+
+    if (run.type === 'math') {
+      normalized.push(run);
+      continue;
+    }
+
+    // Nested critic markup (e.g. {--...--} inside {==...==}) — pass through
+    // so generateRuns can emit proper <w:ins>/<w:del> wrappers.
+    if (run.type === 'critic_add' || run.type === 'critic_del' || run.type === 'critic_sub' || run.type === 'critic_comment') {
+      normalized.push(run);
       continue;
     }
 
@@ -3229,6 +3241,14 @@ function formatCriticInnerRuns(runs: MdRun[] | undefined, outer: MdRun, forced: 
       formatted.push(run);
       continue;
     }
+    if (run.type === 'math') {
+      formatted.push(run);
+      continue;
+    }
+    if (run.type === 'critic_add' || run.type === 'critic_del' || run.type === 'critic_sub' || run.type === 'critic_comment') {
+      formatted.push(run);
+      continue;
+    }
     if (run.type !== 'text') continue;
     formatted.push(mergeRunFormatting(run, outer, forced));
   }
@@ -3270,6 +3290,10 @@ function generateDeletedCriticContent(
   for (const run of formattedRuns) {
     if (run.type === 'softbreak') {
       xml += '<w:r><w:br/></w:r>';
+      continue;
+    }
+    if (run.type === 'math') {
+      xml += generateMathXml(run.text, !!run.display);
       continue;
     }
     if (run.type !== 'text' || !run.text) continue;
