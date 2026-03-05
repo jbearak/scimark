@@ -214,7 +214,7 @@ export function extractHighlightRanges(text: string, defaultColor: string): Map<
   // Colored highlights ==text=={color} and default highlights ==text==
   // Run on masked text so `=` and `}` in CriticMarkup delimiters don't block matches
   const masked = maskCriticDelimiters(text);
-  const hlRe = /(?<!\{)==([^}=]+)==(?:\{([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\})?/g;
+  const hlRe = /(?<![{=])==([^}=]+)==(?![}=])(?:\{([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\})?/g;
   while ((m = hlRe.exec(masked)) !== null) {
     const mStart = m.index;
     const mEnd = mStart + m[0].length;
@@ -351,6 +351,15 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
     if (!highlights.has(key)) highlights.set(key, []);
     highlights.get(key)!.push({ start, end });
   };
+  const isBlockedPredecessor = (index: number, boundEnd: number): boolean =>
+    index > 0 &&
+    index < boundEnd &&
+    (text.charCodeAt(index - 1) === 0x7B || text.charCodeAt(index - 1) === 0x3D);
+  const isBlockedSuccessor = (indexAfterClose: number, boundEnd: number): boolean => {
+    if (indexAfterClose >= boundEnd) return false;
+    const ch = text.charCodeAt(indexAfterClose);
+    return ch === 0x3D || ch === 0x7D;
+  };
 
   /**
    * Scan a region of text for format highlights ==...== and ==...=={color}.
@@ -362,8 +371,8 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
     while (j < regionEnd - 3) { // need at least ==X== (4 chars from j)
       // Look for == that is NOT preceded by { at j-1 in the original text
       if (text.charCodeAt(j) === 0x3D && j + 1 < regionEnd && text.charCodeAt(j + 1) === 0x3D) {
-        // Check negative lookbehind: not preceded by {
-        if (j > 0 && text.charCodeAt(j - 1) === 0x7B) {
+        // Check negative lookbehind: not preceded by { or =
+        if (isBlockedPredecessor(j, regionEnd)) {
           j++;
           continue;
         }
@@ -379,6 +388,9 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
         // Need at least 1 char of content and closing ==
         if (k > contentStart && k + 1 < regionEnd &&
             text.charCodeAt(k) === 0x3D && text.charCodeAt(k + 1) === 0x3D) {
+          // Trailing guard: closing == must not be followed by = or }
+          const afterClose = k + 2;
+          if (isBlockedSuccessor(afterClose, regionEnd)) { j = k; continue; }
           // Found closing ==. Check for optional {color} suffix
           const closeEnd = k + 2;
           let matchEnd = closeEnd;
@@ -481,8 +493,8 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
     // are treated as transparent (as if replaced with spaces), so format highlights can
     // span across CriticMarkup spans.
     if (text.charCodeAt(i) === 0x3D && i + 1 < len && text.charCodeAt(i + 1) === 0x3D) {
-      // Check negative lookbehind: not preceded by {
-      if (i === 0 || text.charCodeAt(i - 1) !== 0x7B) {
+      // Check negative lookbehind: not preceded by { or =
+      if (!isBlockedPredecessor(i, len)) {
         // Scan forward for content, skipping CriticMarkup delimiters.
         // In the masked approach, delimiters become spaces (which pass [^}=]+).
         // Here we skip over them and check that non-delimiter chars match [^}=]+.
@@ -562,6 +574,8 @@ export function extractAllDecorationRanges(text: string, defaultColor: string): 
           if (ch === 0x3D) { // =
             // Check for closing ==
             if (k + 1 < len && text.charCodeAt(k + 1) === 0x3D) {
+              // Trailing guard: closing == must not be followed by = or }
+              if (isBlockedSuccessor(k + 2, len)) break;
               if (hasContent) { found = true; }
               break;
             }

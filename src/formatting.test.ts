@@ -1422,3 +1422,178 @@ describe('compactTable', () => {
       throw new Error('Expected 2 cells, got ' + parsed.rows[2].cells.length);
   });
 });
+
+describe('HTML table support for Expand/Compact Table', () => {
+  it('mixed text + HTML table selection remains unchanged', () => {
+    const html = '<table><tr><th>Name</th></tr><tr><td>Alice</td></tr></table>';
+    const mixed = 'Intro\n' + html + '\nOutro';
+    const reflowed = reflowTable(mixed);
+    const compacted = compactTable(mixed);
+    if (reflowed.newText !== mixed) throw new Error('Expected reflowTable to preserve mixed selection');
+    if (compacted.newText !== mixed) throw new Error('Expected compactTable to preserve mixed selection');
+  });
+  it('simple HTML → expanded pipe table', () => {
+    const html = '<table><tr><th>Name</th><th>Age</th></tr><tr><td>Alice</td><td>30</td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('| Name')) throw new Error('Expected pipe table header, got: ' + result.newText);
+    if (!result.newText.includes('| Alice')) throw new Error('Expected pipe table body');
+    // Should have separator
+    if (!result.newText.includes('---')) throw new Error('Expected separator row');
+    // Should be padded
+    if (!result.newText.includes('| Name  |')) throw new Error('Expected padded header, got: ' + result.newText);
+  });
+
+  it('simple HTML → compact pipe table', () => {
+    const html = '<table><tr><th>Name</th><th>Age</th></tr><tr><td>Alice</td><td>30</td></tr></table>';
+    const result = compactTable(html);
+    if (!result.newText.includes('| Name |')) throw new Error('Expected compact header');
+    if (!result.newText.includes('| --- |')) throw new Error('Expected minimal separator');
+  });
+
+  it('HTML with bold, italic, code → markdown formatting in cells', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td><b>bold</b> and <i>italic</i> and <code>code</code></td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('**bold**')) throw new Error('Expected bold markdown');
+    if (!result.newText.includes('*italic*')) throw new Error('Expected italic markdown');
+    if (!result.newText.includes('`code`')) throw new Error('Expected code markdown');
+  });
+
+  it('HTML code containing double backticks uses a longer fence', () => {
+    const html = '<table><tr><th>Code</th></tr><tr><td><code>``test``</code></td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('``` ``test`` ```')) {
+      throw new Error('Expected dynamic backtick fence, got: ' + result.newText);
+    }
+  });
+
+  it('HTML with <a href> → [text](url) in cells', () => {
+    const html = '<table><tr><th>Link</th></tr><tr><td><a href="https://example.com">click</a></td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('[click](https://example.com)')) throw new Error('Expected link markdown, got: ' + result.newText);
+  });
+
+  it('HTML with | in cell text → escaped \\| in pipe table', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td>a|b</td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('a\\|b')) throw new Error('Expected escaped pipe, got: ' + result.newText);
+  });
+
+  it('HTML with backslash+pipe in cell text keeps one table cell', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td>a\\|b</td></tr></table>';
+    const result = reflowTable(html);
+    const parsed = parseTable(result.newText);
+    if (!parsed) throw new Error('Expected converted markdown table to parse');
+    if (parsed.rows[2].cells.length !== 1) {
+      throw new Error('Expected 1 body cell, got: ' + parsed.rows[2].cells.length + '\n' + result.newText);
+    }
+    if (parsed.rows[2].cells[0] !== 'a\\|b') {
+      throw new Error('Expected preserved backslash+pipe content, got: ' + parsed.rows[2].cells[0]);
+    }
+  });
+
+  it('HTML link URL containing | does not split table cells', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td><a href=\"https://example.com/A|B\">x</a></td></tr></table>';
+    const result = reflowTable(html);
+    const parsed = parseTable(result.newText);
+    if (!parsed) throw new Error('Expected converted markdown table to parse');
+    if (parsed.rows[2].cells.length !== 1) {
+      throw new Error('Expected 1 body cell, got: ' + parsed.rows[2].cells.length + '\n' + result.newText);
+    }
+    if (!result.newText.includes('[x](https://example.com/A\\|B)')) {
+      throw new Error('Expected escaped pipe in URL, got: ' + result.newText);
+    }
+  });
+
+  it('HTML with <p> multi-paragraph cells → grid table output', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td><p>para1</p><p>para2</p></td></tr></table>';
+    const result = reflowTable(html);
+    // Grid tables use +---+ borders
+    if (!/\+-+\+/.test(result.newText)) throw new Error('Expected grid table with +---+ borders, got: ' + result.newText);
+    if (!result.newText.includes('para1')) throw new Error('Expected para1');
+    if (!result.newText.includes('para2')) throw new Error('Expected para2');
+  });
+
+  it('HTML code-span with href preserves link', () => {
+    const html = '<table><tr><th>Name</th></tr><tr><td><a href="https://example.com"><code>foo</code></a></td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('[`foo`](https://example.com)')) {
+      throw new Error('Expected code-span link [`foo`](https://example.com), got: ' + result.newText);
+    }
+  });
+
+  it('HTML code-span with href uses angle brackets for URLs with parens', () => {
+    const html = '<table><tr><th>Name</th></tr><tr><td><a href="https://example.com/a(b)"><code>bar</code></a></td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('[`bar`](<https://example.com/a(b)>)')) {
+      throw new Error('Expected angle-bracket URL, got: ' + result.newText);
+    }
+  });
+
+  it('grid table cells with pipes do not create phantom columns', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td><p>a|b</p><p>c</p></td></tr></table>';
+    const result = reflowTable(html);
+    // The pipe in cell content must be escaped in grid output
+    if (!result.newText.includes('\\|')) {
+      throw new Error('Expected escaped pipe in grid table cell, got: ' + result.newText);
+    }
+    // Verify it's a grid table
+    if (!/\+-+\+/.test(result.newText)) throw new Error('Expected grid table output');
+  });
+
+  it('mixed th/td row is treated as header', () => {
+    const html = '<table><tr><th>Name</th><td>Value</td></tr><tr><td>a</td><td>b</td></tr></table>';
+    const result = reflowTable(html);
+    const lines = result.newText.split('\n');
+    // First row (mixed th/td) should be header, so line[1] must be a separator
+    if (!lines[1].includes('---')) {
+      throw new Error('Expected separator after mixed th/td header row, got: ' + result.newText);
+    }
+  });
+
+  it('HTML with colspan → returns original text unchanged', () => {
+    const html = '<table><tr><td colspan="2">wide</td></tr><tr><td>a</td><td>b</td></tr></table>';
+    const result = reflowTable(html);
+    if (result.newText !== html) throw new Error('Expected original text for colspan table');
+  });
+
+  it('HTML with rowspan → returns original text unchanged', () => {
+    const html = '<table><tr><td rowspan="2">tall</td><td>a</td></tr><tr><td>b</td></tr></table>';
+    const result = compactTable(html);
+    if (result.newText !== html) throw new Error('Expected original text for rowspan table');
+  });
+
+  it('non-HTML text → returns original text unchanged', () => {
+    const plain = 'This is just some text without any tables.';
+    const result = reflowTable(plain);
+    if (result.newText !== plain) throw new Error('Expected original text for non-HTML');
+  });
+
+  it('HTML table with no <th> rows → first row treated as header', () => {
+    const html = '<table><tr><td>A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>';
+    const result = reflowTable(html);
+    // First row should be header, followed by separator
+    const lines = result.newText.split('\n');
+    if (!lines[0].includes('A')) throw new Error('Expected first row as header');
+    if (!lines[1].includes('---')) throw new Error('Expected separator after header');
+    if (!lines[2].includes('1')) throw new Error('Expected body row');
+  });
+
+  it('preserves source row order when a later row is header-tagged', () => {
+    const html = '<table><tr><td>row1</td></tr><tr><th>row2h</th></tr><tr><td>row3</td></tr></table>';
+    const result = reflowTable(html);
+    const lines = result.newText.split('\n');
+    if (!lines[0].includes('row1')) throw new Error('Expected first source row to remain first');
+    if (!lines[2].includes('row2h')) throw new Error('Expected later header-tagged row to keep order');
+    if (!lines[3].includes('row3')) throw new Error('Expected trailing row to keep order');
+  });
+
+  it('roundtrip: compactTable(reflowTable(htmlInput)) produces consistent output', () => {
+    const html = '<table><tr><th>Name</th><th>Value</th></tr><tr><td>foo</td><td>bar</td></tr></table>';
+    const expanded = reflowTable(html);
+    const compacted = compactTable(expanded.newText);
+    // Re-expanding the compacted result should match
+    const reExpanded = reflowTable(compacted.newText);
+    if (reExpanded.newText !== expanded.newText)
+      throw new Error('Roundtrip inconsistent:\n' + expanded.newText + '\nvs\n' + reExpanded.newText);
+  });
+});

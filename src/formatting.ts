@@ -1,3 +1,5 @@
+import { extractHtmlTables, type HtmlTableRun } from './html-table-parser';
+
 export interface TextTransformation {
   newText: string;
   cursorOffset?: number; // Optional cursor position relative to start
@@ -613,6 +615,191 @@ function formatGridContentRow(cells: string[], columnWidths: number[], pad: bool
   return '| ' + rendered.join(' | ') + ' |';
 }
 
+function runsToMarkdown(runs: HtmlTableRun[]): string {
+  let result = '';
+  for (const run of runs) {
+    if (run.type === 'softbreak') {
+      result += '\n';
+      continue;
+    }
+    if (run.type !== 'text') {
+      result += run.text;
+      continue;
+    }
+    let t = run.text;
+    if (run.code) {
+      // Subtle bug guard: a fixed `` fence breaks content like ``test``.
+      const backtickRuns = t.match(/`+/g) ?? [];
+      const maxBacktickRun = backtickRuns.reduce((max, runText) => Math.max(max, runText.length), 0);
+      const fence = '`'.repeat(maxBacktickRun + 1);
+      const needsPadding = t.startsWith('`') || t.endsWith('`');
+      const codeSpan = needsPadding ? fence + ' ' + t + ' ' + fence : fence + t + fence;
+      result += run.href ? '[' + codeSpan + '](' + formatHrefForMarkdown(run.href) + ')' : codeSpan;
+      continue;
+    }
+    if (run.bold) t = '**' + t + '**';
+    if (run.italic) t = '*' + t + '*';
+    if (run.strikethrough) t = '~~' + t + '~~';
+    if (run.underline) t = '[' + t + ']{.underline}';
+    if (run.superscript) t = '<sup>' + t + '</sup>';
+    if (run.subscript) t = '<sub>' + t + '</sub>';
+    if (run.href) t = '[' + t + '](' + formatHrefForMarkdown(run.href) + ')';
+    result += t;
+  }
+  return result;
+}
+
+function formatHrefForMarkdown(href: string): string {
+  return /[()\[\]\s]/.test(href) ? `<${href}>` : href;
+}
+
+function escapePipesForMarkdownTableCell(text: string): string {
+  // Ensure each literal pipe has an odd number of preceding backslashes so
+  // splitOnPipes treats it as cell content, not a delimiter.
+  return text.replace(/(\\*)\|/g, (_m, slashes: string) => {
+    return slashes.length % 2 === 0 ? slashes + '\\|' : slashes + '|';
+  });
+}
+
+function convertHtmlTable(text: string, pad: boolean): string | null {
+  const trimmed = text.trim();
+  if (!/^<table\b[\s\S]*<\/table>$/i.test(trimmed)) return null;
+  const tables = extractHtmlTables(trimmed);
+  // Subtle bug guard: mixed text/table selections must remain unchanged.
+  if (tables.length !== 1) return null;
+  const rows = tables[0];
+
+  // Reject colspan/rowspan
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if ((cell.colspan && cell.colspan > 1) || (cell.rowspan && cell.rowspan > 1)) return null;
+    }
+  }
+
+  // Convert cells to markdown text
+  const mdRows: { cells: string[]; header: boolean }[] = rows.map(row => ({
+    cells: row.cells.map(cell => runsToMarkdown(cell.runs)),
+    header: row.header,
+  }));
+
+  // Check if any cell contains newlines → grid table
+  const hasMultiLine = mdRows.some(row => row.cells.some(c => c.includes('\n')));
+
+  if (hasMultiLine) {
+    return buildGridTable(mdRows, pad);
+  }
+  return buildPipeTable(mdRows, pad);
+}
+
+function buildPipeTable(mdRows: { cells: string[]; header: boolean }[], pad: boolean): string {
+  if (mdRows.length === 0) return '';
+  const colCount = Math.max(...mdRows.map(r => r.cells.length));
+  if (colCount <= 0) return '';
+  // Escape pipes in cell text
+  const escaped = mdRows.map(row => ({
+    ...row,
+    cells: Array.from({ length: colCount }, (_, i) =>
+      escapePipesForMarkdownTableCell(row.cells[i] ?? '')
+    ),
+  }));
+  if (escaped.length === 0) return '';
+  // Preserve source order: only leading header-flagged rows are header rows.
+  let headerEnd = 0;
+  while (headerEnd < escaped.length && escaped[headerEnd].header) headerEnd++;
+  if (headerEnd === 0) headerEnd = 1;
+  const finalHeader = escaped.slice(0, headerEnd);
+  const finalBody = escaped.slice(headerEnd);
+
+  const allRows = [...finalHeader, ...finalBody];
+
+  if (pad) {
+    const colWidths = new Array(colCount).fill(3);
+    for (const row of allRows) {
+      for (let i = 0; i < colCount; i++) {
+        colWidths[i] = Math.max(colWidths[i], row.cells[i].length);
+      }
+    }
+    const lines: string[] = [];
+    for (const row of finalHeader) {
+      lines.push(formatContentRow(row.cells, colWidths));
+    }
+    lines.push(formatSeparatorRow(colWidths));
+    for (const row of finalBody) {
+      lines.push(formatContentRow(row.cells, colWidths));
+    }
+    return lines.join('\n');
+  } else {
+    const fmtRow = (cells: string[]): string => {
+      let line = '|';
+      for (const cell of cells) {
+        line += (cell.length === 0 ? ' |' : ' ' + cell + ' |');
+      }
+      return line;
+    };
+    const lines: string[] = [];
+    for (const row of finalHeader) {
+      lines.push(fmtRow(row.cells));
+    }
+    const sepCells = Array.from({ length: colCount }, () => '---');
+    lines.push(fmtRow(sepCells));
+    for (const row of finalBody) {
+      lines.push(fmtRow(row.cells));
+    }
+    return lines.join('\n');
+  }
+}
+
+function buildGridTable(mdRows: { cells: string[]; header: boolean }[], pad: boolean): string {
+  if (mdRows.length === 0) return '';
+  const colCount = Math.max(...mdRows.map(r => r.cells.length));
+  if (colCount <= 0) return '';
+  // Split each cell into lines
+  const splitRows = mdRows.map(row => ({
+    header: row.header,
+    cellLines: Array.from({ length: colCount }, (_, i) =>
+      escapePipesForMarkdownTableCell(row.cells[i] ?? '').split('\n')
+    ),
+  }));
+
+  // Compute column widths
+  const colWidths = new Array(colCount).fill(1);
+  for (const row of splitRows) {
+    for (let c = 0; c < colCount; c++) {
+      for (const line of row.cellLines[c]) {
+        colWidths[c] = Math.max(colWidths[c], line.length);
+      }
+    }
+  }
+
+  const borderRow = (style: GridBorderStyle): string => formatGridBorderRow(colWidths, style);
+
+  const lines: string[] = [];
+  for (let r = 0; r < splitRows.length; r++) {
+    const row = splitRows[r];
+    const prevIsHeader = r > 0 && splitRows[r - 1].header;
+    // Border before this row
+    if (r === 0) {
+      lines.push(borderRow('dash'));
+    } else {
+      lines.push(borderRow(prevIsHeader && !row.header ? 'equal' : 'dash'));
+    }
+    // Content lines for this row
+    const maxLines = Math.max(...row.cellLines.map(cl => cl.length));
+    for (let l = 0; l < maxLines; l++) {
+      const cells = row.cellLines.map((cl, c) => {
+        const text = cl[l] ?? '';
+        return pad ? text.padEnd(colWidths[c]) : text;
+      });
+      lines.push('| ' + cells.join(' | ') + ' |');
+    }
+  }
+  // Final border
+  const lastIsHeader = splitRows[splitRows.length - 1]?.header;
+  lines.push(borderRow(lastIsHeader ? 'equal' : 'dash'));
+
+  return lines.join('\n');
+}
+
 /**
  * Compacts a markdown table by removing padding whitespace.
  * Each cell is trimmed and separated by ` | ` with no extra padding.
@@ -669,6 +856,9 @@ export function compactTable(text: string): TextTransformation {
     return { newText: lines.join('\n') };
   }
 
+  const htmlCompact = convertHtmlTable(text, false);
+  if (htmlCompact !== null) return { newText: htmlCompact };
+
   return { newText: text };
 }
 
@@ -708,6 +898,9 @@ export function reflowTable(text: string): TextTransformation {
     lines.push(formatGridBorderRow(grid.columnWidths, grid.borderStyles[grid.rows.length] || 'dash'));
     return { newText: lines.join('\n') };
   }
+
+  const htmlReflow = convertHtmlTable(text, true);
+  if (htmlReflow !== null) return { newText: htmlReflow };
 
   // Not a valid table, return original text
   return { newText: text };
