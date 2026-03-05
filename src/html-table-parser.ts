@@ -51,7 +51,7 @@ function extractHtmlTableRows(tableHtml: string): HtmlTableRow[] {
           ...(cell.colspan && cell.colspan > 1 ? { colspan: cell.colspan } : {}),
           ...(cell.rowspan && cell.rowspan > 1 ? { rowspan: cell.rowspan } : {}),
         })),
-        header: cells.every(c => c.isHeader)
+        header: cells.some(c => c.isHeader)
       });
     }
   }

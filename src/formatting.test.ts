@@ -1507,10 +1507,47 @@ describe('HTML table support for Expand/Compact Table', () => {
   it('HTML with <p> multi-paragraph cells → grid table output', () => {
     const html = '<table><tr><th>Col</th></tr><tr><td><p>para1</p><p>para2</p></td></tr></table>';
     const result = reflowTable(html);
-    // Grid tables use + borders
-    if (!result.newText.includes('+')) throw new Error('Expected grid table with + borders, got: ' + result.newText);
+    // Grid tables use +---+ borders
+    if (!/\+-+\+/.test(result.newText)) throw new Error('Expected grid table with +---+ borders, got: ' + result.newText);
     if (!result.newText.includes('para1')) throw new Error('Expected para1');
     if (!result.newText.includes('para2')) throw new Error('Expected para2');
+  });
+
+  it('HTML code-span with href preserves link', () => {
+    const html = '<table><tr><th>Name</th></tr><tr><td><a href="https://example.com"><code>foo</code></a></td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('[`foo`](https://example.com)')) {
+      throw new Error('Expected code-span link [`foo`](https://example.com), got: ' + result.newText);
+    }
+  });
+
+  it('HTML code-span with href uses angle brackets for URLs with parens', () => {
+    const html = '<table><tr><th>Name</th></tr><tr><td><a href="https://example.com/a(b)"><code>bar</code></a></td></tr></table>';
+    const result = reflowTable(html);
+    if (!result.newText.includes('[`bar`](<https://example.com/a(b)>)')) {
+      throw new Error('Expected angle-bracket URL, got: ' + result.newText);
+    }
+  });
+
+  it('grid table cells with pipes do not create phantom columns', () => {
+    const html = '<table><tr><th>Col</th></tr><tr><td><p>a|b</p><p>c</p></td></tr></table>';
+    const result = reflowTable(html);
+    // The pipe in cell content must be escaped in grid output
+    if (!result.newText.includes('\\|')) {
+      throw new Error('Expected escaped pipe in grid table cell, got: ' + result.newText);
+    }
+    // Verify it's a grid table
+    if (!/\+-+\+/.test(result.newText)) throw new Error('Expected grid table output');
+  });
+
+  it('mixed th/td row is treated as header', () => {
+    const html = '<table><tr><th>Name</th><td>Value</td></tr><tr><td>a</td><td>b</td></tr></table>';
+    const result = reflowTable(html);
+    const lines = result.newText.split('\n');
+    // First row (mixed th/td) should be header, so line[1] must be a separator
+    if (!lines[1].includes('---')) {
+      throw new Error('Expected separator after mixed th/td header row, got: ' + result.newText);
+    }
   });
 
   it('HTML with colspan → returns original text unchanged', () => {

@@ -633,7 +633,8 @@ function runsToMarkdown(runs: HtmlTableRun[]): string {
       const maxBacktickRun = backtickRuns.reduce((max, runText) => Math.max(max, runText.length), 0);
       const fence = '`'.repeat(maxBacktickRun + 1);
       const needsPadding = t.startsWith('`') || t.endsWith('`');
-      result += needsPadding ? fence + ' ' + t + ' ' + fence : fence + t + fence;
+      const codeSpan = needsPadding ? fence + ' ' + t + ' ' + fence : fence + t + fence;
+      result += run.href ? '[' + codeSpan + '](' + formatHrefForMarkdown(run.href) + ')' : codeSpan;
       continue;
     }
     if (run.bold) t = '**' + t + '**';
@@ -642,10 +643,14 @@ function runsToMarkdown(runs: HtmlTableRun[]): string {
     if (run.underline) t = '[' + t + ']{.underline}';
     if (run.superscript) t = '<sup>' + t + '</sup>';
     if (run.subscript) t = '<sub>' + t + '</sub>';
-    if (run.href) t = '[' + t + '](' + run.href + ')';
+    if (run.href) t = '[' + t + '](' + formatHrefForMarkdown(run.href) + ')';
     result += t;
   }
   return result;
+}
+
+function formatHrefForMarkdown(href: string): string {
+  return /[()\[\]\s]/.test(href) ? `<${href}>` : href;
 }
 
 function escapePipesForMarkdownTableCell(text: string): string {
@@ -752,7 +757,7 @@ function buildGridTable(mdRows: { cells: string[]; header: boolean }[], pad: boo
   const splitRows = mdRows.map(row => ({
     header: row.header,
     cellLines: Array.from({ length: colCount }, (_, i) =>
-      (row.cells[i] ?? '').split('\n')
+      escapePipesForMarkdownTableCell(row.cells[i] ?? '').split('\n')
     ),
   }));
 
