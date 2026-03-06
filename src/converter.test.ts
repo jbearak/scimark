@@ -114,9 +114,12 @@ describe('DOCX table conversion', () => {
     const buf = await buildSyntheticDocx(xml);
     const result = await convertDocx(buf);
 
-    expect(result.markdown).toContain('+');
+    // Grid table with separate lines for each paragraph
+    expect(result.markdown).toMatch(/^\+-+\+-+\+$/m);
     expect(result.markdown).toContain('first paragraph');
     expect(result.markdown).toContain('second paragraph');
+    // Both paragraphs appear on separate lines in the grid cell
+    expect(result.markdown).toMatch(/first paragraph.*\n.*second paragraph/);
     expect(result.markdown).not.toContain('<table>');
   });
 
@@ -604,9 +607,11 @@ describe('Pipe table rendering', () => {
       { pipeTableMaxLineWidth: 0 },
     );
 
-    expect(result.markdown).toContain('+');
+    // Grid table border present
+    expect(result.markdown).toMatch(/^\+-+\+$/m);
     expect(result.markdown).toContain('A');
-    expect(result.markdown).not.toContain('| A |');
+    // No GFM separator row (pipe table)
+    expect(result.markdown).not.toMatch(/^\|(?:\s*:?-+:?\s*\|)+$/m);
     expect(result.markdown).not.toContain('<table>');
   });
 
