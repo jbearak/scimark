@@ -45,8 +45,11 @@ export function extractHtmlTables(html: string): HtmlTableMeta[] {
         const n = parseFloat(fontSizeMatch[1]);
         if (isFinite(n) && n > 0) meta.fontSize = n;
       }
-      const fontMatch = attrs.match(/data-font\s*=\s*(?:["']([^"']*)["']|([^\s>"]+))/i);
-      const fontVal = fontMatch ? (fontMatch[1] ?? fontMatch[2]) : undefined;
+      // data-font regex: separate double-quoted and single-quoted branches so that
+      // apostrophes inside double-quoted values (e.g. "O'Brien Sans") are preserved.
+      // After extraction the value is HTML-entity-decoded and whitespace-normalized.
+      const fontMatch = attrs.match(/data-font\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"]+))/i);
+      const fontVal = fontMatch ? (fontMatch[1] ?? fontMatch[2] ?? fontMatch[3]) : undefined;
       if (fontVal) {
         const normalized = decodeHtmlEntities(fontVal).trim().replace(/\s+/g, ' ');
         if (normalized) meta.font = normalized;

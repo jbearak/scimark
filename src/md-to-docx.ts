@@ -1864,7 +1864,19 @@ function extractListItems(tokens: any[], ordered: boolean, level: number, warnin
       const itemTokens = tokens.slice(i + 1, closePos);
       let runs: MdRun[] = [];
       let foundFirstParagraph = false;
+      // Track nested list depth so we only capture the parent item's own
+      // paragraph — not paragraphs belonging to child list items.
+      let nestedListDepth = 0;
       for (let j = 0; j < itemTokens.length; j++) {
+        if (itemTokens[j].type === 'bullet_list_open' || itemTokens[j].type === 'ordered_list_open') {
+          nestedListDepth++;
+          continue;
+        }
+        if (itemTokens[j].type === 'bullet_list_close' || itemTokens[j].type === 'ordered_list_close') {
+          nestedListDepth--;
+          continue;
+        }
+        if (nestedListDepth > 0) continue;
         if (itemTokens[j].type === 'paragraph_open') {
           const paragraphClose = findClosingToken(itemTokens, j, 'paragraph_close');
           if (!foundFirstParagraph) {

@@ -405,6 +405,18 @@ describe('Font customization unit tests', () => {
       expect(tables[0].font).toBe('Arial');
     });
 
+    it('preserves apostrophes in double-quoted data-font value', () => {
+      const tables = extractHtmlTables('<table data-font="O\'Brien Sans"><tr><td>A</td></tr></table>');
+      expect(tables).toHaveLength(1);
+      expect(tables[0].font).toBe("O'Brien Sans");
+    });
+
+    it('preserves double quotes in single-quoted data-font value', () => {
+      const tables = extractHtmlTables("<table data-font='My \"Special\" Font'><tr><td>A</td></tr></table>");
+      expect(tables).toHaveLength(1);
+      expect(tables[0].font).toBe('My "Special" Font');
+    });
+
     it('parseMd transfers HTML table data attributes to MdToken', () => {
       const tokens = parseMd('<table data-font-size="8" data-font="Arial"><tr><td>A</td></tr></table>');
       const tables = tokens.filter(t => t.type === 'table');

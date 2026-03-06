@@ -19,6 +19,7 @@ LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 - Inline code in HTML-table cells: choose a backtick fence longer than the longest backtick run in cell text (and add fence padding only when content starts/ends with backticks) to preserve literal backticks.
 - Pipe-table escaping invariant: when emitting HTML-table cell text to pipe tables, ensure each literal `|` has an odd number of preceding backslashes so parser splitting does not create extra columns.
 - Regex parity invariant: keep navigation (`src/changes.ts`) plain-highlight lookaround logic in lockstep with `syntaxes/manuscript-markdown.json` and mirrored regex test copies.
+- data-font attribute parsing: the regex uses separate double-quoted and single-quoted branches (not a shared `[^"']` class) so that apostrophes in double-quoted values like `"O'Brien Sans"` are preserved. The extracted value is HTML-entity-decoded and whitespace-normalized before use.
 
 Per-module learnings live as comments in the corresponding source files.
 
