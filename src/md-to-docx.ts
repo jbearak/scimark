@@ -22,6 +22,9 @@ export { extractHtmlTables } from './html-table-parser';
 //   (Critic/comment/citation/math/footnote rules disabled); carry structured
 //   inner runs on MdRun (innerRuns / oldRuns / newRuns)
 
+// Placeholder for deferred bibliography insertion (NUL bytes cannot appear in valid XML)
+const BIBL_PLACEHOLDER = '\x00MANUSCRIPT_BIBL_MARKER\x00';
+
 // Types for the parsed token stream
 export type TableFormat = 'pipe' | 'html' | 'grid';
 
@@ -49,6 +52,7 @@ export interface MdToken {
   portraitOpen?: true;      // sentinel: start of portrait section
   portraitClose?: true;     // sentinel: end of portrait section
   tableOrientation?: 'landscape' | 'portrait'; // table-only orientation from data-orientation
+  bibliographyMarker?: true;  // sentinel: <!-- references --> / <!-- bibliography --> placement marker
 }
 
 export interface MdTableCell {
@@ -1228,6 +1232,25 @@ export function parseMd(markdown: string, warnings?: string[]): MdToken[] {
           inPortrait = false;
         }
       }
+    }
+  }
+
+  // Post-process: convert <!-- references --> / <!-- bibliography --> into a bibliography marker sentinel
+  {
+    let markerCount = 0;
+    for (let i = 0; i < result.length; i++) {
+      if (result[i].type !== 'paragraph' || result[i].runs.length !== 1) continue;
+      const run = result[i].runs[0];
+      if (run.type !== 'html_comment') continue;
+      if (!/^<!--\s*(?:references|bibliography)\s*-->$/i.test(run.text.trim())) continue;
+      if (markerCount === 0) {
+        result.splice(i, 1, { type: 'paragraph', runs: [], bibliographyMarker: true });
+      } else {
+        if (warnings) warnings.push('Multiple <!-- references --> markers found; only the first is used.');
+        result.splice(i, 1);
+        i--;
+      }
+      markerCount++;
     }
   }
 
@@ -4468,10 +4491,23 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
   }
 
   let prevToken: MdToken | undefined;
+  let preserveCloseForNextToken = false;
   for (const token of tokens) {
     // Any close sentinel directly preceding any open sentinel skips the open's break
     // to avoid an empty intermediate section that renders as a blank page.
-    const prevWasClose = prevToken?.landscapeClose || prevToken?.portraitClose;
+    const prevWasClose: boolean = !!(preserveCloseForNextToken || prevToken?.landscapeClose || prevToken?.portraitClose);
+    preserveCloseForNextToken = false;
+
+    // Bibliography marker: emit placeholder that will be replaced after the loop
+    // once all citedKeys have been collected.
+    // Preserve close-sentinel status across the marker for the
+    // consecutive-section-block invariant (e.g. <!-- /landscape --><!-- references --><!-- landscape -->).
+    if (token.bibliographyMarker) {
+      body += BIBL_PLACEHOLDER;
+      preserveCloseForNextToken = !!prevWasClose;
+      prevToken = token;
+      continue;
+    }
 
     // Landscape sentinels: emit section break paragraphs
     if (token.landscapeOpen) {
@@ -4578,14 +4614,20 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     citeprocEngine.updateItems([...state.citedKeys]);
   }
 
-  // Append bibliography field if we have a citeproc engine
+  // Generate bibliography + missing-keys XML, then place at marker or append at end.
+  // Uses split/join (not replace) to avoid $-corruption in replacement strings.
+  const hasBiblMarker = body.includes(BIBL_PLACEHOLDER);
+  let biblXml = '';
   if (citeprocEngine) {
-    body += generateBibliographyXml(citeprocEngine, options?.zoteroBiblData);
+    biblXml += generateBibliographyXml(citeprocEngine, options?.zoteroBiblData);
   }
-
-  // Append missing-key notes after bibliography
   if (state.missingKeys.size > 0) {
-    body += generateMissingKeysXml([...state.missingKeys]);
+    biblXml += generateMissingKeysXml([...state.missingKeys]);
+  }
+  if (hasBiblMarker) {
+    body = body.split(BIBL_PLACEHOLDER).join(biblXml);
+  } else {
+    body += biblXml;
   }
 
   // Append body-closing sectPr (preserves template page layout)

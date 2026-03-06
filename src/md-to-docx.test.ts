@@ -2769,3 +2769,53 @@ describe('portrait sections', () => {
     });
   });
 });
+
+describe('bibliography marker', () => {
+  describe('parseMd', () => {
+    it('converts <!-- references --> to sentinel token', () => {
+      const tokens = parseMd('Text\n\n<!-- references -->\n\nMore text');
+      const marker = tokens.find(t => t.bibliographyMarker);
+      expect(marker).toBeDefined();
+      expect(marker!.runs).toEqual([]);
+    });
+
+    it('converts <!-- bibliography --> alias to sentinel token', () => {
+      const tokens = parseMd('Text\n\n<!-- bibliography -->\n\nMore text');
+      const marker = tokens.find(t => t.bibliographyMarker);
+      expect(marker).toBeDefined();
+    });
+
+    it('is case-insensitive', () => {
+      const tokens = parseMd('Text\n\n<!-- References -->\n\nMore text');
+      expect(tokens.some(t => t.bibliographyMarker)).toBe(true);
+    });
+
+    it('warns on multiple markers and uses only the first', () => {
+      const warnings: string[] = [];
+      const tokens = parseMd('Text\n\n<!-- references -->\n\nMiddle\n\n<!-- references -->\n\nEnd', warnings);
+      const markers = tokens.filter(t => t.bibliographyMarker);
+      expect(markers.length).toBe(1);
+      expect(warnings.length).toBe(1);
+      expect(warnings[0]).toContain('Multiple');
+    });
+  });
+
+  describe('generateDocumentXml', () => {
+    it('places bibliography at marker position, not at end', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', runs: [], bibliographyMarker: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // With no citeproc engine, the placeholder is just stripped — no bibliography XML.
+      // But the "After" paragraph should still appear after the marker position.
+      expect(xml).toContain('Before');
+      expect(xml).toContain('After');
+      const beforeIdx = xml.indexOf('Before');
+      const afterIdx = xml.indexOf('After');
+      expect(beforeIdx).toBeLessThan(afterIdx);
+    });
+  });
+});
