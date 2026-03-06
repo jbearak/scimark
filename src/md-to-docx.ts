@@ -2578,6 +2578,14 @@ const TABLE_STYLE_IDS = new Set(['TableParagraph']);
  * style's <w:rPr> section. Styles not present in the template are
  * silently skipped.
  */
+/** Extract the Normal style's font size (in half-points) from styles XML. */
+function extractNormalStyleSizeHp(stylesXml: string): number | undefined {
+  const normalMatch = /<w:style\b[^>]*\bw:styleId="Normal"[^>]*>[\s\S]*?<\/w:style>/.exec(stylesXml);
+  if (!normalMatch) return undefined;
+  const szMatch = /<w:sz\s+w:val="(\d+)"/.exec(normalMatch[0]);
+  return szMatch ? parseInt(szMatch[1], 10) : undefined;
+}
+
 export function applyFontOverridesToTemplate(
   stylesXmlBytes: Uint8Array,
   overrides: FontOverrides
@@ -2586,13 +2594,9 @@ export function applyFontOverridesToTemplate(
 
   // Recompute auto-shrink from template's Normal style size when no explicit font-size
   if (overrides.tableSizeFromDefault) {
-    const normalMatch = /<w:style\b[^>]*\bw:styleId="Normal"[^>]*>[\s\S]*?<\/w:style>/.exec(xml);
-    if (normalMatch) {
-      const szMatch = /<w:sz\s+w:val="(\d+)"/.exec(normalMatch[0]);
-      if (szMatch) {
-        const templateBodyHp = parseInt(szMatch[1], 10);
-        overrides.tableSizeHp = Math.max(1, templateBodyHp - 4);
-      }
+    const templateBodyHp = extractNormalStyleSizeHp(xml);
+    if (templateBodyHp !== undefined) {
+      overrides.tableSizeHp = Math.max(1, templateBodyHp - 4);
     }
   }
 
@@ -3531,19 +3535,20 @@ function generateInlineCriticContent(
     return generateRuns(formattedRuns, state, options, bibEntries, citeprocEngine);
   }
   const fallbackRun = mergeRunFormatting({ type: 'text', text: fallbackText }, outer, forced);
-  return generateRun(fallbackText, generateRPr(fallbackRun));
+  return generateRun(fallbackText, generateRPr(fallbackRun, state.tableRunRPrExtra || undefined));
 }
 
 function generateDeletedCriticContent(
   runs: MdRun[] | undefined,
   fallbackText: string,
   outer: MdRun,
-  forced: Partial<MdRun> = {}
+  forced: Partial<MdRun> = {},
+  extraRPr?: string
 ): string {
   const formattedRuns = formatCriticInnerRuns(runs, outer, forced);
   if (!formattedRuns || formattedRuns.length === 0) {
     const fallbackRun = mergeRunFormatting({ type: 'text', text: fallbackText }, outer, forced);
-    const rPr = generateRPr(fallbackRun);
+    const rPr = generateRPr(fallbackRun, extraRPr);
     return '<w:r>' + (rPr ? rPr : '') + '<w:delText xml:space="preserve">' + escapeXml(fallbackText) + '</w:delText></w:r>';
   }
 
@@ -3558,22 +3563,22 @@ function generateDeletedCriticContent(
       continue;
     }
     if (run.type === 'critic_add' || run.type === 'critic_del') {
-      xml += generateDeletedCriticContent(run.innerRuns, run.text, run);
+      xml += generateDeletedCriticContent(run.innerRuns, run.text, run, {}, extraRPr);
       continue;
     }
     if (run.type === 'critic_sub') {
-      xml += generateDeletedCriticContent(run.oldRuns, run.text, run);
-      if (run.newText) xml += generateDeletedCriticContent(run.newRuns, run.newText, run);
+      xml += generateDeletedCriticContent(run.oldRuns, run.text, run, {}, extraRPr);
+      if (run.newText) xml += generateDeletedCriticContent(run.newRuns, run.newText, run, {}, extraRPr);
       continue;
     }
     if (run.type === 'critic_highlight' || run.type === 'critic_comment') {
       if (run.type === 'critic_highlight' && run.text) {
-        xml += generateDeletedCriticContent(run.innerRuns, run.text, run);
+        xml += generateDeletedCriticContent(run.innerRuns, run.text, run, {}, extraRPr);
       }
       continue;
     }
     if (run.type !== 'text' || !run.text) continue;
-    const rPr = generateRPr(run);
+    const rPr = generateRPr(run, extraRPr);
     xml += '<w:r>' + (rPr ? rPr : '') + '<w:delText xml:space="preserve">' + escapeXml(run.text) + '</w:delText></w:r>';
   }
   return xml;
@@ -3609,13 +3614,13 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
       const author = run.author || options?.authorName || 'Unknown';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
       const dateAttr = date ? ' w:date="' + escapeXml(date) + '"' : '';
-      const deletedXml = generateDeletedCriticContent(run.innerRuns, run.text, run);
+      const deletedXml = generateDeletedCriticContent(run.innerRuns, run.text, run, {}, state.tableRunRPrExtra || undefined);
       xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + deletedXml + '</w:del>';
     } else if (run.type === 'critic_sub') {
       const author = run.author || options?.authorName || 'Unknown';
       const date = normalizeToUtcIso(run.date || '', state.timezone);
       const dateAttr = date ? ' w:date="' + escapeXml(date) + '"' : '';
-      const deletedXml = generateDeletedCriticContent(run.oldRuns, run.text, run);
+      const deletedXml = generateDeletedCriticContent(run.oldRuns, run.text, run, {}, state.tableRunRPrExtra || undefined);
       const insertedXml = generateInlineCriticContent(run.newRuns, run.newText || '', run, state, options, bibEntries, citeprocEngine);
       xml += '<w:del w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + deletedXml + '</w:del>';
       xml += '<w:ins w:id="' + (state.commentId++) + '" w:author="' + escapeXml(author) + '"' + dateAttr + '>' + insertedXml + '</w:ins>';
@@ -3769,15 +3774,16 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
         noteId = state.footnoteId++;
         state.footnoteLabelToId.set(label, noteId);
       }
+      const noteExtraRPr = state.tableRunRPrExtra || '';
       if (state.notesMode === 'endnotes') {
-        xml += '<w:r><w:rPr><w:rStyle w:val="EndnoteReference"/></w:rPr><w:endnoteReference w:id="' + noteId + '"/></w:r>';
+        xml += '<w:r><w:rPr><w:rStyle w:val="EndnoteReference"/>' + noteExtraRPr + '</w:rPr><w:endnoteReference w:id="' + noteId + '"/></w:r>';
         state.hasEndnotes = true;
       } else {
-        xml += '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="' + noteId + '"/></w:r>';
+        xml += '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/>' + noteExtraRPr + '</w:rPr><w:footnoteReference w:id="' + noteId + '"/></w:r>';
         state.hasFootnotes = true;
       }
     } else if (run.type === 'citation') {
-      const result = generateCitation(run, bibEntries || new Map(), citeprocEngine, state.citationIds, state.citationItemIds);
+      const result = generateCitation(run, bibEntries || new Map(), citeprocEngine, state.citationIds, state.citationItemIds, state.tableRunRPrExtra || undefined);
       xml += result.xml;
       if (result.warning) state.warnings.push(result.warning);
       if (result.missingKeys) {
@@ -4710,6 +4716,19 @@ export async function convertMdToDocx(
   }
 
   const hasTheme = !!templateParts?.has('word/theme/theme1.xml');
+
+  // Recompute auto-shrink baseline from template Normal style BEFORE document
+  // generation so generateTable() compares per-table sizes against the correct
+  // document-level default (not the hardcoded DEFAULT_BODY_HP fallback).
+  if (fontOverrides.tableSizeFromDefault && templateParts?.has('word/styles.xml')) {
+    const templateBodyHp = extractNormalStyleSizeHp(
+      new TextDecoder('utf-8').decode(templateParts.get('word/styles.xml')!)
+    );
+    if (templateBodyHp !== undefined) {
+      fontOverrides.tableSizeHp = Math.max(1, templateBodyHp - 4);
+    }
+  }
+
   const notesMode = frontmatter.notes === 'endnotes' ? 'endnotes' as const : 'footnotes' as const;
 
   // Reserve rId slots: 1=styles, 2=numbering, 3=comments,
@@ -4837,15 +4856,23 @@ export async function convertMdToDocx(
       const t = bodyTokens[ti];
       if (ti === 0) {
         if (t.type === 'table') {
+          if (t.sourceFormat) state.tableFormats.set(state.tableIndex, t.sourceFormat);
+          if (t.tableFontSize !== undefined) state.tableFontSizes.set(state.tableIndex, t.tableFontSize);
+          if (t.tableFont) state.tableFonts.set(state.tableIndex, t.tableFont);
           bodyXml += '<w:p>' + paragraphPPr + selfRefRun + '</w:p>';
           bodyXml += generateTable(t, state, options, bibEntries, citeprocEngine);
+          state.tableIndex++;
         } else {
           const runs = generateRuns(t.runs, state, options, bibEntries, citeprocEngine);
           bodyXml += '<w:p>' + paragraphPPr + selfRefRun + runs + '</w:p>';
         }
       } else {
         if (t.type === 'table') {
+          if (t.sourceFormat) state.tableFormats.set(state.tableIndex, t.sourceFormat);
+          if (t.tableFontSize !== undefined) state.tableFontSizes.set(state.tableIndex, t.tableFontSize);
+          if (t.tableFont) state.tableFonts.set(state.tableIndex, t.tableFont);
           bodyXml += generateTable(t, state, options, bibEntries, citeprocEngine);
+          state.tableIndex++;
         } else {
           const runs = generateRuns(t.runs, state, options, bibEntries, citeprocEngine);
           bodyXml += '<w:p>' + paragraphPPr + runs + '</w:p>';
