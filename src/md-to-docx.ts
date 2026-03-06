@@ -2085,6 +2085,7 @@ export interface DocxGenState {
   listIndent: 'tab' | 'spaces'; // indentation style for nested list items
   consecutiveReplyParaIds: Set<string>; // parent paraIds whose replies were in consecutive format
   htmlCommentGaps: Map<number, number>; // blank-line-before count per HTML comment index (non-default only)
+  tableRunRPrExtra: string; // extra rPr elements injected into every run inside a table cell (per-table font/size overrides)
 }
 
 interface CommentEntry {
@@ -2259,6 +2260,7 @@ export interface FontOverrides {
   titleStyles?: string[];
   tableFont?: string;
   tableSizeHp?: number;
+  tableSizeFromDefault?: boolean; // true when tableSizeHp was auto-computed from DEFAULT_BODY_HP
 }
 
 /** Resolve value at index with Array_Inheritance: use arr[i] if i < length, else arr[last]. */
@@ -2274,14 +2276,7 @@ export interface CodeBlockConfig {
   codeBlockInset?: number;
 }
 
-export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined {
-  const hasAnyField = !!fm.font || !!fm.codeFont ||
-    fm.fontSize !== undefined || fm.codeFontSize !== undefined ||
-    !!fm.headerFont || !!fm.headerFontSize || !!fm.headerFontStyle ||
-    !!fm.titleFont || !!fm.titleFontSize || !!fm.titleFontStyle ||
-    !!fm.tableFont || fm.tableFontSize !== undefined;
-  if (!hasAnyField) return undefined;
-
+export function resolveFontOverrides(fm: Frontmatter): FontOverrides {
   const overrides: FontOverrides = {};
 
   if (fm.font) {
@@ -2360,10 +2355,13 @@ export function resolveFontOverrides(fm: Frontmatter): FontOverrides | undefined
   }
   if (fm.tableFontSize !== undefined) {
     overrides.tableSizeHp = Math.round(fm.tableFontSize * 2);
-  } else if (fm.fontSize !== undefined && !fm.tableFont) {
-    // Auto-shrink: tables use body - 2pt (4hp) when only font-size is set
-    const bodySizeHp = Math.round(fm.fontSize * 2);
-    overrides.tableSizeHp = Math.max(1, bodySizeHp - 4);
+  } else if (fm.fontSize !== undefined) {
+    // Auto-shrink: tables use body - 2pt (4hp)
+    overrides.tableSizeHp = Math.max(1, Math.round(fm.fontSize * 2) - 4);
+  } else {
+    // Auto-shrink from default body size; may be recomputed from template Normal
+    overrides.tableSizeHp = Math.max(1, DEFAULT_BODY_HP - 4);
+    overrides.tableSizeFromDefault = true;
   }
 
   return overrides;
@@ -2392,6 +2390,18 @@ export function applyFontOverridesToTemplate(
   overrides: FontOverrides
 ): string {
   let xml = new TextDecoder('utf-8').decode(stylesXmlBytes);
+
+  // Recompute auto-shrink from template's Normal style size when no explicit font-size
+  if (overrides.tableSizeFromDefault) {
+    const normalMatch = /<w:style\b[^>]*\bw:styleId="Normal"[^>]*>[\s\S]*?<\/w:style>/.exec(xml);
+    if (normalMatch) {
+      const szMatch = /<w:sz\s+w:val="(\d+)"/.exec(normalMatch[0]);
+      if (szMatch) {
+        const templateBodyHp = parseInt(szMatch[1], 10);
+        overrides.tableSizeHp = Math.max(1, templateBodyHp - 4);
+      }
+    }
+  }
 
   // Inject TableParagraph style if table overrides exist but the template lacks it
   if (overrides.tableSizeHp || overrides.tableFont) {
@@ -3224,9 +3234,9 @@ function documentRelsXml(opts: DocumentRelsOptions): string {
   return xml;
 }
 
-export function generateRPr(run: MdRun): string {
+export function generateRPr(run: MdRun, extraRPr?: string): string {
   const parts: string[] = [];
-  
+
   if (run.code) parts.push('<w:rStyle w:val="CodeChar"/>');
   if (run.bold) parts.push('<w:b/>');
   if (run.italic) parts.push('<w:i/>');
@@ -3238,7 +3248,8 @@ export function generateRPr(run: MdRun): string {
   }
   if (run.superscript) parts.push('<w:vertAlign w:val="superscript"/>');
   else if (run.subscript) parts.push('<w:vertAlign w:val="subscript"/>');
-  
+  if (extraRPr) parts.push(extraRPr);
+
   return parts.length > 0 ? '<w:rPr>' + parts.join('') + '</w:rPr>' : '';
 }
 
@@ -3381,7 +3392,7 @@ export function generateRuns(inputRuns: MdRun[], state: DocxGenState, options?: 
     const run = inputRuns[ri];
     const nextRun = inputRuns[ri + 1];
     if (run.type === 'text') {
-      const rPr = generateRPr(run);
+      const rPr = generateRPr(run, state.tableRunRPrExtra || undefined);
       if (run.href) {
         let rId = state.relationships.get(run.href);
         if (!rId) {
@@ -3856,9 +3867,10 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
   const effectiveTableFont = token.tableFont ?? fo?.tableFont;
   // Build pPr for table cell paragraphs (style ref + inline overrides for per-table diffs)
   let tablePPr = '';
+  let tableRunRPr = '';
   if (effectiveTableSizeHp || effectiveTableFont) {
     const hasDocLevelStyle = !!(fo?.tableSizeHp || fo?.tableFont);
-    // Per-table overrides that differ from doc-level require inline rPr
+    // Per-table overrides that differ from doc-level require inline rPr on both pPr and runs
     const needsInlineFont = effectiveTableFont && effectiveTableFont !== fo?.tableFont;
     const needsInlineSize = effectiveTableSizeHp && effectiveTableSizeHp !== fo?.tableSizeHp;
     let pPrInner = '';
@@ -3871,6 +3883,9 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
       rPrInner += '<w:sz w:val="' + effectiveTableSizeHp + '"/><w:szCs w:val="' + effectiveTableSizeHp + '"/>';
     }
     tablePPr = '<w:pPr>' + pPrInner + (rPrInner ? '<w:rPr>' + rPrInner + '</w:rPr>' : '') + '</w:pPr>';
+    // Run-level rPr: same inline overrides so runs inherit per-table font/size
+    // (pPr > rPr only sets the paragraph mark, not run properties)
+    tableRunRPr = rPrInner;
   }
 
   // Compute total grid columns by simulating grid occupancy (accounts for
@@ -3934,6 +3949,10 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
   // Track pending vertical merges: gridCol -> { remaining: number; colspan: number }
   const mergeMap = new Map<number, { remaining: number; colspan: number }>();
 
+  // Set per-table run rPr so generateRuns injects font/size on each run
+  const prevRunRPrExtra = state.tableRunRPrExtra;
+  state.tableRunRPrExtra = tableRunRPr;
+
   for (const row of token.rows) {
     xml += '<w:tr>';
     if (row.header) {
@@ -3996,6 +4015,8 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
     }
     xml += '</w:tr>';
   }
+
+  state.tableRunRPrExtra = prevRunRPrExtra;
 
   xml += '</w:tbl>';
   return xml;
@@ -4479,6 +4500,7 @@ export async function convertMdToDocx(
     listIndent: detectListIndent(bodyWithoutFootnotes),
     consecutiveReplyParaIds: new Set(),
     htmlCommentGaps,
+    tableRunRPrExtra: '',
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography

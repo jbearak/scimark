@@ -150,9 +150,12 @@ describe('Font customization unit tests', () => {
   // Validates: Requirement 4.2
   // ---------------------------------------------------------------
   describe('template passthrough', () => {
-    it('returns undefined overrides when no font fields set', () => {
+    it('returns auto-shrink overrides even when no font fields set', () => {
       const overrides = resolveFontOverrides({});
-      expect(overrides).toBeUndefined();
+      expect(overrides).toBeDefined();
+      // Default auto-shrink: 22hp - 4 = 18hp (9pt)
+      expect(overrides.tableSizeHp).toBe(18);
+      expect(overrides.tableSizeFromDefault).toBe(true);
     });
 
     it('leaves template unmodified when overrides have no applicable values', () => {
@@ -232,7 +235,7 @@ describe('Font customization unit tests', () => {
       expect(extractSzVal(codeBlock)).toBe(26);
     });
 
-    it('uses default styles when no font frontmatter is present', async () => {
+    it('uses default styles with auto-shrink TableParagraph when no font frontmatter is present', async () => {
       const markdown = 'Just plain text';
       const result = await convertMdToDocx(markdown);
 
@@ -240,9 +243,10 @@ describe('Font customization unit tests', () => {
       const zip = await JSZip.loadAsync(result.docx);
       const stylesContent = await zip.file('word/styles.xml')!.async('string');
 
-      // Should match default stylesXml() output
-      const defaultXml = stylesXml();
-      expect(stylesContent).toBe(defaultXml);
+      // Auto-shrink always applies: TableParagraph with sz=18 (9pt = 11pt body - 2pt)
+      const tablePara = extractStyleBlock(stylesContent, 'TableParagraph')!;
+      expect(tablePara).toBeDefined();
+      expect(extractSzVal(tablePara)).toBe(18);
     });
 
     it('applies code-font override to code styles', async () => {
@@ -324,10 +328,10 @@ describe('Font customization unit tests', () => {
       expect(overrides.tableSizeHp).toBe(22);
     });
 
-    it('does not auto-shrink when table-font is set without table-font-size', () => {
+    it('auto-shrinks when table-font is set without table-font-size', () => {
       const overrides = resolveFontOverrides({ fontSize: 12, tableFont: 'Arial' })!;
-      // tableFont is set, so auto-shrink is skipped
-      expect(overrides.tableSizeHp).toBeUndefined();
+      // auto-shrink applies regardless of tableFont: body 24hp - 4 = 20hp
+      expect(overrides.tableSizeHp).toBe(20);
     });
 
     it('clamps auto-shrink to minimum 1hp', () => {
@@ -482,32 +486,56 @@ describe('Font customization unit tests', () => {
   // ---------------------------------------------------------------
   describe('round-trip table font', () => {
     it('round-trips document-level table-font-size', async () => {
-      const markdown = '---\ntable-font-size: 9\n---\n\n| A | B |\n|---|---|\n| 1 | 2 |';
+      // Use 8pt (16hp) which differs from auto-shrink default (18hp) to survive suppression
+      const markdown = '---\ntable-font-size: 8\n---\n\n| A | B |\n|---|---|\n| 1 | 2 |';
       const result = await convertMdToDocx(markdown);
       const { convertDocx } = await import('./converter');
       const converted = await convertDocx(result.docx);
       const { metadata } = parseFrontmatter(converted.markdown);
-      expect(metadata.tableFontSize).toBe(9);
+      expect(metadata.tableFontSize).toBe(8);
     });
 
     it('round-trips document-level table-font', async () => {
-      const markdown = '---\ntable-font: Arial\ntable-font-size: 9\n---\n\n| A |\n|---|\n| 1 |';
+      // Use 8pt to avoid auto-shrink suppression
+      const markdown = '---\ntable-font: Arial\ntable-font-size: 8\n---\n\n| A |\n|---|\n| 1 |';
       const result = await convertMdToDocx(markdown);
       const { convertDocx } = await import('./converter');
       const converted = await convertDocx(result.docx);
       const { metadata } = parseFrontmatter(converted.markdown);
       expect(metadata.tableFont).toBe('Arial');
-      expect(metadata.tableFontSize).toBe(9);
+      expect(metadata.tableFontSize).toBe(8);
     });
 
-    it('auto-shrink does not emit table-font-size in round-trip', async () => {
+    it('auto-shrink value is suppressed on round-trip (auto-shrink reproduces it)', async () => {
       const markdown = '---\nfont-size: 12\n---\n\n| A |\n|---|\n| 1 |';
       const result = await convertMdToDocx(markdown);
       const { convertDocx } = await import('./converter');
       const converted = await convertDocx(result.docx);
       const { metadata } = parseFrontmatter(converted.markdown);
-      // Auto-shrink = body - 2pt. Should NOT be emitted since it matches the default.
+      // Auto-shrink = 10pt = auto default, suppressed since auto-shrink reproduces it
       expect(metadata.tableFontSize).toBeUndefined();
+    });
+
+    it('auto-shrink applies when table-font is set without explicit table-font-size', async () => {
+      // body 12pt + table-font: Arial → auto-shrink gives tables 10pt
+      const markdown = '---\nfont-size: 12\ntable-font: Arial\n---\n\n| A |\n|---|\n| 1 |';
+      const result = await convertMdToDocx(markdown);
+      const { convertDocx } = await import('./converter');
+      const converted = await convertDocx(result.docx);
+      const { metadata } = parseFrontmatter(converted.markdown);
+      expect(metadata.tableFont).toBe('Arial');
+      // Auto-shrink = 10pt = auto default, suppressed since auto-shrink reproduces it
+      expect(metadata.tableFontSize).toBeUndefined();
+    });
+
+    it('per-table font-size directive applies inline rPr on runs', async () => {
+      const markdown = '---\ntable-font-size: 10\n---\n\n<!-- table-font-size: 8 -->\n\n| A |\n|---|\n| 1 |';
+      const result = await convertMdToDocx(markdown);
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(result.docx);
+      const docXml = await zip.file('word/document.xml')!.async('string');
+      // Runs in the 8pt table must have inline w:sz val=16 (not just pPr > rPr)
+      expect(docXml).toContain('<w:r><w:rPr><w:sz w:val="16"/>');
     });
 
     it('round-trips per-table font-size directive for pipe tables', async () => {

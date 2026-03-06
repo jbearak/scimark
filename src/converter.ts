@@ -4351,11 +4351,10 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
     const tblSizeHp = extractSizeHp(tableRpr);
     if (tblSizeHp !== undefined) {
       const bodySizeHp = normalRpr ? (extractSizeHp(normalRpr) ?? 22) : 22;
-      // Auto-shrink only applies when font-size was explicitly set (body != default 22hp).
-      // Only suppress table-font-size when it matches the auto-computed default.
-      const isCustomBodySize = bodySizeHp !== 22;
-      const autoDefault = isCustomBodySize ? Math.max(1, bodySizeHp - 4) : undefined;
-      if (autoDefault === undefined || tblSizeHp !== autoDefault) {
+      // Suppress table-font-size when it matches auto-shrink default (body - 4hp),
+      // since auto-shrink always reproduces it on import.
+      const autoDefault = Math.max(1, bodySizeHp - 4);
+      if (tblSizeHp !== autoDefault) {
         result.tableFontSize = tblSizeHp / 2;
       }
     }
