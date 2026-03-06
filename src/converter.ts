@@ -236,7 +236,9 @@ export type ContentItem =
   | { type: 'math'; latex: string; display: boolean; commentIds: Set<string>; revision?: RevisionInfo }
   | { type: 'footnote_ref'; noteId: string; noteKind: 'footnote' | 'endnote'; commentIds: Set<string>; revision?: RevisionInfo }
   | { type: 'html_comment'; text: string; commentIds: Set<string> }
-  | { type: 'image'; rId: string; src: string; alt: string; widthPx: number; heightPx: number; commentIds: Set<string>; revision?: RevisionInfo };
+  | { type: 'image'; rId: string; src: string; alt: string; widthPx: number; heightPx: number; commentIds: Set<string>; revision?: RevisionInfo }
+  | { type: 'landscape_open' }
+  | { type: 'landscape_close' };
 export interface FootnoteBody {
   id: string;
   content: ContentItem[];
@@ -1010,6 +1012,19 @@ export async function extractTableFontSizeMapping(data: Uint8Array | JSZip): Pro
 
 export async function extractTableFontMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_TABLE_FONTS');
+}
+
+export async function extractLandscapeTableMapping(data: Uint8Array | JSZip): Promise<Set<number> | null> {
+  const mapping = await extractIdMappingFromCustomXml(data, 'MANUSCRIPT_LANDSCAPE_TABLES');
+  if (!mapping) return null;
+  const result = new Set<number>();
+  for (const [key, val] of mapping) {
+    if (val === 'landscape') {
+      const n = parseInt(key, 10);
+      if (Number.isFinite(n)) result.add(n);
+    }
+  }
+  return result.size > 0 ? result : null;
 }
 
 export async function extractListIndent(data: Uint8Array | JSZip): Promise<'tab' | 'spaces' | null> {
@@ -1833,6 +1848,9 @@ export async function extractDocumentContent(
   let currentHref: string | undefined;
   let zoteroBiblData: ZoteroBiblData | undefined;
 
+  // Landscape section detection state
+  let sectionStartIndex = 0; // index into `content` where the current section started
+
   function walk(
     nodes: any[],
     currentFormatting: RunFormatting = DEFAULT_FORMATTING,
@@ -2121,6 +2139,39 @@ export async function extractDocumentContent(
                     isSpacerParagraph = true;
                     break;
                   }
+                }
+              }
+
+              // Detect section break (w:sectPr inside w:pPr)
+              const sectPrNode = pPrChildren.find((c: any) => c['w:sectPr'] !== undefined);
+              if (sectPrNode && !inTableCell) {
+                const sectPrChildren = Array.isArray(sectPrNode['w:sectPr']) ? sectPrNode['w:sectPr'] : [sectPrNode['w:sectPr']];
+                const pgSzNode = sectPrChildren.find((c: any) => c['w:pgSz'] !== undefined);
+                let isLandscapeSect = false;
+                if (pgSzNode) {
+                  const orient = getAttr(pgSzNode, 'orient');
+                  const w = parseInt(getAttr(pgSzNode, 'w') || '0', 10);
+                  const h = parseInt(getAttr(pgSzNode, 'h') || '0', 10);
+                  isLandscapeSect = orient === 'landscape' || (w > 0 && h > 0 && w > h);
+                }
+                if (isLandscapeSect) {
+                  // This paragraph ends a landscape section.
+                  // Insert landscape_open at the start of this section.
+                  target.splice(sectionStartIndex, 0, { type: 'landscape_open' });
+                  // Walk paragraph children to capture any content in this paragraph
+                  walk(paraChildren, paraFormatting, target, inTableCell, currentRevision);
+                  // Push landscape_close after this paragraph
+                  target.push({ type: 'landscape_close' });
+                  sectionStartIndex = target.length;
+                  continue; // skip normal paragraph processing below
+                }
+                // Portrait section break: just update section start for next section
+                // and skip this paragraph (it's typically an empty section-break carrier)
+                sectionStartIndex = target.length;
+                // Check if paragraph has any content runs (not just sectPr)
+                const hasContent = paraChildren.some((c: any) => c['w:r'] !== undefined || c['w:hyperlink'] !== undefined);
+                if (!hasContent) {
+                  continue; // skip empty section-break paragraph
                 }
               }
 
@@ -2541,7 +2592,7 @@ function computeSegmentEnd(
   let idx = startIndex;
   while (idx < segment.length) {
     const item = segment[idx];
-    if (item.type === 'para' || item.type === 'table') break;
+    if (item.type === 'para' || item.type === 'table' || item.type === 'landscape_open' || item.type === 'landscape_close') break;
     if (opts?.stopBeforeDisplayMath && item.type === 'math' && item.display) break;
     idx++;
   }
@@ -2977,7 +3028,7 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
   return lines.join('\n');
 }
 
-type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string>; tableFormatMapping?: Map<string, string>; tableFontSizeMapping?: Map<string, string>; tableFontMapping?: Map<string, string> };
+type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string>; tableFormatMapping?: Map<string, string>; tableFontSizeMapping?: Map<string, string>; tableFontMapping?: Map<string, string>; landscapeTableIndices?: Set<number> };
 
 // East Asian Wide / Fullwidth code-point ranges (UAX #11).  Characters in
 // these ranges occupy two terminal columns; everything else is treated as
@@ -3322,13 +3373,16 @@ function renderTableOrFallback(
   // Build per-table font directive prefix for pipe/grid tables
   let fontPrefix = '';
   let htmlFontAttrs = '';
+  const isLandscapeTable = tableIndex !== undefined && renderOpts?.landscapeTableIndices?.has(tableIndex);
   if (tableIndex !== undefined && renderOpts) {
     const fontSize = renderOpts.tableFontSizeMapping?.get(String(tableIndex));
     const font = renderOpts.tableFontMapping?.get(String(tableIndex));
     if (fontSize) fontPrefix += '<!-- table-font-size: ' + fontSize + ' -->\n\n';
     if (font) fontPrefix += '<!-- table-font: ' + font + ' -->\n\n';
+    if (isLandscapeTable) fontPrefix += '<!-- table-orientation: landscape -->\n\n';
     if (fontSize) htmlFontAttrs += ' data-font-size="' + escapeHtmlAttr(fontSize) + '"';
     if (font) htmlFontAttrs += ' data-font="' + escapeHtmlAttr(font) + '"';
+    if (isLandscapeTable) htmlFontAttrs += ' data-orientation="landscape"';
   }
   // If the original format was HTML, emit HTML directly
   if (storedFormat === 'html') {
@@ -3351,7 +3405,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; tableFontSizeMapping?: Map<string, string> | null; tableFontMapping?: Map<string, string> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; tableFontSizeMapping?: Map<string, string> | null; tableFontMapping?: Map<string, string> | null; landscapeTableIndices?: Set<number> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3469,6 +3523,7 @@ export function buildMarkdown(
     tableFormatMapping: options?.tableFormatMapping ?? undefined,
     tableFontSizeMapping: options?.tableFontSizeMapping ?? undefined,
     tableFontMapping: options?.tableFontMapping ?? undefined,
+    landscapeTableIndices: options?.landscapeTableIndices ?? undefined,
   };
 
   const output: string[] = [];
@@ -3497,6 +3552,7 @@ export function buildMarkdown(
   const blockquoteAlertInlineByGroup = options?.blockquoteAlertInlineByGroup;
   const htmlCommentGaps = options?.htmlCommentGaps;
   let htmlCommentIndex = 0;
+  let skipNextLandscapeClose = false;
 
   while (i < mergedContent.length) {
     const item = mergedContent[i];
@@ -3817,6 +3873,43 @@ export function buildMarkdown(
         pendingAlertInlineLevelForHardBreak = undefined;
       }
 
+      i++;
+      continue;
+    }
+
+    if (item.type === 'landscape_open') {
+      // Check if this is a single-table landscape section (table-only, no title/notes).
+      // If the custom property says so, suppress the fences and let the table's
+      // data-orientation attribute handle it instead.
+      if (renderOpts?.landscapeTableIndices?.has(tableIndex)) {
+        // Peek ahead: landscape_open → table → landscape_close
+        const nextItem = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
+        const afterTable = i + 2 < mergedContent.length ? mergedContent[i + 2] : undefined;
+        if (nextItem?.type === 'table' && afterTable?.type === 'landscape_close') {
+          // Skip the open fence; the table will be rendered next with data-orientation.
+          // We also need to skip the close fence after the table. Set a flag.
+          skipNextLandscapeClose = true;
+          i++;
+          continue;
+        }
+      }
+      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+        output.push('\n\n');
+      }
+      output.push('<!-- landscape -->');
+      i++;
+      continue;
+    }
+    if (item.type === 'landscape_close') {
+      if (skipNextLandscapeClose) {
+        skipNextLandscapeClose = false;
+        i++;
+        continue;
+      }
+      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+        output.push('\n\n');
+      }
+      output.push('<!-- /landscape -->');
       i++;
       continue;
     }
@@ -4369,7 +4462,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number; existingBibtex?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, tableFontSizeMapping, tableFontMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, tableFontSizeMapping, tableFontMapping, storedPipeTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData, landscapeTableMapping] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4394,6 +4487,7 @@ export async function convertDocx(
     extractHtmlCommentGapMapping(zip),
     extractBibKeyOrder(zip),
     extractBibData(zip),
+    extractLandscapeTableMapping(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -4516,6 +4610,7 @@ export async function convertDocx(
     tableFormatMapping,
     tableFontSizeMapping,
     tableFontMapping,
+    landscapeTableIndices: landscapeTableMapping,
     listIndent: storedListIndent ?? 'spaces',
     htmlCommentGaps: htmlCommentGapMapping,
   });

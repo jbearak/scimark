@@ -149,6 +149,44 @@ The `table-font` and `table-font-size` frontmatter fields control table typograp
 
 Per-table overrides are preserved through DOCX round-trips: comment directives and data attributes are re-emitted on conversion back to Markdown.
 
+### Landscape Table Sections
+
+Wide tables can be placed in landscape-oriented pages using `<!-- landscape -->` / `<!-- /landscape -->` fencing. All content between the fences — including table titles, notes, and the table itself — is rendered on landscape pages in the DOCX output.
+
+```markdown
+<!-- landscape -->
+
+Table 1. Regression Results
+
+| Variable | Model 1 | Model 2 | Model 3 | Model 4 | Model 5 |
+|----------|---------|---------|---------|---------|---------|
+| X1       | 0.42    | 0.38    | 0.41    | 0.39    | 0.40    |
+
+Note: Standard errors in parentheses.
+
+<!-- /landscape -->
+```
+
+For a single table without title or notes, use the `data-orientation` attribute on the `<table>` tag or a comment directive:
+
+```html
+<table data-orientation="landscape">
+  <tr><td>wide content</td></tr>
+</table>
+```
+
+```markdown
+<!-- table-orientation: landscape -->
+
+| A | B | C | D | E |
+|---|---|---|---|---|
+| 1 | 2 | 3 | 4 | 5 |
+```
+
+Landscape sections produce OOXML section breaks with swapped page dimensions. The page size is derived from the template document if available, defaulting to US Letter. Landscape sections are preserved through DOCX round-trips.
+
+**Nested fences**: A `<!-- landscape -->` inside an open landscape block is treated as `<!-- /landscape --><!-- landscape -->` (a section break) and produces a warning.
+
 ### Code Block Styling Example
 
 ```yaml

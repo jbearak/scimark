@@ -6,6 +6,7 @@ import {
   generateRuns,
   generateParagraph,
   generateTable,
+  generateDocumentXml,
   convertMdToDocx,
   parseMd,
   extractFootnoteDefinitions,
@@ -13,6 +14,7 @@ import {
   preprocessGridTables,
   stylesXml,
   applyAlertColorsToTemplate,
+  parseTemplatePgSz,
   type MdRun,
   type MdToken,
   type MdTableRow,
@@ -63,6 +65,12 @@ function makeState(): DocxGenState {
     consecutiveReplyParaIds: new Set(),
     htmlCommentGaps: new Map(),
     listIndent: 'spaces',
+    tableFontSizes: new Map(),
+    tableFonts: new Map(),
+    tableRunRPrExtra: '',
+    landscapeTables: new Set(),
+    inLandscapeSection: false,
+    blockquotePreContentBlankLines: new Map(),
   };
 }
 
@@ -2419,5 +2427,126 @@ describe('alert-colors module', () => {
     expect(getDefaultColorScheme()).toBe('guttmacher');
     setDefaultColorScheme('github');
     expect(getDefaultColorScheme()).toBe('github');
+  });
+});
+
+describe('landscape sections', () => {
+  describe('parseMd', () => {
+    it('converts <!-- landscape --> / <!-- /landscape --> to sentinel tokens', () => {
+      const md = '<!-- landscape -->\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<!-- /landscape -->';
+      const tokens = parseMd(md);
+      expect(tokens[0].landscapeOpen).toBe(true);
+      expect(tokens[0].runs).toEqual([]);
+      const tableToken = tokens.find(t => t.type === 'table');
+      expect(tableToken).toBeDefined();
+      const closeToken = tokens[tokens.length - 1];
+      expect(closeToken.landscapeClose).toBe(true);
+    });
+
+    it('nested <!-- landscape --> warns and produces close + open', () => {
+      const warnings: string[] = [];
+      const md = '<!-- landscape -->\n\nParagraph 1\n\n<!-- landscape -->\n\nParagraph 2\n\n<!-- /landscape -->';
+      const tokens = parseMd(md, warnings);
+      expect(warnings.length).toBe(1);
+      expect(warnings[0]).toContain('Nested');
+      // Should have: open, para1, close, open, para2, close
+      const opens = tokens.filter(t => t.landscapeOpen);
+      const closes = tokens.filter(t => t.landscapeClose);
+      expect(opens.length).toBe(2);
+      expect(closes.length).toBe(2);
+    });
+
+    it('transfers <!-- table-orientation: landscape --> to table token', () => {
+      const md = '<!-- table-orientation: landscape -->\n\n| A | B |\n| - | - |\n| 1 | 2 |';
+      const tokens = parseMd(md);
+      const tableToken = tokens.find(t => t.type === 'table');
+      expect(tableToken?.tableOrientation).toBe('landscape');
+      // Directive comment should be spliced out
+      expect(tokens.every(t => t.runs.length === 0 || t.runs[0].type !== 'html_comment' || !t.runs[0].text.includes('table-orientation'))).toBe(true);
+    });
+
+    it('transfers data-orientation="landscape" from HTML table', () => {
+      const md = '<table data-orientation="landscape">\n<tr><td>A</td><td>B</td></tr>\n</table>';
+      const tokens = parseMd(md);
+      const tableToken = tokens.find(t => t.type === 'table');
+      expect(tableToken?.tableOrientation).toBe('landscape');
+    });
+  });
+
+  describe('parseTemplatePgSz', () => {
+    it('returns US Letter defaults when no sectPr', () => {
+      expect(parseTemplatePgSz(undefined)).toEqual({ w: 12240, h: 15840 });
+    });
+
+    it('parses portrait dimensions from sectPr', () => {
+      const sectPr = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
+      expect(parseTemplatePgSz(sectPr)).toEqual({ w: 11906, h: 16838 });
+    });
+
+    it('normalizes landscape dimensions to portrait', () => {
+      const sectPr = '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/></w:sectPr>';
+      expect(parseTemplatePgSz(sectPr)).toEqual({ w: 11906, h: 16838 });
+    });
+  });
+
+  describe('generateDocumentXml', () => {
+    it('emits trailing body sectPr with default US Letter', () => {
+      const tokens: MdToken[] = [{ type: 'paragraph', runs: [{ type: 'text', text: 'Hello' }] }];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // Should have a body-level sectPr with US Letter dimensions
+      expect(xml).toContain('<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>');
+      expect(xml).toContain('</w:sectPr>\n</w:body>');
+    });
+
+    it('emits section breaks for landscape sentinels', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', runs: [], landscapeOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'In landscape' }] },
+        { type: 'paragraph', runs: [], landscapeClose: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // Portrait section break before landscape content
+      expect(xml).toContain('<w:pgSz w:w="12240" w:h="15840"/>');
+      // Landscape section break after landscape content
+      expect(xml).toContain('<w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>');
+      // Both should have nextPage type
+      const nextPageCount = (xml.match(/<w:type w:val="nextPage"\/>/g) || []).length;
+      expect(nextPageCount).toBe(2);
+    });
+
+    it('emits section breaks for table-only landscape', () => {
+      const tableToken: MdToken = {
+        type: 'table',
+        runs: [],
+        tableOrientation: 'landscape',
+        rows: [
+          { header: true, cells: [{ runs: [{ type: 'text', text: 'H' }] }] },
+          { header: false, cells: [{ runs: [{ type: 'text', text: 'D' }] }] },
+        ],
+      };
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        tableToken,
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      expect(xml).toContain('w:orient="landscape"');
+      expect(state.landscapeTables.has(0)).toBe(true);
+    });
+
+    it('preserves template sectPr as body closing', () => {
+      const tokens: MdToken[] = [{ type: 'paragraph', runs: [{ type: 'text', text: 'Test' }] }];
+      const state = makeState();
+      state.templateSectPr = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>';
+      const xml = generateDocumentXml(tokens, state);
+      // Should reuse template sectPr as-is for the body closing
+      expect(xml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
+      expect(xml).toContain('</w:sectPr>\n</w:body>');
+    });
   });
 });

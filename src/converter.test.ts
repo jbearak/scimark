@@ -3925,3 +3925,54 @@ describe('convertDocx existingBibtex (post-processing merge)', () => {
   });
 });
 
+describe('Landscape section round-trip', () => {
+  test('fence-based landscape round-trips through MD→DOCX→MD', async () => {
+    const md = 'Before\n\n<!-- landscape -->\n\nTable title\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\nTable note\n\n<!-- /landscape -->\n\nAfter';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- landscape -->');
+    expect(result.markdown).toContain('<!-- /landscape -->');
+    expect(result.markdown).toContain('Table title');
+    expect(result.markdown).toContain('Table note');
+    expect(result.markdown).toContain('Before');
+    expect(result.markdown).toContain('After');
+  });
+
+  test('data-orientation="landscape" on HTML table round-trips', async () => {
+    const md = '<table data-orientation="landscape">\n<tr><th>H</th></tr>\n<tr><td>D</td></tr>\n</table>';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('data-orientation="landscape"');
+  });
+
+  test('<!-- table-orientation: landscape --> directive round-trips for pipe table', async () => {
+    const md = '<!-- table-orientation: landscape -->\n\n| A | B |\n| - | - |\n| 1 | 2 |';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('table-orientation: landscape');
+    expect(result.markdown).toContain('| A |');
+  });
+
+  test('landscape DOCX section produces body sectPr with page dimensions', async () => {
+    const md = '<!-- landscape -->\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<!-- /landscape -->';
+    const { docx } = await convertMdToDocx(md);
+    // Verify the OOXML has landscape section properties
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('w:orient="landscape"');
+    expect(docXml).toContain('w:w="15840"');
+    expect(docXml).toContain('w:h="12240"');
+  });
+
+  test('body-level sectPr is emitted even without landscape sections', async () => {
+    const md = 'Simple paragraph';
+    const { docx } = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    // Should have a closing sectPr with US Letter portrait dimensions
+    expect(docXml).toContain('<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>');
+  });
+});
+
