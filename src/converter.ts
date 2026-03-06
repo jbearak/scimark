@@ -3481,9 +3481,9 @@ function renderTableOrFallback(
   if (storedFormat === 'html' || forceHtmlTable) {
     return renderHtmlTable(item, comments, options?.tableIndent, renderOpts, htmlFontAttrs);
   }
-  // If original was grid, try grid then fall back to HTML (skip pipe)
+  // If original was grid, try grid then fall back to HTML (skip pipe, skip width check to preserve format)
   if (storedFormat === 'grid') {
-    const gridResult = tryRenderGridTable(item, comments, renderOpts, options?.gridTableMaxLineWidth);
+    const gridResult = tryRenderGridTable(item, comments, renderOpts);
     if (gridResult !== null) return fontPrefix + gridResult;
     return renderHtmlTable(item, comments, options?.tableIndent, renderOpts, htmlFontAttrs);
   }
