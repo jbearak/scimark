@@ -26,6 +26,7 @@ export interface HtmlTableMeta {
   rows: HtmlTableRow[];
   fontSize?: number;   // from data-font-size attribute
   font?: string;       // from data-font attribute
+  orientation?: 'landscape' | 'portrait'; // from data-orientation attribute
 }
 
 export function extractHtmlTables(html: string): HtmlTableMeta[] {
@@ -54,6 +55,11 @@ export function extractHtmlTables(html: string): HtmlTableMeta[] {
         const normalized = decodeHtmlEntities(fontVal).trim().replace(/\s+/g, ' ');
         if (normalized) meta.font = normalized;
       }
+      // data-orientation: "landscape" or "portrait"
+      // Uses separate quote branches (like data-font) so whitespace-padded values are handled.
+      const orientMatch = attrs.match(/data-orientation\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"]+))/i);
+      const orientVal = (orientMatch?.[1] ?? orientMatch?.[2] ?? orientMatch?.[3])?.trim().toLowerCase();
+      if (orientVal === 'landscape' || orientVal === 'portrait') meta.orientation = orientVal;
       tables.push(meta);
     }
   }

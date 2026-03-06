@@ -1,11 +1,13 @@
 import { describe, it, expect, afterEach } from 'bun:test';
 import * as fc from 'fast-check';
+import { XMLValidator } from 'fast-xml-parser';
 import {
   generateRPr,
   generateRun,
   generateRuns,
   generateParagraph,
   generateTable,
+  generateDocumentXml,
   convertMdToDocx,
   parseMd,
   extractFootnoteDefinitions,
@@ -13,6 +15,7 @@ import {
   preprocessGridTables,
   stylesXml,
   applyAlertColorsToTemplate,
+  parseTemplatePgSz,
   type MdRun,
   type MdToken,
   type MdTableRow,
@@ -63,6 +66,16 @@ function makeState(): DocxGenState {
     consecutiveReplyParaIds: new Set(),
     htmlCommentGaps: new Map(),
     listIndent: 'spaces',
+    tableFontSizes: new Map(),
+    tableFonts: new Map(),
+    tableRunRPrExtra: '',
+    landscapeTables: new Set(),
+    portraitTables: new Set(),
+    inLandscapeSection: false,
+    inPortraitSection: false,
+    sectionBreakOrdinal: 0,
+    portraitBreakOrdinals: new Set(),
+    blockquotePreContentBlankLines: new Map(),
   };
 }
 
@@ -2423,5 +2436,336 @@ describe('alert-colors module', () => {
     expect(getDefaultColorScheme()).toBe('guttmacher');
     setDefaultColorScheme('github');
     expect(getDefaultColorScheme()).toBe('github');
+  });
+});
+
+describe('landscape sections', () => {
+  describe('parseMd', () => {
+    it('converts <!-- landscape --> / <!-- /landscape --> to sentinel tokens', () => {
+      const md = '<!-- landscape -->\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<!-- /landscape -->';
+      const tokens = parseMd(md);
+      expect(tokens[0].landscapeOpen).toBe(true);
+      expect(tokens[0].runs).toEqual([]);
+      const tableToken = tokens.find(t => t.type === 'table');
+      expect(tableToken).toBeDefined();
+      const closeToken = tokens[tokens.length - 1];
+      expect(closeToken.landscapeClose).toBe(true);
+    });
+
+    it('nested <!-- landscape --> warns and produces close + open', () => {
+      const warnings: string[] = [];
+      const md = '<!-- landscape -->\n\nParagraph 1\n\n<!-- landscape -->\n\nParagraph 2\n\n<!-- /landscape -->';
+      const tokens = parseMd(md, warnings);
+      expect(warnings.length).toBe(1);
+      expect(warnings[0]).toContain('Nested');
+      // Should have: open, para1, close, open, para2, close
+      const opens = tokens.filter(t => t.landscapeOpen);
+      const closes = tokens.filter(t => t.landscapeClose);
+      expect(opens.length).toBe(2);
+      expect(closes.length).toBe(2);
+    });
+
+    it('transfers <!-- table-orientation: landscape --> to table token', () => {
+      const md = '<!-- table-orientation: landscape -->\n\n| A | B |\n| - | - |\n| 1 | 2 |';
+      const tokens = parseMd(md);
+      const tableToken = tokens.find(t => t.type === 'table');
+      expect(tableToken?.tableOrientation).toBe('landscape');
+      // Directive comment should be spliced out
+      expect(tokens.every(t => t.runs.length === 0 || t.runs[0].type !== 'html_comment' || !t.runs[0].text.includes('table-orientation'))).toBe(true);
+    });
+
+    it('transfers data-orientation="landscape" from HTML table', () => {
+      const md = '<table data-orientation="landscape">\n<tr><td>A</td><td>B</td></tr>\n</table>';
+      const tokens = parseMd(md);
+      const tableToken = tokens.find(t => t.type === 'table');
+      expect(tableToken?.tableOrientation).toBe('landscape');
+    });
+  });
+
+  describe('parseTemplatePgSz', () => {
+    it('returns US Letter defaults when no sectPr', () => {
+      expect(parseTemplatePgSz(undefined)).toEqual({ w: 12240, h: 15840 });
+    });
+
+    it('parses portrait dimensions from sectPr', () => {
+      const sectPr = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
+      expect(parseTemplatePgSz(sectPr)).toEqual({ w: 11906, h: 16838 });
+    });
+
+    it('normalizes landscape dimensions to portrait', () => {
+      const sectPr = '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/></w:sectPr>';
+      expect(parseTemplatePgSz(sectPr)).toEqual({ w: 11906, h: 16838 });
+    });
+  });
+
+  describe('generateDocumentXml', () => {
+    it('emits trailing body sectPr with default US Letter', () => {
+      const tokens: MdToken[] = [{ type: 'paragraph', runs: [{ type: 'text', text: 'Hello' }] }];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // Should have a body-level sectPr with US Letter dimensions
+      expect(xml).toContain('<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>');
+      expect(xml).toContain('</w:sectPr>\n</w:body>');
+    });
+
+    it('emits section breaks for landscape sentinels', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', runs: [], landscapeOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'In landscape' }] },
+        { type: 'paragraph', runs: [], landscapeClose: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // Portrait section break before landscape content
+      expect(xml).toContain('<w:pgSz w:w="12240" w:h="15840"/>');
+      // Landscape section break after landscape content
+      expect(xml).toContain('<w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>');
+      // Both should have nextPage type
+      const nextPageCount = (xml.match(/<w:type w:val="nextPage"\/>/g) || []).length;
+      expect(nextPageCount).toBe(2);
+    });
+
+    it('does not emit blank portrait page between consecutive landscape blocks', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', runs: [], landscapeOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Landscape 1' }] },
+        { type: 'paragraph', runs: [], landscapeClose: true },
+        { type: 'paragraph', runs: [], landscapeOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Landscape 2' }] },
+        { type: 'paragraph', runs: [], landscapeClose: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // Should have exactly 3 nextPage breaks: portrait→landscape1, landscape1→landscape2, landscape2→portrait
+      // NOT 4 (which would include an empty portrait section between the two landscape blocks)
+      const nextPageCount = (xml.match(/<w:type w:val="nextPage"\/>/g) || []).length;
+      expect(nextPageCount).toBe(3);
+      // Verify no empty portrait section between the two landscape sections:
+      // the landscape sectPr from block 1's close should be immediately followed by landscape content,
+      // not by another portrait sectPr
+      const landscapeSectPrPattern = /w:orient="landscape"/g;
+      const landscapeCount = (xml.match(landscapeSectPrPattern) || []).length;
+      expect(landscapeCount).toBe(2);
+    });
+
+    it('emits section breaks for table-only landscape', () => {
+      const tableToken: MdToken = {
+        type: 'table',
+        runs: [],
+        tableOrientation: 'landscape',
+        rows: [
+          { header: true, cells: [{ runs: [{ type: 'text', text: 'H' }] }] },
+          { header: false, cells: [{ runs: [{ type: 'text', text: 'D' }] }] },
+        ],
+      };
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        tableToken,
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      expect(xml).toContain('w:orient="landscape"');
+      expect(state.landscapeTables.has(0)).toBe(true);
+    });
+
+    it('preserves template sectPr as body closing', () => {
+      const tokens: MdToken[] = [{ type: 'paragraph', runs: [{ type: 'text', text: 'Test' }] }];
+      const state = makeState();
+      state.templateSectPr = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>';
+      const xml = generateDocumentXml(tokens, state);
+      // Should reuse template sectPr as-is for the body closing
+      expect(xml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
+      expect(xml).toContain('</w:sectPr>\n</w:body>');
+    });
+  });
+
+  describe('template reuse', () => {
+    it('reuses only the trailing body-level sectPr when template contains landscape section breaks', async () => {
+      const templateMd = [
+        'Before',
+        '',
+        '<!-- landscape -->',
+        '',
+        'TEMPLATE_UNIQUE_MARKER',
+        '',
+        '| A | B |',
+        '| - | - |',
+        '| 1 | 2 |',
+        '',
+        '<!-- /landscape -->',
+        '',
+        'After',
+      ].join('\n');
+      const { docx: templateDocx } = await convertMdToDocx(templateMd);
+      const { docx } = await convertMdToDocx('Hello world', { templateDocx: new Uint8Array(templateDocx) });
+
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(docx);
+      const documentXml = await zip.file('word/document.xml')!.async('string');
+
+      // Regression guard: old extraction could append a large tail from template body,
+      // leaking template content and producing malformed XML.
+      expect(documentXml).not.toContain('TEMPLATE_UNIQUE_MARKER');
+      expect(XMLValidator.validate(documentXml)).toBe(true);
+    });
+  });
+});
+
+describe('portrait sections', () => {
+  describe('parseMd', () => {
+    it('converts <!-- portrait --> / <!-- /portrait --> to sentinel tokens', () => {
+      const md = '<!-- portrait -->\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<!-- /portrait -->';
+      const tokens = parseMd(md);
+      expect(tokens[0].portraitOpen).toBe(true);
+      expect(tokens[0].runs).toEqual([]);
+      const tableToken = tokens.find(t => t.type === 'table');
+      expect(tableToken).toBeDefined();
+      const closeToken = tokens[tokens.length - 1];
+      expect(closeToken.portraitClose).toBe(true);
+    });
+
+    it('nested <!-- portrait --> warns and produces close + open', () => {
+      const warnings: string[] = [];
+      const md = '<!-- portrait -->\n\nParagraph 1\n\n<!-- portrait -->\n\nParagraph 2\n\n<!-- /portrait -->';
+      const tokens = parseMd(md, warnings);
+      expect(warnings.length).toBe(1);
+      expect(warnings[0]).toContain('Nested');
+      const opens = tokens.filter(t => t.portraitOpen);
+      const closes = tokens.filter(t => t.portraitClose);
+      expect(opens.length).toBe(2);
+      expect(closes.length).toBe(2);
+    });
+
+    it('transfers <!-- table-orientation: portrait --> to table token', () => {
+      const md = '<!-- table-orientation: portrait -->\n\n| A | B |\n| - | - |\n| 1 | 2 |';
+      const tokens = parseMd(md);
+      const tableToken = tokens.find(t => t.type === 'table');
+      expect(tableToken?.tableOrientation).toBe('portrait');
+      expect(tokens.every(t => t.runs.length === 0 || t.runs[0].type !== 'html_comment' || !t.runs[0].text.includes('table-orientation'))).toBe(true);
+    });
+
+    it('transfers data-orientation="portrait" from HTML table', () => {
+      const md = '<table data-orientation="portrait">\n<tr><td>A</td><td>B</td></tr>\n</table>';
+      const tokens = parseMd(md);
+      const tableToken = tokens.find(t => t.type === 'table');
+      expect(tableToken?.tableOrientation).toBe('portrait');
+    });
+  });
+
+  describe('generateDocumentXml', () => {
+    it('emits portrait section breaks for portrait sentinels', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', runs: [], portraitOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'In portrait fence' }] },
+        { type: 'paragraph', runs: [], portraitClose: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // Two portrait section breaks (open + close), both with portrait dimensions
+      const nextPageCount = (xml.match(/<w:type w:val="nextPage"\/>/g) || []).length;
+      expect(nextPageCount).toBe(2);
+      // No landscape orientation
+      expect(xml).not.toContain('w:orient="landscape"');
+      // Both breaks use portrait dimensions
+      const portraitPgSzCount = (xml.match(/<w:pgSz w:w="12240" w:h="15840"\/>/g) || []).length;
+      // 2 section breaks + 1 body closing = 3 portrait pgSz
+      expect(portraitPgSzCount).toBe(3);
+    });
+
+    it('records portrait close ordinal in state', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', runs: [], portraitOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Content' }] },
+        { type: 'paragraph', runs: [], portraitClose: true },
+      ];
+      const state = makeState();
+      generateDocumentXml(tokens, state);
+      // Open emits ordinal 0 (portrait break), close emits ordinal 1
+      expect(state.portraitBreakOrdinals.has(1)).toBe(true);
+      expect(state.sectionBreakOrdinal).toBe(2);
+    });
+
+    it('does not emit blank page between consecutive portrait blocks', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', runs: [], portraitOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Portrait 1' }] },
+        { type: 'paragraph', runs: [], portraitClose: true },
+        { type: 'paragraph', runs: [], portraitOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Portrait 2' }] },
+        { type: 'paragraph', runs: [], portraitClose: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // 3 breaks: open1, close1 (skip open2), close2
+      const nextPageCount = (xml.match(/<w:type w:val="nextPage"\/>/g) || []).length;
+      expect(nextPageCount).toBe(3);
+    });
+
+    it('does not emit blank page between landscape close and portrait open', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [], landscapeOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Landscape' }] },
+        { type: 'paragraph', runs: [], landscapeClose: true },
+        { type: 'paragraph', runs: [], portraitOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Portrait' }] },
+        { type: 'paragraph', runs: [], portraitClose: true },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // 3 breaks: landscapeOpen portrait break, landscapeClose landscape break (skip portraitOpen), portraitClose portrait break
+      const nextPageCount = (xml.match(/<w:type w:val="nextPage"\/>/g) || []).length;
+      expect(nextPageCount).toBe(3);
+    });
+
+    it('does not emit blank page between portrait close and landscape open', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [], portraitOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Portrait' }] },
+        { type: 'paragraph', runs: [], portraitClose: true },
+        { type: 'paragraph', runs: [], landscapeOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Landscape' }] },
+        { type: 'paragraph', runs: [], landscapeClose: true },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // 3 breaks: portraitOpen portrait break, portraitClose portrait break (skip landscapeOpen), landscapeClose landscape break
+      const nextPageCount = (xml.match(/<w:type w:val="nextPage"\/>/g) || []).length;
+      expect(nextPageCount).toBe(3);
+    });
+
+    it('emits section breaks for table-only portrait', () => {
+      const tableToken: MdToken = {
+        type: 'table',
+        runs: [],
+        tableOrientation: 'portrait',
+        rows: [
+          { header: true, cells: [{ runs: [{ type: 'text', text: 'H' }] }] },
+          { header: false, cells: [{ runs: [{ type: 'text', text: 'D' }] }] },
+        ],
+      };
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        tableToken,
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // Two portrait section breaks around the table
+      const nextPageCount = (xml.match(/<w:type w:val="nextPage"\/>/g) || []).length;
+      expect(nextPageCount).toBe(2);
+      expect(xml).not.toContain('w:orient="landscape"');
+      expect(state.portraitTables.has(0)).toBe(true);
+      expect(state.portraitBreakOrdinals.size).toBe(1);
+    });
   });
 });

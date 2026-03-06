@@ -149,6 +149,79 @@ The `table-font` and `table-font-size` frontmatter fields control table typograp
 
 Per-table overrides are preserved through DOCX round-trips: comment directives and data attributes are re-emitted on conversion back to Markdown.
 
+### Page Orientation Sections
+
+Orientation fences (`<!-- landscape -->` / `<!-- portrait -->`) isolate content on its own page with page breaks before and after. Two common use cases: fitting a wide table on a landscape page, or isolating a table or figure on its own portrait page with explicit section breaks.
+
+#### Landscape
+
+Use `<!-- landscape -->` / `<!-- /landscape -->` fencing to place content on landscape-oriented pages. All content between the fences — including table titles, notes, and the table itself — is rendered on landscape pages in the DOCX output.
+
+```markdown
+<!-- landscape -->
+
+Table 1. Regression Results
+
+| Variable | Model 1 | Model 2 | Model 3 | Model 4 | Model 5 |
+|----------|---------|---------|---------|---------|---------|
+| X1       | 0.42    | 0.38    | 0.41    | 0.39    | 0.40    |
+
+Note: Standard errors in parentheses.
+
+<!-- /landscape -->
+```
+
+For a single table without title or notes, use the `data-orientation` attribute on the `<table>` tag or a comment directive:
+
+```html
+<table data-orientation="landscape">
+  <tr><td>wide content</td></tr>
+</table>
+```
+
+```markdown
+<!-- table-orientation: landscape -->
+
+| A | B | C | D | E |
+|---|---|---|---|---|
+| 1 | 2 | 3 | 4 | 5 |
+```
+
+#### Portrait
+
+Use `<!-- portrait -->` / `<!-- /portrait -->` fencing to explicitly place content on portrait-oriented pages. This is useful for isolating a table or figure on its own page, or creating explicit section breaks between portrait content.
+
+```markdown
+<!-- portrait -->
+
+Content on a portrait-oriented page.
+
+<!-- /portrait -->
+```
+
+For a single table, use the `data-orientation` attribute or a comment directive:
+
+```html
+<table data-orientation="portrait">
+  <tr><td>content</td></tr>
+</table>
+```
+
+```markdown
+<!-- table-orientation: portrait -->
+
+| A | B |
+|---|---|
+| 1 | 2 |
+```
+
+#### Shared behavior
+
+- Orientation sections produce OOXML section breaks. The page size is derived from the template document if available, defaulting to US Letter.
+- Sections are preserved through DOCX round-trips.
+- **Nested fences**: An opening fence inside an already-open block of the same type is treated as a close followed by an open (a section break) and produces a warning.
+- **Consecutive fences**: Transitions between orientation sections (or consecutive sections of the same type) do not produce blank intermediate pages. For example, `<!-- /landscape --><!-- portrait -->` transitions directly without an empty page in between.
+
 ### Code Block Styling Example
 
 ```yaml

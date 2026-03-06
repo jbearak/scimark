@@ -44,6 +44,11 @@ export interface MdToken {
   sourceFormat?: TableFormat; // original table format for round-trip
   tableFontSize?: number;   // per-table font size override (pt)
   tableFont?: string;       // per-table font name override
+  landscapeOpen?: true;     // sentinel: start of landscape section
+  landscapeClose?: true;    // sentinel: end of landscape section
+  portraitOpen?: true;      // sentinel: start of portrait section
+  portraitClose?: true;     // sentinel: end of portrait section
+  tableOrientation?: 'landscape' | 'portrait'; // table-only orientation from data-orientation
 }
 
 export interface MdTableCell {
@@ -1070,22 +1075,47 @@ export function tableFormatProps(tableFormats: Map<number, TableFormat>): Custom
   return chunkCustomProps('MANUSCRIPT_TABLE_FORMATS_', JSON.stringify(mapping));
 }
 
-export function tableFontSizeProps(sizes: Map<number, number>): CustomPropEntry[] {
+export function tableFontSizeProps(sizes: Map<number, number>, defaultSizeHp?: number): CustomPropEntry[] {
+  // Only store entries where per-table value differs from document-level default
   const mapping: Record<string, string> = {};
   for (const [idx, pt] of sizes) {
-    mapping[String(idx)] = String(pt);
+    const hp = Math.round(pt * 2);
+    if (hp !== defaultSizeHp) mapping[String(idx)] = String(pt);
   }
   if (Object.keys(mapping).length === 0) return [];
   return chunkCustomProps('MANUSCRIPT_TABLE_FONT_SIZES_', JSON.stringify(mapping));
 }
 
-export function tableFontProps(fonts: Map<number, string>): CustomPropEntry[] {
+export function tableFontProps(fonts: Map<number, string>, defaultFont?: string): CustomPropEntry[] {
   const mapping: Record<string, string> = {};
   for (const [idx, font] of fonts) {
-    mapping[String(idx)] = font;
+    if (font !== defaultFont) mapping[String(idx)] = font;
   }
   if (Object.keys(mapping).length === 0) return [];
   return chunkCustomProps('MANUSCRIPT_TABLE_FONTS_', JSON.stringify(mapping));
+}
+
+export function landscapeTableProps(landscapeTables: Set<number>): CustomPropEntry[] {
+  if (landscapeTables.size === 0) return [];
+  const mapping: Record<string, string> = {};
+  for (const idx of landscapeTables) {
+    mapping[String(idx)] = 'landscape';
+  }
+  return chunkCustomProps('MANUSCRIPT_LANDSCAPE_TABLES_', JSON.stringify(mapping));
+}
+
+export function portraitTableProps(portraitTables: Set<number>): CustomPropEntry[] {
+  if (portraitTables.size === 0) return [];
+  const mapping: Record<string, string> = {};
+  for (const idx of portraitTables) {
+    mapping[String(idx)] = 'portrait';
+  }
+  return chunkCustomProps('MANUSCRIPT_PORTRAIT_TABLES_', JSON.stringify(mapping));
+}
+
+export function portraitBreakProps(portraitBreakOrdinals: Set<number>): CustomPropEntry[] {
+  if (portraitBreakOrdinals.size === 0) return [];
+  return chunkCustomProps('MANUSCRIPT_PORTRAIT_BREAKS_', JSON.stringify([...portraitBreakOrdinals]));
 }
 
 
@@ -1122,6 +1152,82 @@ export function parseMd(markdown: string, warnings?: string[]): MdToken[] {
       const fontVal = fontMatch ? fontMatch[1].trim() : '';
       if (fontVal && result[i + 1].tableFont === undefined) result[i + 1].tableFont = fontVal;
       result.splice(i, 1);
+    }
+  }
+
+  // Post-process: transfer table-orientation directive from HTML comments to table tokens
+  for (let i = result.length - 1; i >= 0; i--) {
+    if (result[i].type !== 'paragraph' || result[i].runs.length !== 1) continue;
+    const run = result[i].runs[0];
+    if (run.type !== 'html_comment') continue;
+    const text = run.text.trim();
+    const orientMatch = text.match(/^<!--\s*table-orientation:\s*(landscape|portrait)\s*-->$/i);
+    if (!orientMatch) continue;
+    if (i + 1 < result.length && result[i + 1].type === 'table') {
+      if (result[i + 1].tableOrientation === undefined) {
+        result[i + 1].tableOrientation = orientMatch[1].toLowerCase() as 'landscape' | 'portrait';
+      }
+      result.splice(i, 1);
+    }
+  }
+
+  // Post-process: convert <!-- landscape --> / <!-- /landscape --> fences into sentinel tokens
+  {
+    let inLandscape = false;
+    for (let i = 0; i < result.length; i++) {
+      if (result[i].type !== 'paragraph' || result[i].runs.length !== 1) continue;
+      const run = result[i].runs[0];
+      if (run.type !== 'html_comment') continue;
+      const text = run.text.trim();
+      if (/^<!--\s*landscape\s*-->$/i.test(text)) {
+        if (inLandscape) {
+          // Nested landscape: warn and treat as close + open
+          if (warnings) warnings.push('Nested <!-- landscape --> treated as <!-- /landscape --><!-- landscape -->');
+          result.splice(i, 1,
+            { type: 'paragraph', runs: [], landscapeClose: true },
+            { type: 'paragraph', runs: [], landscapeOpen: true },
+          );
+          i++; // skip past both sentinels
+        } else {
+          result.splice(i, 1, { type: 'paragraph', runs: [], landscapeOpen: true });
+          inLandscape = true;
+        }
+      } else if (/^<!--\s*\/landscape\s*-->$/i.test(text)) {
+        if (inLandscape) {
+          result.splice(i, 1, { type: 'paragraph', runs: [], landscapeClose: true });
+          inLandscape = false;
+        }
+        // If not in landscape, leave the comment as-is (user error, but harmless)
+      }
+    }
+  }
+
+  // Post-process: convert <!-- portrait --> / <!-- /portrait --> fences into sentinel tokens
+  {
+    let inPortrait = false;
+    for (let i = 0; i < result.length; i++) {
+      if (result[i].type !== 'paragraph' || result[i].runs.length !== 1) continue;
+      const run = result[i].runs[0];
+      if (run.type !== 'html_comment') continue;
+      const text = run.text.trim();
+      if (/^<!--\s*portrait\s*-->$/i.test(text)) {
+        if (inPortrait) {
+          if (warnings) warnings.push('Nested <!-- portrait --> treated as <!-- /portrait --><!-- portrait -->');
+          result.splice(i, 1,
+            { type: 'paragraph', runs: [], portraitClose: true },
+            { type: 'paragraph', runs: [], portraitOpen: true },
+          );
+          i++;
+        } else {
+          result.splice(i, 1, { type: 'paragraph', runs: [], portraitOpen: true });
+          inPortrait = true;
+        }
+      } else if (/^<!--\s*\/portrait\s*-->$/i.test(text)) {
+        if (inPortrait) {
+          result.splice(i, 1, { type: 'paragraph', runs: [], portraitClose: true });
+          inPortrait = false;
+        }
+      }
     }
   }
 
@@ -1476,6 +1582,7 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0, warnin
                 };
                 if (meta.fontSize) tableToken.tableFontSize = meta.fontSize;
                 if (meta.font) tableToken.tableFont = meta.font;
+                if (meta.orientation) tableToken.tableOrientation = meta.orientation;
                 result.push(tableToken);
               }
             }
@@ -1995,18 +2102,46 @@ function decodeHtmlEntities(text: string): string {
 
 // OOXML Generation Layer
 
-async function extractTemplateParts(templateDocx: Uint8Array): Promise<Map<string, Uint8Array>> {
+interface TemplateParts {
+  parts: Map<string, Uint8Array>;
+  templateSectPr?: string; // trailing <w:sectPr> from template document.xml
+}
+
+async function extractTemplateParts(templateDocx: Uint8Array): Promise<TemplateParts> {
   const JSZip = (await import('jszip')).default;
   const zip = await JSZip.loadAsync(templateDocx);
   const parts = new Map<string, Uint8Array>();
-  
+
   for (const path of ['word/styles.xml', 'word/theme/theme1.xml', 'word/numbering.xml', 'word/settings.xml']) {
     const file = zip.file(path);
     if (file) {
       parts.set(path, await file.async('uint8array'));
     }
   }
-  return parts;
+
+  // Extract the document-level <w:sectPr> (direct child of <w:body>)
+  // to preserve template page layout (size, margins, orientation).
+  let templateSectPr: string | undefined;
+  const docFile = zip.file('word/document.xml');
+  if (docFile) {
+    const docXml = await docFile.async('string');
+    // Invariant: reuse ONLY the trailing body-level sectPr (the final <w:sectPr>
+    // before </w:body>). Paragraph-level section breaks may contain <w:sectPr>
+    // inside <w:pPr>; selecting from an earlier sectPr corrupts template reuse.
+    const bodyCloseIdx = docXml.lastIndexOf('</w:body>');
+    if (bodyCloseIdx !== -1) {
+      const beforeBodyClose = docXml.slice(0, bodyCloseIdx);
+      const sectPrStart = beforeBodyClose.lastIndexOf('<w:sectPr');
+      if (sectPrStart !== -1) {
+        const sectPrEnd = beforeBodyClose.indexOf('</w:sectPr>', sectPrStart);
+        if (sectPrEnd !== -1) {
+          templateSectPr = beforeBodyClose.slice(sectPrStart, sectPrEnd + '</w:sectPr>'.length);
+        }
+      }
+    }
+  }
+
+  return { parts, templateSectPr };
 }
 
 export interface MdToDocxOptions {
@@ -2035,6 +2170,59 @@ export interface MdToDocxResult {
 export interface FootnoteEntry {
   id: number;
   bodyXml: string;
+}
+
+// --- Landscape section helpers ---
+// US Letter defaults in twips (twentieths of a point)
+const DEFAULT_PAGE_W = 12240; // 8.5in
+const DEFAULT_PAGE_H = 15840; // 11in
+const DEFAULT_MARGINS = 'w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"';
+
+interface PageSize { w: number; h: number }
+
+/** Parse w:pgSz from a sectPr XML string, defaulting to US Letter portrait. */
+export function parseTemplatePgSz(sectPrXml: string | undefined): PageSize {
+  if (!sectPrXml) return { w: DEFAULT_PAGE_W, h: DEFAULT_PAGE_H };
+  const m = sectPrXml.match(/<w:pgSz\b([^/>]*)\/?>/);
+  if (!m) return { w: DEFAULT_PAGE_W, h: DEFAULT_PAGE_H };
+  const wMatch = m[1].match(/w:w="(\d+)"/);
+  const hMatch = m[1].match(/w:h="(\d+)"/);
+  const w = wMatch ? parseInt(wMatch[1], 10) : DEFAULT_PAGE_W;
+  const h = hMatch ? parseInt(hMatch[1], 10) : DEFAULT_PAGE_H;
+  // Normalize to portrait (smaller value = width)
+  return w <= h ? { w, h } : { w: h, h: w };
+}
+
+/** Parse w:pgMar from a sectPr XML string, returning the raw attribute string. */
+function parseTemplateMargins(sectPrXml: string | undefined): string {
+  if (!sectPrXml) return DEFAULT_MARGINS;
+  const m = sectPrXml.match(/<w:pgMar\b([^/>]*)\/?>/);
+  if (!m) return DEFAULT_MARGINS;
+  // Return the raw attributes
+  return m[1].trim();
+}
+
+/** Build a portrait sectPr XML element for section breaks. */
+function portraitSectPrXml(pgSz: PageSize, margins: string): string {
+  return '<w:sectPr><w:pgSz w:w="' + pgSz.w + '" w:h="' + pgSz.h + '"/>' +
+    '<w:pgMar ' + margins + '/>' +
+    '<w:type w:val="nextPage"/></w:sectPr>';
+}
+
+/** Build a landscape sectPr XML element for section breaks. */
+function landscapeSectPrXml(pgSz: PageSize, margins: string): string {
+  return '<w:sectPr><w:pgSz w:w="' + pgSz.h + '" w:h="' + pgSz.w + '" w:orient="landscape"/>' +
+    '<w:pgMar ' + margins + '/>' +
+    '<w:type w:val="nextPage"/></w:sectPr>';
+}
+
+/** Build the final body-level sectPr (no <w:type>, direct child of <w:body>). */
+function bodyClosingSectPrXml(pgSz: PageSize, margins: string, templateSectPr?: string): string {
+  // If we have an unmodified template sectPr, reuse it as-is to preserve
+  // any additional properties (headers, footers, columns, etc.)
+  if (templateSectPr) return templateSectPr;
+  return '<w:sectPr><w:pgSz w:w="' + pgSz.w + '" w:h="' + pgSz.h + '"/>' +
+    '<w:pgMar ' + margins + '/></w:sectPr>';
 }
 
 export interface DocxGenState {
@@ -2084,6 +2272,13 @@ export interface DocxGenState {
   consecutiveReplyParaIds: Set<string>; // parent paraIds whose replies were in consecutive format
   htmlCommentGaps: Map<number, number>; // blank-line-before count per HTML comment index (non-default only)
   tableRunRPrExtra: string; // extra rPr elements injected into every run inside a table cell (per-table font/size overrides)
+  landscapeTables: Set<number>; // table indices that have data-orientation="landscape"
+  portraitTables: Set<number>;  // table indices that have data-orientation="portrait"
+  inLandscapeSection: boolean;  // tracks current landscape state during generation
+  inPortraitSection: boolean;   // tracks current portrait fence state during generation
+  sectionBreakOrdinal: number;  // counter for paragraph-level sectPr emissions (for portrait round-trip)
+  portraitBreakOrdinals: Set<number>; // ordinals of portrait-fence close section breaks
+  templateSectPr?: string;      // trailing <w:sectPr> from template document.xml
 }
 
 interface CommentEntry {
@@ -4258,8 +4453,61 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     }
   }
 
+  // Compute page size and margins for section break injection
+  const pgSz = parseTemplatePgSz(state.templateSectPr);
+  const margins = parseTemplateMargins(state.templateSectPr);
+
+  // Helper: emit a portrait section break paragraph and increment ordinal
+  function emitPortraitBreak(): void {
+    body += '<w:p><w:pPr>' + portraitSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+    state.sectionBreakOrdinal++;
+  }
+  function emitLandscapeBreak(): void {
+    body += '<w:p><w:pPr>' + landscapeSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+    state.sectionBreakOrdinal++;
+  }
+
   let prevToken: MdToken | undefined;
   for (const token of tokens) {
+    // Any close sentinel directly preceding any open sentinel skips the open's break
+    // to avoid an empty intermediate section that renders as a blank page.
+    const prevWasClose = prevToken?.landscapeClose || prevToken?.portraitClose;
+
+    // Landscape sentinels: emit section break paragraphs
+    if (token.landscapeOpen) {
+      if (!prevWasClose) {
+        emitPortraitBreak();
+      }
+      state.inLandscapeSection = true;
+      prevToken = token;
+      continue;
+    }
+    if (token.landscapeClose) {
+      // End the landscape section with an empty paragraph carrying landscape sectPr
+      emitLandscapeBreak();
+      state.inLandscapeSection = false;
+      prevToken = token;
+      continue;
+    }
+
+    // Portrait sentinels: emit portrait section break paragraphs (same page dims, own page)
+    if (token.portraitOpen) {
+      if (!prevWasClose) {
+        emitPortraitBreak();
+      }
+      state.inPortraitSection = true;
+      prevToken = token;
+      continue;
+    }
+    if (token.portraitClose) {
+      // Record the ordinal of this portrait close break for round-trip detection
+      state.portraitBreakOrdinals.add(state.sectionBreakOrdinal);
+      emitPortraitBreak();
+      state.inPortraitSection = false;
+      prevToken = token;
+      continue;
+    }
+
     // Insert an empty paragraph between consecutive code blocks so they
     // don't merge into a single block on DOCX→MD round-trip.
     if (token.type === 'code_block' && prevToken?.type === 'code_block') {
@@ -4286,7 +4534,22 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
       if (token.tableFont) {
         state.tableFonts.set(state.tableIndex, token.tableFont);
       }
-      body += generateTable(token, state, options, bibEntries, citeprocEngine);
+      // Table-only landscape: wrap with section breaks (skip if already in fence-based landscape)
+      if (token.tableOrientation === 'landscape' && !state.inLandscapeSection && !state.inPortraitSection) {
+        state.landscapeTables.add(state.tableIndex);
+        emitPortraitBreak();
+        body += generateTable(token, state, options, bibEntries, citeprocEngine);
+        emitLandscapeBreak();
+      } else if (token.tableOrientation === 'portrait' && !state.inPortraitSection && !state.inLandscapeSection) {
+        // Table-only portrait: wrap with portrait section breaks
+        state.portraitTables.add(state.tableIndex);
+        emitPortraitBreak();
+        body += generateTable(token, state, options, bibEntries, citeprocEngine);
+        state.portraitBreakOrdinals.add(state.sectionBreakOrdinal);
+        emitPortraitBreak();
+      } else {
+        body += generateTable(token, state, options, bibEntries, citeprocEngine);
+      }
       state.tableIndex++;
     } else {
       body += generateParagraph(token, state, options, bibEntries, citeprocEngine);
@@ -4325,9 +4588,12 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     body += generateMissingKeysXml([...state.missingKeys]);
   }
 
+  // Append body-closing sectPr (preserves template page layout)
+  const closingSectPr = bodyClosingSectPrXml(pgSz, margins, state.templateSectPr);
+
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 w15 wp14">\n' +
-    '<w:body>\n' + body + '\n</w:body>\n' +
+    '<w:body>\n' + body + '\n' + closingSectPr + '\n</w:body>\n' +
     '</w:document>';
 }
 
@@ -4442,8 +4708,11 @@ export async function convertMdToDocx(
 
   // Extract template parts if provided
   let templateParts: Map<string, Uint8Array> | undefined;
+  let templateSectPr: string | undefined;
   if (options?.templateDocx) {
-    templateParts = await extractTemplateParts(options.templateDocx);
+    const extracted = await extractTemplateParts(options.templateDocx);
+    templateParts = extracted.parts;
+    templateSectPr = extracted.templateSectPr;
   }
 
   const hasTheme = !!templateParts?.has('word/theme/theme1.xml');
@@ -4518,6 +4787,13 @@ export async function convertMdToDocx(
     consecutiveReplyParaIds: new Set(),
     htmlCommentGaps,
     tableRunRPrExtra: '',
+    landscapeTables: new Set(),
+    portraitTables: new Set(),
+    inLandscapeSection: false,
+    inPortraitSection: false,
+    sectionBreakOrdinal: 0,
+    portraitBreakOrdinals: new Set(),
+    templateSectPr,
   };
 
   // Pre-scan footnote definitions for citation keys so the bibliography
@@ -4706,8 +4982,11 @@ export async function convertMdToDocx(
   customProps.push(...blockquoteAlertMarkerStyleProps(state.blockquoteAlertMarkerInlineByGroup));
   customProps.push(...imageFormatProps(state.imageFormats));
   customProps.push(...tableFormatProps(state.tableFormats));
-  customProps.push(...tableFontSizeProps(state.tableFontSizes));
-  customProps.push(...tableFontProps(state.tableFonts));
+  customProps.push(...tableFontSizeProps(state.tableFontSizes, fontOverrides?.tableSizeHp));
+  customProps.push(...tableFontProps(state.tableFonts, fontOverrides?.tableFont));
+  customProps.push(...landscapeTableProps(state.landscapeTables));
+  customProps.push(...portraitTableProps(state.portraitTables));
+  customProps.push(...portraitBreakProps(state.portraitBreakOrdinals));
   customProps.push(...listIndentProps(state));
   customProps.push(...consecutiveReplyProps(state));
   customProps.push(...htmlCommentGapProps(state.htmlCommentGaps));
