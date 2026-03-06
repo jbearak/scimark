@@ -194,7 +194,7 @@ describe('Comment reply threads: MD→DOCX', () => {
     expect(contentTypesXml).toContain('/word/commentsExtensible.xml');
     expect(contentTypesXml).toContain('/word/people.xml');
 
-    // Check that w14:paraId is on the first <w:p> of each comment
+    // Check that w14:paraId is on the last <w:p> of each comment
     expect(commentsXml).toContain('w14:paraId');
   });
 

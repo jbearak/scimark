@@ -3857,11 +3857,11 @@ function generateParaId(state: DocxGenState): string {
  * Skips elements that already have w14:paraId (e.g. comment paragraphs).
  */
 function injectParaIds(xml: string, state: DocxGenState): string {
-  return xml.replace(/<w:p(\s|\/?>)/g, (match, after) => {
+  return xml.replace(/<w:p(\s[^>]*)?(\/?>)/g, (match, attrs, close) => {
     // Already has a paraId (e.g. comment paragraphs) — leave it alone
-    if (match.includes('w14:paraId')) return match;
+    if (attrs && attrs.includes('w14:paraId')) return match;
     const pid = generateParaId(state);
-    return '<w:p w14:paraId="' + pid + '" w14:textId="77777777"' + after;
+    return '<w:p w14:paraId="' + pid + '" w14:textId="77777777"' + (attrs || '') + close;
   });
 }
 
@@ -3909,7 +3909,9 @@ function commentsXml(comments: CommentEntry[]): string {
     for (let pi = 0; pi < paragraphs.length; pi++) {
       const isLast = pi === paragraphs.length - 1;
       const paraIdAttr = isLast ? ' w14:paraId="' + c.paraId + '" w14:textId="77777777"' : '';
-      xml += '<w:p' + paraIdAttr + '><w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r><w:r><w:t xml:space="preserve">' + escapeXml(paragraphs[pi]) + '</w:t></w:r></w:p>';
+      const annotationRefRun = pi === 0
+        ? '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r>' : '';
+      xml += '<w:p' + paraIdAttr + '>' + annotationRefRun + '<w:r><w:t xml:space="preserve">' + escapeXml(paragraphs[pi]) + '</w:t></w:r></w:p>';
     }
     xml += '</w:comment>';
   }
