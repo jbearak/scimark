@@ -2519,6 +2519,31 @@ describe('landscape sections', () => {
       expect(nextPageCount).toBe(2);
     });
 
+    it('does not emit blank portrait page between consecutive landscape blocks', () => {
+      const tokens: MdToken[] = [
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', runs: [], landscapeOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Landscape 1' }] },
+        { type: 'paragraph', runs: [], landscapeClose: true },
+        { type: 'paragraph', runs: [], landscapeOpen: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'Landscape 2' }] },
+        { type: 'paragraph', runs: [], landscapeClose: true },
+        { type: 'paragraph', runs: [{ type: 'text', text: 'After' }] },
+      ];
+      const state = makeState();
+      const xml = generateDocumentXml(tokens, state);
+      // Should have exactly 3 nextPage breaks: portrait→landscape1, landscape1→landscape2, landscape2→portrait
+      // NOT 4 (which would include an empty portrait section between the two landscape blocks)
+      const nextPageCount = (xml.match(/<w:type w:val="nextPage"\/>/g) || []).length;
+      expect(nextPageCount).toBe(3);
+      // Verify no empty portrait section between the two landscape sections:
+      // the landscape sectPr from block 1's close should be immediately followed by landscape content,
+      // not by another portrait sectPr
+      const landscapeSectPrPattern = /w:orient="landscape"/g;
+      const landscapeCount = (xml.match(landscapeSectPrPattern) || []).length;
+      expect(landscapeCount).toBe(2);
+    });
+
     it('emits section breaks for table-only landscape', () => {
       const tableToken: MdToken = {
         type: 'table',

@@ -4406,8 +4406,11 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
   for (const token of tokens) {
     // Landscape sentinels: emit section break paragraphs
     if (token.landscapeOpen) {
-      // End the portrait section with an empty paragraph carrying portrait sectPr
-      body += '<w:p><w:pPr>' + portraitSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+      // Skip portrait section break if coming directly from another landscape block
+      // to avoid an empty portrait section that renders as a blank page
+      if (!prevToken?.landscapeClose) {
+        body += '<w:p><w:pPr>' + portraitSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+      }
       state.inLandscapeSection = true;
       prevToken = token;
       continue;
