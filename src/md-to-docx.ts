@@ -46,7 +46,9 @@ export interface MdToken {
   tableFont?: string;       // per-table font name override
   landscapeOpen?: true;     // sentinel: start of landscape section
   landscapeClose?: true;    // sentinel: end of landscape section
-  tableOrientation?: 'landscape'; // table-only landscape from data-orientation
+  portraitOpen?: true;      // sentinel: start of portrait section
+  portraitClose?: true;     // sentinel: end of portrait section
+  tableOrientation?: 'landscape' | 'portrait'; // table-only orientation from data-orientation
 }
 
 export interface MdTableCell {
@@ -1102,6 +1104,20 @@ export function landscapeTableProps(landscapeTables: Set<number>): CustomPropEnt
   return chunkCustomProps('MANUSCRIPT_LANDSCAPE_TABLES_', JSON.stringify(mapping));
 }
 
+export function portraitTableProps(portraitTables: Set<number>): CustomPropEntry[] {
+  if (portraitTables.size === 0) return [];
+  const mapping: Record<string, string> = {};
+  for (const idx of portraitTables) {
+    mapping[String(idx)] = 'portrait';
+  }
+  return chunkCustomProps('MANUSCRIPT_PORTRAIT_TABLES_', JSON.stringify(mapping));
+}
+
+export function portraitBreakProps(portraitBreakOrdinals: Set<number>): CustomPropEntry[] {
+  if (portraitBreakOrdinals.size === 0) return [];
+  return chunkCustomProps('MANUSCRIPT_PORTRAIT_BREAKS_', JSON.stringify([...portraitBreakOrdinals]));
+}
+
 
 export function parseMd(markdown: string, warnings?: string[]): MdToken[] {
   const md = createMarkdownIt();
@@ -1145,11 +1161,11 @@ export function parseMd(markdown: string, warnings?: string[]): MdToken[] {
     const run = result[i].runs[0];
     if (run.type !== 'html_comment') continue;
     const text = run.text.trim();
-    const orientMatch = text.match(/^<!--\s*table-orientation:\s*(landscape)\s*-->$/i);
+    const orientMatch = text.match(/^<!--\s*table-orientation:\s*(landscape|portrait)\s*-->$/i);
     if (!orientMatch) continue;
     if (i + 1 < result.length && result[i + 1].type === 'table') {
       if (result[i + 1].tableOrientation === undefined) {
-        result[i + 1].tableOrientation = 'landscape';
+        result[i + 1].tableOrientation = orientMatch[1].toLowerCase() as 'landscape' | 'portrait';
       }
       result.splice(i, 1);
     }
@@ -1182,6 +1198,35 @@ export function parseMd(markdown: string, warnings?: string[]): MdToken[] {
           inLandscape = false;
         }
         // If not in landscape, leave the comment as-is (user error, but harmless)
+      }
+    }
+  }
+
+  // Post-process: convert <!-- portrait --> / <!-- /portrait --> fences into sentinel tokens
+  {
+    let inPortrait = false;
+    for (let i = 0; i < result.length; i++) {
+      if (result[i].type !== 'paragraph' || result[i].runs.length !== 1) continue;
+      const run = result[i].runs[0];
+      if (run.type !== 'html_comment') continue;
+      const text = run.text.trim();
+      if (/^<!--\s*portrait\s*-->$/i.test(text)) {
+        if (inPortrait) {
+          if (warnings) warnings.push('Nested <!-- portrait --> treated as <!-- /portrait --><!-- portrait -->');
+          result.splice(i, 1,
+            { type: 'paragraph', runs: [], portraitClose: true },
+            { type: 'paragraph', runs: [], portraitOpen: true },
+          );
+          i++;
+        } else {
+          result.splice(i, 1, { type: 'paragraph', runs: [], portraitOpen: true });
+          inPortrait = true;
+        }
+      } else if (/^<!--\s*\/portrait\s*-->$/i.test(text)) {
+        if (inPortrait) {
+          result.splice(i, 1, { type: 'paragraph', runs: [], portraitClose: true });
+          inPortrait = false;
+        }
       }
     }
   }
@@ -1537,7 +1582,7 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0, warnin
                 };
                 if (meta.fontSize) tableToken.tableFontSize = meta.fontSize;
                 if (meta.font) tableToken.tableFont = meta.font;
-                if (meta.orientation === 'landscape') tableToken.tableOrientation = 'landscape';
+                if (meta.orientation) tableToken.tableOrientation = meta.orientation;
                 result.push(tableToken);
               }
             }
@@ -2228,7 +2273,11 @@ export interface DocxGenState {
   htmlCommentGaps: Map<number, number>; // blank-line-before count per HTML comment index (non-default only)
   tableRunRPrExtra: string; // extra rPr elements injected into every run inside a table cell (per-table font/size overrides)
   landscapeTables: Set<number>; // table indices that have data-orientation="landscape"
+  portraitTables: Set<number>;  // table indices that have data-orientation="portrait"
   inLandscapeSection: boolean;  // tracks current landscape state during generation
+  inPortraitSection: boolean;   // tracks current portrait fence state during generation
+  sectionBreakOrdinal: number;  // counter for paragraph-level sectPr emissions (for portrait round-trip)
+  portraitBreakOrdinals: Set<number>; // ordinals of portrait-fence close section breaks
   templateSectPr?: string;      // trailing <w:sectPr> from template document.xml
 }
 
@@ -4402,14 +4451,26 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
   const pgSz = parseTemplatePgSz(state.templateSectPr);
   const margins = parseTemplateMargins(state.templateSectPr);
 
+  // Helper: emit a portrait section break paragraph and increment ordinal
+  function emitPortraitBreak(): void {
+    body += '<w:p><w:pPr>' + portraitSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+    state.sectionBreakOrdinal++;
+  }
+  function emitLandscapeBreak(): void {
+    body += '<w:p><w:pPr>' + landscapeSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+    state.sectionBreakOrdinal++;
+  }
+
   let prevToken: MdToken | undefined;
   for (const token of tokens) {
+    // Any close sentinel directly preceding any open sentinel skips the open's break
+    // to avoid an empty intermediate section that renders as a blank page.
+    const prevWasClose = prevToken?.landscapeClose || prevToken?.portraitClose;
+
     // Landscape sentinels: emit section break paragraphs
     if (token.landscapeOpen) {
-      // Skip portrait section break if coming directly from another landscape block
-      // to avoid an empty portrait section that renders as a blank page
-      if (!prevToken?.landscapeClose) {
-        body += '<w:p><w:pPr>' + portraitSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+      if (!prevWasClose) {
+        emitPortraitBreak();
       }
       state.inLandscapeSection = true;
       prevToken = token;
@@ -4417,8 +4478,26 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
     }
     if (token.landscapeClose) {
       // End the landscape section with an empty paragraph carrying landscape sectPr
-      body += '<w:p><w:pPr>' + landscapeSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+      emitLandscapeBreak();
       state.inLandscapeSection = false;
+      prevToken = token;
+      continue;
+    }
+
+    // Portrait sentinels: emit portrait section break paragraphs (same page dims, own page)
+    if (token.portraitOpen) {
+      if (!prevWasClose) {
+        emitPortraitBreak();
+      }
+      state.inPortraitSection = true;
+      prevToken = token;
+      continue;
+    }
+    if (token.portraitClose) {
+      // Record the ordinal of this portrait close break for round-trip detection
+      state.portraitBreakOrdinals.add(state.sectionBreakOrdinal);
+      emitPortraitBreak();
+      state.inPortraitSection = false;
       prevToken = token;
       continue;
     }
@@ -4450,11 +4529,18 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
         state.tableFonts.set(state.tableIndex, token.tableFont);
       }
       // Table-only landscape: wrap with section breaks (skip if already in fence-based landscape)
-      if (token.tableOrientation === 'landscape' && !state.inLandscapeSection) {
+      if (token.tableOrientation === 'landscape' && !state.inLandscapeSection && !state.inPortraitSection) {
         state.landscapeTables.add(state.tableIndex);
-        body += '<w:p><w:pPr>' + portraitSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+        emitPortraitBreak();
         body += generateTable(token, state, options, bibEntries, citeprocEngine);
-        body += '<w:p><w:pPr>' + landscapeSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+        emitLandscapeBreak();
+      } else if (token.tableOrientation === 'portrait' && !state.inPortraitSection && !state.inLandscapeSection) {
+        // Table-only portrait: wrap with portrait section breaks
+        state.portraitTables.add(state.tableIndex);
+        emitPortraitBreak();
+        body += generateTable(token, state, options, bibEntries, citeprocEngine);
+        state.portraitBreakOrdinals.add(state.sectionBreakOrdinal);
+        emitPortraitBreak();
       } else {
         body += generateTable(token, state, options, bibEntries, citeprocEngine);
       }
@@ -4683,7 +4769,11 @@ export async function convertMdToDocx(
     htmlCommentGaps,
     tableRunRPrExtra: '',
     landscapeTables: new Set(),
+    portraitTables: new Set(),
     inLandscapeSection: false,
+    inPortraitSection: false,
+    sectionBreakOrdinal: 0,
+    portraitBreakOrdinals: new Set(),
     templateSectPr,
   };
 
@@ -4868,6 +4958,8 @@ export async function convertMdToDocx(
   customProps.push(...tableFontSizeProps(state.tableFontSizes, fontOverrides?.tableSizeHp));
   customProps.push(...tableFontProps(state.tableFonts, fontOverrides?.tableFont));
   customProps.push(...landscapeTableProps(state.landscapeTables));
+  customProps.push(...portraitTableProps(state.portraitTables));
+  customProps.push(...portraitBreakProps(state.portraitBreakOrdinals));
   customProps.push(...listIndentProps(state));
   customProps.push(...consecutiveReplyProps(state));
   customProps.push(...htmlCommentGapProps(state.htmlCommentGaps));

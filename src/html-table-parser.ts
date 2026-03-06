@@ -26,7 +26,7 @@ export interface HtmlTableMeta {
   rows: HtmlTableRow[];
   fontSize?: number;   // from data-font-size attribute
   font?: string;       // from data-font attribute
-  orientation?: 'landscape'; // from data-orientation attribute
+  orientation?: 'landscape' | 'portrait'; // from data-orientation attribute
 }
 
 export function extractHtmlTables(html: string): HtmlTableMeta[] {
@@ -55,9 +55,9 @@ export function extractHtmlTables(html: string): HtmlTableMeta[] {
         const normalized = decodeHtmlEntities(fontVal).trim().replace(/\s+/g, ' ');
         if (normalized) meta.font = normalized;
       }
-      // data-orientation: only "landscape" is recognized
-      const orientMatch = attrs.match(/data-orientation\s*=\s*["']?(landscape)["']?/i);
-      if (orientMatch) meta.orientation = 'landscape';
+      // data-orientation: "landscape" or "portrait"
+      const orientMatch = attrs.match(/data-orientation\s*=\s*["']?(landscape|portrait)["']?/i);
+      if (orientMatch) meta.orientation = orientMatch[1].toLowerCase() as 'landscape' | 'portrait';
       tables.push(meta);
     }
   }

@@ -3976,3 +3976,82 @@ describe('Landscape section round-trip', () => {
   });
 });
 
+describe('Portrait section round-trip', () => {
+  test('fence-based portrait round-trips through MD→DOCX→MD', async () => {
+    const md = 'Before\n\n<!-- portrait -->\n\nTable title\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\nTable note\n\n<!-- /portrait -->\n\nAfter';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- portrait -->');
+    expect(result.markdown).toContain('<!-- /portrait -->');
+    expect(result.markdown).toContain('Table title');
+    expect(result.markdown).toContain('Table note');
+    expect(result.markdown).toContain('Before');
+    expect(result.markdown).toContain('After');
+  });
+
+  test('data-orientation="portrait" on HTML table round-trips', async () => {
+    const md = '<table data-orientation="portrait">\n<tr><th>H</th></tr>\n<tr><td>D</td></tr>\n</table>';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('data-orientation="portrait"');
+  });
+
+  test('<!-- table-orientation: portrait --> directive round-trips for pipe table', async () => {
+    const md = '<!-- table-orientation: portrait -->\n\n| A | B |\n| - | - |\n| 1 | 2 |';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('table-orientation: portrait');
+    expect(result.markdown).toContain('| A |');
+  });
+
+  test('portrait DOCX section uses portrait dimensions (no landscape orient)', async () => {
+    const md = '<!-- portrait -->\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<!-- /portrait -->';
+    const { docx } = await convertMdToDocx(md);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(docx);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).not.toContain('w:orient="landscape"');
+    // All section breaks should have portrait dimensions
+    const pgSzMatches = docXml.match(/<w:pgSz[^/]*\/>/g) || [];
+    for (const m of pgSzMatches) {
+      expect(m).toContain('w:w="12240"');
+      expect(m).toContain('w:h="15840"');
+    }
+  });
+
+  test('mixed landscape then portrait round-trips correctly', async () => {
+    const md = '<!-- landscape -->\n\nLandscape content\n\n<!-- /landscape -->\n\n<!-- portrait -->\n\nPortrait content\n\n<!-- /portrait -->';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- landscape -->');
+    expect(result.markdown).toContain('<!-- /landscape -->');
+    expect(result.markdown).toContain('<!-- portrait -->');
+    expect(result.markdown).toContain('<!-- /portrait -->');
+    expect(result.markdown).toContain('Landscape content');
+    expect(result.markdown).toContain('Portrait content');
+  });
+
+  test('mixed portrait then landscape round-trips correctly', async () => {
+    const md = '<!-- portrait -->\n\nPortrait content\n\n<!-- /portrait -->\n\n<!-- landscape -->\n\nLandscape content\n\n<!-- /landscape -->';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- portrait -->');
+    expect(result.markdown).toContain('<!-- /portrait -->');
+    expect(result.markdown).toContain('<!-- landscape -->');
+    expect(result.markdown).toContain('<!-- /landscape -->');
+  });
+
+  test('consecutive portrait blocks round-trip without blank pages', async () => {
+    const md = 'Before\n\n<!-- portrait -->\n\nBlock 1\n\n<!-- /portrait -->\n\n<!-- portrait -->\n\nBlock 2\n\n<!-- /portrait -->\n\nAfter';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('Block 1');
+    expect(result.markdown).toContain('Block 2');
+    // Should have two portrait open/close pairs
+    const openCount = (result.markdown.match(/<!-- portrait -->/g) || []).length;
+    const closeCount = (result.markdown.match(/<!-- \/portrait -->/g) || []).length;
+    expect(openCount).toBe(2);
+    expect(closeCount).toBe(2);
+  });
+});
+
