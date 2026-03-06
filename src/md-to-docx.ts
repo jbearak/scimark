@@ -2080,10 +2080,19 @@ async function extractTemplateParts(templateDocx: Uint8Array): Promise<TemplateP
   const docFile = zip.file('word/document.xml');
   if (docFile) {
     const docXml = await docFile.async('string');
-    const sectPrMatch = docXml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>\s*<\/w:body>/);
-    if (sectPrMatch) {
-      // Strip the trailing </w:body> to get just the sectPr element
-      templateSectPr = sectPrMatch[0].replace(/\s*<\/w:body>$/, '');
+    // Invariant: reuse ONLY the trailing body-level sectPr (the final <w:sectPr>
+    // before </w:body>). Paragraph-level section breaks may contain <w:sectPr>
+    // inside <w:pPr>; selecting from an earlier sectPr corrupts template reuse.
+    const bodyCloseIdx = docXml.lastIndexOf('</w:body>');
+    if (bodyCloseIdx !== -1) {
+      const beforeBodyClose = docXml.slice(0, bodyCloseIdx);
+      const sectPrStart = beforeBodyClose.lastIndexOf('<w:sectPr');
+      if (sectPrStart !== -1) {
+        const sectPrEnd = beforeBodyClose.indexOf('</w:sectPr>', sectPrStart);
+        if (sectPrEnd !== -1) {
+          templateSectPr = beforeBodyClose.slice(sectPrStart, sectPrEnd + '</w:sectPr>'.length);
+        }
+      }
     }
   }
 

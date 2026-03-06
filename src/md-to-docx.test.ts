@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'bun:test';
 import * as fc from 'fast-check';
+import { XMLValidator } from 'fast-xml-parser';
 import {
   generateRPr,
   generateRun,
@@ -2547,6 +2548,37 @@ describe('landscape sections', () => {
       // Should reuse template sectPr as-is for the body closing
       expect(xml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
       expect(xml).toContain('</w:sectPr>\n</w:body>');
+    });
+  });
+
+  describe('template reuse', () => {
+    it('reuses only the trailing body-level sectPr when template contains landscape section breaks', async () => {
+      const templateMd = [
+        'Before',
+        '',
+        '<!-- landscape -->',
+        '',
+        'TEMPLATE_UNIQUE_MARKER',
+        '',
+        '| A | B |',
+        '| - | - |',
+        '| 1 | 2 |',
+        '',
+        '<!-- /landscape -->',
+        '',
+        'After',
+      ].join('\n');
+      const { docx: templateDocx } = await convertMdToDocx(templateMd);
+      const { docx } = await convertMdToDocx('Hello world', { templateDocx: new Uint8Array(templateDocx) });
+
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(docx);
+      const documentXml = await zip.file('word/document.xml')!.async('string');
+
+      // Regression guard: old extraction could append a large tail from template body,
+      // leaking template content and producing malformed XML.
+      expect(documentXml).not.toContain('TEMPLATE_UNIQUE_MARKER');
+      expect(XMLValidator.validate(documentXml)).toBe(true);
     });
   });
 });

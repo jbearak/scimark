@@ -24,6 +24,7 @@ LSP: `src/lsp/server.ts` (language server — diagnostics, completions)
 - Consecutive reply invariant: when consuming consecutive `critic_comment` runs, preserve any nested reply blocks (`replyRun.replies`) as child comments instead of dropping them.
 - Notes namespace invariant: any XML part that may receive injected `w14:paraId` attributes (document/footnotes/endnotes) must declare `xmlns:w14`.
 - Landscape section invariant: `<!-- landscape -->` / `<!-- /landscape -->` fences produce OOXML section breaks (empty `<w:p>` with `<w:sectPr>` in `<w:pPr>`). The `computeSegmentEnd` function in `converter.ts` must stop on `landscape_open`/`landscape_close` ContentItems to prevent `renderInlineRange` from consuming them. Template page dimensions are extracted from the template's body-level `<w:sectPr>` and swapped for landscape.
+- Template sectPr extraction invariant: md→docx template reuse must extract only the trailing body-level `<w:sectPr>` (the final `<w:sectPr>` before `</w:body>`). Paragraph-level section-break paragraphs also contain `<w:sectPr>` inside `<w:pPr>`; matching from those nodes leaks body content and corrupts output XML.
 Per-module learnings live as comments in the corresponding source files.
 
 ## Quick commands
