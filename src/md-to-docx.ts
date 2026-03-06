@@ -2080,6 +2080,7 @@ function contentTypesXml(opts: ContentTypesOptions): string {
   xml += '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>\n';
   xml += '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>\n';
   xml += '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>\n';
+  xml += '<Override PartName="/word/webSettings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.webSettings+xml"/>\n';
   xml += '<Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>\n';
   if (hasList) {
     xml += '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>\n';
@@ -2778,8 +2779,36 @@ function settingsXml(hasFootnotes?: boolean, hasEndnotes?: boolean, hasThreadedC
   if (hasEndnotes) {
     xml += '<w:endnotePr><w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr>\n';
   }
+  // OneDrive co-authoring compatibility: w14:docId (Word 2010 document identifier)
+  // and w15:docId (Word 2013 GUID-based document identifier) MUST be present.
+  //
+  // Without these, OneDrive's server-side processor treats the file as a legacy
+  // document and "upgrades" it for co-authoring — which reassigns all w14:paraId
+  // values and strips w15:paraIdParent from commentsExtended.xml, destroying
+  // comment threading.  webSettings.xml (registered separately) is also required
+  // as part of this minimum viable set.
+  //
+  // Discovery: raw extension output had correct threading, but OneDrive silently
+  // rewrote the file before Word could open it.  Quitting OneDrive made the same
+  // file open correctly.  Adding docId + webSettings prevents the rewrite.
+  const hexId = Math.floor(Math.random() * 0x7FFFFFFF).toString(16).toUpperCase().padStart(8, '0');
+  xml += '<w14:docId w14:val="' + hexId + '"/>\n';
+  xml += '<w15:docId w15:val="{' + crypto.randomUUID().toUpperCase() + '}"/>\n';
   xml += '</w:settings>';
   return xml;
+}
+
+/**
+ * Minimal webSettings.xml — part of the OneDrive co-authoring compatibility set.
+ * Together with w14:docId and w15:docId in settings.xml, this prevents OneDrive
+ * from "upgrading" the file and stripping comment threading metadata.
+ * See the extended comment in settingsXml() for the full explanation.
+ */
+function webSettingsXml(): string {
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    '<w:webSettings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">\n' +
+    '<w:optimizeForBrowser/>\n' +
+    '</w:webSettings>';
 }
 
 function fontTableXml(): string {
@@ -3035,6 +3064,8 @@ function documentRelsXml(opts: DocumentRelsOptions): string {
     nextFixed++;
   }
   xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>\n';
+  nextFixed++;
+  xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings" Target="webSettings.xml"/>\n';
   nextFixed++;
   xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>\n';
 
@@ -3789,6 +3820,32 @@ function generateParaId(state: DocxGenState): string {
   return (state.nextParaId++).toString(16).toUpperCase().padStart(8, '0');
 }
 
+/**
+ * Add w14:paraId and w14:textId to every <w:p> element that doesn't already
+ * carry a w14:paraId.  Applied as post-processing to document.xml,
+ * footnotes.xml, and endnotes.xml before they go into the zip.
+ *
+ * Why: OneDrive's server-side co-authoring processor expects every paragraph
+ * in a modern (compatibilityMode ≥ 15) document to have a unique paraId.
+ * When document paragraphs lack them but comments.xml paragraphs have them,
+ * OneDrive considers the file structurally inconsistent, reassigns all paraIds,
+ * and strips paraIdParent from commentsExtended.xml — destroying comment
+ * threading.  This works together with w14:docId, w15:docId, and
+ * webSettings.xml (see settingsXml()) to present a complete modern document
+ * that OneDrive won't "upgrade".
+ *
+ * Handles all <w:p> variants: <w:p>, <w:p/>, <w:p attr...>.
+ * Skips elements that already have w14:paraId (e.g. comment paragraphs).
+ */
+function injectParaIds(xml: string, state: DocxGenState): string {
+  return xml.replace(/<w:p(\s|\/?>)/g, (match, after) => {
+    // Already has a paraId (e.g. comment paragraphs) — leave it alone
+    if (match.includes('w14:paraId')) return match;
+    const pid = generateParaId(state);
+    return '<w:p w14:paraId="' + pid + '" w14:textId="77777777"' + after;
+  });
+}
+
 
 function authorInitials(author: string): string {
   const initials = author
@@ -3801,6 +3858,23 @@ function authorInitials(author: string): string {
   return initials;
 }
 
+/**
+ * Comment threading in OOXML requires four coordinated files:
+ *
+ *   comments.xml        — comment bodies; the LAST <w:p> in each comment carries
+ *                         w14:paraId (the identifier commentsExtended links to)
+ *   commentsExtended.xml — one <w15:commentEx> per comment with w15:paraId; replies
+ *                         include w15:paraIdParent pointing to the parent's paraId
+ *   commentsIds.xml     — maps each paraId to a durableId (persistent across edits)
+ *   commentsExtensible.xml — maps durableId to dateUtc for each comment
+ *
+ * For OneDrive compatibility, the document must also include:
+ *   - w14:paraId on every <w:p> in document.xml / footnotes / endnotes (injectParaIds)
+ *   - w14:docId + w15:docId in settings.xml
+ *   - webSettings.xml
+ * Without these, OneDrive's co-authoring processor rewrites the file and strips
+ * paraIdParent, destroying threading.  See settingsXml() for details.
+ */
 function commentsXml(comments: CommentEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   xml += '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w14 w15 w16cid">';
@@ -4182,6 +4256,11 @@ export async function convertMdToDocx(
     citationItemIds: new Map(),
     timezone: frontmatter.timezone,
     replyRanges: [],
+    // Start document paraIds at a high offset to avoid collisions with template-
+    // assigned IDs (which Word typically allocates starting near 0).  Comment paraIds
+    // are allocated first during comment generation; document/footnote/endnote paraIds
+    // are allocated later by injectParaIds().  All share this single counter so they
+    // never collide.  Valid range: 0x00000001–0x7FFFFFFF (Word ignores 0 and ≥ 0x80000000).
     nextParaId: 0x10000000,
     codeBlockIndex: 0,
     codeBlockLanguages: new Map(),
@@ -4296,7 +4375,7 @@ export async function convertMdToDocx(
 
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
-  zip.file('word/document.xml', documentXml);
+  zip.file('word/document.xml', injectParaIds(documentXml, state));
 
   // Use template styles if available, otherwise default; apply font/color overrides when present
   if (templateParts?.has('word/styles.xml') && fontOverrides) {
@@ -4322,6 +4401,7 @@ export async function convertMdToDocx(
   // Always use generated settings.xml to guarantee compatibilityMode >= 15
   // (template settings.xml may have compatibilityMode < 15, causing "unreadable content" errors)
   zip.file('word/settings.xml', settingsXml(state.hasFootnotes, state.hasEndnotes, hasThreadedComments));
+  zip.file('word/webSettings.xml', webSettingsXml());
 
   // Always include fontTable.xml
   zip.file('word/fontTable.xml', fontTableXml());
@@ -4357,10 +4437,10 @@ export async function convertMdToDocx(
   }
 
   if (state.hasFootnotes) {
-    zip.file('word/footnotes.xml', footnotesXml(state.footnoteEntries));
+    zip.file('word/footnotes.xml', injectParaIds(footnotesXml(state.footnoteEntries), state));
   }
   if (state.hasEndnotes) {
-    zip.file('word/endnotes.xml', endnotesXml(state.footnoteEntries));
+    zip.file('word/endnotes.xml', injectParaIds(endnotesXml(state.footnoteEntries), state));
   }
 
   // Document properties
