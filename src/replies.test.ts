@@ -194,8 +194,15 @@ describe('Comment reply threads: MD→DOCX', () => {
     expect(contentTypesXml).toContain('/word/commentsExtensible.xml');
     expect(contentTypesXml).toContain('/word/people.xml');
 
-    // Check that w14:paraId is on the last <w:p> of each comment
-    expect(commentsXml).toContain('w14:paraId');
+    // Check that w14:paraId is on the last <w:p> of each <w:comment>
+    const commentBlocks = commentsXml.match(/<w:comment[\s\S]*?<\/w:comment>/g)!;
+    expect(commentBlocks.length).toBeGreaterThan(0);
+    for (const block of commentBlocks) {
+      const paragraphs = block.match(/<w:p[^>]*>/g)!;
+      expect(paragraphs.length).toBeGreaterThan(0);
+      const lastP = paragraphs[paragraphs.length - 1];
+      expect(lastP).toContain('w14:paraId');
+    }
   });
 
   test('anchors parent and reply comment ranges in document.xml', async () => {
