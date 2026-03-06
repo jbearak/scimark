@@ -644,3 +644,86 @@ describe('Footnote/endnote citations in bibliography', () => {
     expect(docXml).toContain('Advances in renewable energy systems');
   });
 });
+
+// ============================================================================
+// Bibliography marker placement (<!-- references -->)
+// ============================================================================
+
+describe('Bibliography marker placement', () => {
+  test('marker places bibliography at marker position in OOXML', async () => {
+    const md = '---\ncsl: apa\n---\n\nMain text [@smith2020effects].\n\n<!-- references -->\n\nSupplementary text.\n';
+    const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string') || '';
+
+    // Bibliography should appear before supplementary text
+    const biblIdx = docXml.indexOf('ZOTERO_BIBL');
+    const suppIdx = docXml.indexOf('Supplementary text');
+    expect(biblIdx).toBeGreaterThan(-1);
+    expect(suppIdx).toBeGreaterThan(-1);
+    expect(biblIdx).toBeLessThan(suppIdx);
+  });
+
+  test('without marker, bibliography goes at end (default)', async () => {
+    const md = '---\ncsl: apa\n---\n\nMain text [@smith2020effects].\n\nMore text.\n';
+    const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string') || '';
+
+    const biblIdx = docXml.indexOf('ZOTERO_BIBL');
+    const moreIdx = docXml.indexOf('More text');
+    expect(biblIdx).toBeGreaterThan(moreIdx);
+  });
+
+  test('citations after marker are included in bibliography', async () => {
+    const md = '---\ncsl: apa\n---\n\nMain text [@smith2020effects].\n\n<!-- references -->\n\nSupplementary [@jones2019urban].\n';
+    const result = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(result.docx);
+    const docXml = await zip.file('word/document.xml')?.async('string') || '';
+
+    // Both cited works should appear in the bibliography
+    expect(docXml).toContain('Smith');
+    expect(docXml).toContain('Jones');
+    // Bibliography should be between main and supplementary text
+    const biblIdx = docXml.indexOf('ZOTERO_BIBL');
+    const suppIdx = docXml.indexOf('Supplementary');
+    expect(biblIdx).toBeLessThan(suppIdx);
+  });
+
+  test('round-trip preserves marker when bibliography is mid-document', async () => {
+    const md = '---\ncsl: apa\n---\n\nMain text [@smith2020effects].\n\n<!-- references -->\n\nSupplementary material.\n';
+    const docxResult = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+    const mdResult = await convertDocx(docxResult.docx);
+
+    expect(mdResult.markdown).toContain('<!-- references -->');
+    // Marker should appear between main text and supplementary material
+    const markerIdx = mdResult.markdown.indexOf('<!-- references -->');
+    const mainIdx = mdResult.markdown.indexOf('Main text');
+    const suppIdx = mdResult.markdown.indexOf('Supplementary material');
+    expect(markerIdx).toBeGreaterThan(mainIdx);
+    expect(markerIdx).toBeLessThan(suppIdx);
+  });
+
+  test('round-trip without marker does not inject one', async () => {
+    const md = '---\ncsl: apa\n---\n\nSome text [@smith2020effects].\n';
+    const docxResult = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+    const mdResult = await convertDocx(docxResult.docx);
+
+    expect(mdResult.markdown).not.toContain('<!-- references -->');
+    expect(mdResult.markdown).not.toContain('<!-- bibliography -->');
+  });
+
+  test('<!-- bibliography --> alias round-trips as <!-- references -->', async () => {
+    const md = '---\ncsl: apa\n---\n\nMain text [@smith2020effects].\n\n<!-- bibliography -->\n\nAfter bib.\n';
+    const docxResult = await convertMdToDocx(md, { bibtex: SAMPLE_BIBTEX });
+    const mdResult = await convertDocx(docxResult.docx);
+
+    expect(mdResult.markdown).toContain('<!-- references -->');
+  });
+});

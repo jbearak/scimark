@@ -240,7 +240,8 @@ export type ContentItem =
   | { type: 'landscape_open' }
   | { type: 'landscape_close' }
   | { type: 'portrait_open' }
-  | { type: 'portrait_close' };
+  | { type: 'portrait_close' }
+  | { type: 'bibliography_marker' };
 export interface FootnoteBody {
   id: string;
   content: ContentItem[];
@@ -1938,6 +1939,9 @@ export async function extractDocumentContent(
                 ...(currentRevision ? { revision: currentRevision } : {}),
               });
             }
+            if (inBibliographyField) {
+              target.push({ type: 'bibliography_marker' });
+            }
             inField = false;
             inCitationField = false;
             inBibliographyField = false;
@@ -2639,7 +2643,7 @@ function computeSegmentEnd(
   let idx = startIndex;
   while (idx < segment.length) {
     const item = segment[idx];
-    if (item.type === 'para' || item.type === 'table' || item.type === 'landscape_open' || item.type === 'landscape_close' || item.type === 'portrait_open' || item.type === 'portrait_close') break;
+    if (item.type === 'para' || item.type === 'table' || item.type === 'landscape_open' || item.type === 'landscape_close' || item.type === 'portrait_open' || item.type === 'portrait_close' || item.type === 'bibliography_marker') break;
     if (opts?.stopBeforeDisplayMath && item.type === 'math' && item.display) break;
     idx++;
   }
@@ -4006,6 +4010,15 @@ export function buildMarkdown(
       continue;
     }
 
+    if (item.type === 'bibliography_marker') {
+      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+        output.push('\n\n');
+      }
+      output.push('<!-- references -->');
+      i++;
+      continue;
+    }
+
     if (item.type === 'math' && item.display) {
       // Ensure blank line before display math
       if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
@@ -4720,6 +4733,10 @@ export async function convertDocx(
       markdown = lines.slice(0, sourcesIdx).join('\n');
     }
   }
+
+  // Strip trailing <!-- references --> marker when bibliography is at the end of the
+  // document (default position) so we don't inject a marker that wasn't in the original.
+  markdown = markdown.replace(/\n*<!--\s*references\s*-->\s*$/, '');
 
   // Prepend YAML frontmatter if title or Zotero prefs were found
   const fm: Frontmatter = {};
