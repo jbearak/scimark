@@ -425,6 +425,42 @@ describe('generateParagraph', () => {
     expect(result).toBe('<w:p><w:r><w:t xml:space="preserve">Hello world</w:t></w:r></w:p>');
   });
 
+  it('collapses spacing on pure HTML-comment paragraphs', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [{ type: 'html_comment', text: '<!-- Begin Table 1 -->' }]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state);
+    expect(result).toContain('<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>');
+  });
+
+  it('collapses spacing on paragraphs with multiple HTML-comment runs', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [
+        { type: 'html_comment', text: '<!-- comment 1 -->' },
+        { type: 'html_comment', text: '<!-- comment 2 -->' },
+      ]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state);
+    expect(result).toContain('<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>');
+  });
+
+  it('does not collapse spacing on paragraphs with mixed runs including html_comment', () => {
+    const token: MdToken = {
+      type: 'paragraph',
+      runs: [
+        { type: 'text', text: 'Hello' },
+        { type: 'html_comment', text: '<!-- note -->' },
+      ]
+    };
+    const state = createState();
+    const result = generateParagraph(token, state);
+    expect(result).not.toContain('w:lineRule="exact"');
+  });
+
   it('generates heading level 1', () => {
     const token: MdToken = {
       type: 'heading',

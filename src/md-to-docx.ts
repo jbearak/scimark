@@ -4015,7 +4015,13 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       pPr = '<w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="auto"/></w:pBdr></w:pPr>';
       break;
   }
-  
+
+  // Pure HTML-comment paragraphs are hidden (vanish) — collapse their spacing
+  // so they don't contribute visible gaps in Word's layout engine.
+  if (token.type === 'paragraph' && token.runs.length > 0 && token.runs.every(r => r.type === 'html_comment')) {
+    pPr = '<w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/></w:pPr>';
+  }
+
   if (token.type === 'code_block') {
     const lines = (token.runs[0]?.text || '').replace(/\n$/, '').split('\n');
     const rpr = '<w:rPr><w:rFonts w:ascii="' + escapeXml(state.codeFont) + '" w:hAnsi="' + escapeXml(state.codeFont) + '"/></w:rPr>';
