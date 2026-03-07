@@ -46,3 +46,4 @@ test/fixtures/draft_current.docx
 test/fixtures/blockquotes.docx
 sample_saved.md
 sample_roundtrip.md
+.tmp/

@@ -161,6 +161,12 @@ export interface RunFormatting {
   code: boolean;
 }
 
+/** Returns true when any formatting flag is set (text won't survive GFM autolink). */
+function hasFormatting(fmt: RunFormatting): boolean {
+  return fmt.bold || fmt.italic || fmt.underline || fmt.strikethrough ||
+    fmt.highlight || fmt.superscript || fmt.subscript || fmt.code;
+}
+
 /** List metadata for a paragraph */
 export interface ListMeta {
   type: 'bullet' | 'ordered';
@@ -1009,6 +1015,10 @@ export async function extractTableFormatMapping(data: Uint8Array | JSZip): Promi
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_TABLE_FORMATS');
 }
 
+export async function extractPipeTableAlignedMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_PIPE_TABLE_ALIGNED');
+}
+
 export async function extractTableFontSizeMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_TABLE_FONT_SIZES');
 }
@@ -1121,6 +1131,66 @@ export async function extractFrontmatterBlankLines(data: Uint8Array | JSZip): Pr
     }
   }
   return null;
+}
+
+export async function extractHtmlCommentAfterGapMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_HTML_COMMENT_AFTER_GAPS_');
+  if (!mappingJson) return null;
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<number, number>();
+    for (const [key, count] of Object.entries(parsedJson)) {
+      const commentIdx = parseInt(key, 10);
+      if (isNaN(commentIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) continue;
+      mapping.set(commentIdx, count);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function extractSentinelGapMapping(data: Uint8Array | JSZip): Promise<Record<string, number> | null> {
+  const json = await extractChunkedCustomProp(data, 'MANUSCRIPT_SENTINEL_GAPS_');
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const result: Record<string, number> = {};
+    for (const [key, val] of Object.entries(parsed)) {
+      if (typeof val === 'number' && Number.isInteger(val) && val >= 0) result[key] = val;
+    }
+    return Object.keys(result).length > 0 ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function extractFrontmatterFieldOrder(data: Uint8Array | JSZip): Promise<string[] | null> {
+  const json = await extractChunkedCustomProp(data, 'MANUSCRIPT_FRONTMATTER_FIELD_ORDER_');
+  if (!json) return null;
+  try {
+    const arr = JSON.parse(json);
+    if (!Array.isArray(arr)) return null;
+    return arr.filter((s: unknown): s is string => typeof s === 'string');
+  } catch {
+    return null;
+  }
+}
+
+export async function extractExplicitTableFontSize(data: Uint8Array | JSZip): Promise<boolean> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return false;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_EXPLICIT_TABLE_FONT_SIZE') continue;
+    return true;
+  }
+  return false;
 }
 
 /** Layer 2: read comma-separated bib key order from chunked MANUSCRIPT_BIB_KEY_ORDER_* custom props. */
@@ -2812,7 +2882,9 @@ function renderInlineRange(
         // producing {====text====} (highlight nested inside comment delimiters).
         let segText = wrapWithFormatting(seg.text, seg.formatting);
         if (seg.href) {
-          segText = `[${segText}](${formatHrefForMarkdown(seg.href)})`;
+          if (seg.text !== seg.href || hasFormatting(seg.formatting)) {
+            segText = `[${segText}](${formatHrefForMarkdown(seg.href)})`;
+          }
         }
         segText = wrapWithRevision(segText, seg.revision);
         groupedCommentText.push(segText);
@@ -2835,7 +2907,9 @@ function renderInlineRange(
 
     let formattedText = wrapWithFormatting(item.text, item.formatting);
     if (item.href) {
-      formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
+      if (item.text !== item.href || hasFormatting(item.formatting)) {
+        formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
+      }
     }
     out += wrapWithRevision(formattedText, item.revision);
     i++;
@@ -3049,7 +3123,9 @@ function renderInlineRangeWithIds(
 
     let formattedText = wrapWithFormatting(item.text, item.formatting);
     if (item.href) {
-      formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
+      if (item.text !== item.href || hasFormatting(item.formatting)) {
+        formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
+      }
     }
     out += wrapWithRevision(formattedText, item.revision);
     i++;
@@ -3101,7 +3177,7 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
   return lines.join('\n');
 }
 
-type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string>; tableFormatMapping?: Map<string, string>; tableFontSizeMapping?: Map<string, string>; tableFontMapping?: Map<string, string>; landscapeTableIndices?: Set<number>; portraitTableIndices?: Set<number> };
+type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string>; tableFormatMapping?: Map<string, string>; pipeTableAlignedMapping?: Map<string, string>; tableFontSizeMapping?: Map<string, string>; tableFontMapping?: Map<string, string>; landscapeTableIndices?: Set<number>; portraitTableIndices?: Set<number> };
 
 // East Asian Wide / Fullwidth code-point ranges (UAX #11).  Characters in
 // these ranges occupy two terminal columns; everything else is treated as
@@ -3142,7 +3218,7 @@ function getDisplayWidth(str: string): number {
  * one pass so that renderInlineSegment side-effects (e.g. emittedIdCommentBodies)
  * are not duplicated.
  */
-function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, comments: Map<string, Comment>, renderOpts?: RenderOpts): string | null {
+function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, comments: Map<string, Comment>, renderOpts?: RenderOpts, aligned?: boolean): string | null {
   if (maxLineWidth <= 0) return null;
   const rows = table.rows;
   if (rows.length === 0) return null;
@@ -3225,10 +3301,27 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
   // Build pipe table lines
   const lines: string[] = [];
   const deferredAll: string[] = [];
+
+  // Compute column widths for aligned mode
+  let colWidths: number[] | undefined;
+  if (aligned) {
+    colWidths = new Array(numCols).fill(3); // minimum separator width
+    for (const row of rendered) {
+      for (let ci = 0; ci < row.length; ci++) {
+        const w = getDisplayWidth(row[ci].text);
+        if (w > colWidths[ci]) colWidths[ci] = w;
+      }
+    }
+  }
+
   const formatPipeRow = (cells: { text: string; deferred: string[] }[]): string => {
     let line = '|';
-    for (const c of cells) {
-      if (c.text.length === 0) {
+    for (let ci = 0; ci < cells.length; ci++) {
+      const c = cells[ci];
+      if (colWidths) {
+        const pad = colWidths[ci] - getDisplayWidth(c.text);
+        line += ' ' + c.text + ' '.repeat(pad) + ' |';
+      } else if (c.text.length === 0) {
         line += ' |';
       } else {
         line += ' ' + c.text + ' |';
@@ -3243,7 +3336,15 @@ function tryRenderPipeTable(table: { rows: TableRow[] }, maxLineWidth: number, c
   lines.push(formatPipeRow(headerCells));
   for (const c of headerCells) deferredAll.push(...c.deferred);
 
-  lines.push('| ' + Array(numCols).fill('---').join(' | ') + ' |');
+  if (colWidths) {
+    let sep = '|';
+    for (let ci = 0; ci < numCols; ci++) {
+      sep += ' ' + '-'.repeat(colWidths[ci]) + ' |';
+    }
+    lines.push(sep);
+  } else {
+    lines.push('| ' + Array(numCols).fill('---').join(' | ') + ' |');
+  }
 
   for (let i = 1; i < rendered.length; i++) {
     const rowCells = rendered[i];
@@ -3489,7 +3590,8 @@ function renderTableOrFallback(
   }
   // When the original was a pipe table, skip the width check to preserve format
   const pipeMax = storedFormat === 'pipe' ? Infinity : (options?.pipeTableMaxLineWidth ?? 120);
-  const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts);
+  const pipeAligned = tableIndex !== undefined && renderOpts?.pipeTableAlignedMapping?.get(String(tableIndex)) === 'true';
+  const pipeResult = tryRenderPipeTable(item, pipeMax, comments, renderOpts, pipeAligned);
   if (pipeResult !== null) {
     return fontPrefix + pipeResult;
   }
@@ -3504,7 +3606,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; gridTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; tableFontSizeMapping?: Map<string, string> | null; tableFontMapping?: Map<string, string> | null; landscapeTableIndices?: Set<number> | null; portraitTableIndices?: Set<number> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; gridTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; pipeTableAlignedMapping?: Map<string, string> | null; tableFontSizeMapping?: Map<string, string> | null; tableFontMapping?: Map<string, string> | null; landscapeTableIndices?: Set<number> | null; portraitTableIndices?: Set<number> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null; htmlCommentAfterGaps?: Map<number, number> | null; sentinelGaps?: Record<string, number> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3620,6 +3722,7 @@ export function buildMarkdown(
     noteLabels,
     imageFormatMapping: options?.imageFormatMapping ?? undefined,
     tableFormatMapping: options?.tableFormatMapping ?? undefined,
+    pipeTableAlignedMapping: options?.pipeTableAlignedMapping ?? undefined,
     tableFontSizeMapping: options?.tableFontSizeMapping ?? undefined,
     tableFontMapping: options?.tableFontMapping ?? undefined,
     landscapeTableIndices: options?.landscapeTableIndices ?? undefined,
@@ -3651,12 +3754,74 @@ export function buildMarkdown(
   const blockquotePostContentBlankLines = options?.blockquotePostContentBlankLines;
   const blockquoteAlertInlineByGroup = options?.blockquoteAlertInlineByGroup;
   const htmlCommentGaps = options?.htmlCommentGaps;
+  const htmlCommentAfterGaps = options?.htmlCommentAfterGaps;
   let htmlCommentIndex = 0;
+  let lastRenderedHtmlCommentIndex: number | undefined;
+  let lastWasSectionSentinel = false; // true after landscape/portrait open/close rendering
+  let lastSentinelAfterGapKey: string | undefined; // after-gap key of the last rendered sentinel
   let skipNextLandscapeClose = false;
   let skipNextPortraitClose = false;
+  const sentinelGaps = options?.sentinelGaps;
+  let sentinelLoIdx = 0, sentinelLcIdx = 0, sentinelPoIdx = 0, sentinelPcIdx = 0;
+  // Emit separator before a sentinel using stored gap metadata.
+  // Returns true if a gap-aware separator was emitted, false otherwise.
+  function emitSentinelSep(gapKey: string): boolean {
+    if (!sentinelGaps) return false;
+    const gapCount = sentinelGaps[gapKey];
+    if (gapCount === undefined) return false;
+    const desiredNewlines = gapCount + 1;
+    let existingNewlines = 0;
+    for (let oi = output.length - 1; oi >= 0; oi--) {
+      const s = output[oi];
+      let j = s.length - 1;
+      while (j >= 0 && s[j] === '\n') { existingNewlines++; j--; }
+      if (j >= 0) break;
+    }
+    const needed = desiredNewlines - existingNewlines;
+    if (needed > 0) {
+      output.push('\n'.repeat(needed));
+    } else if (needed < 0) {
+      let toRemove = -needed;
+      while (toRemove > 0 && output.length > 0) {
+        const last = output[output.length - 1];
+        let trailingNL = 0;
+        for (let j = last.length - 1; j >= 0 && last[j] === '\n'; j--) trailingNL++;
+        if (trailingNL === 0) break;
+        const removeFromThis = Math.min(toRemove, trailingNL);
+        if (removeFromThis === last.length) {
+          output.pop();
+        } else {
+          output[output.length - 1] = last.slice(0, last.length - removeFromThis);
+        }
+        toRemove -= removeFromThis;
+      }
+    }
+    return true;
+  }
 
   while (i < mergedContent.length) {
     const item = mergedContent[i];
+
+    // Compute incoming separator from the previous item (consumed once per iteration).
+    // null means "no special handling, use default \n\n".
+    let incomingSep: string | null = null;
+    if (lastRenderedHtmlCommentIndex !== undefined) {
+      const gapCount = htmlCommentAfterGaps?.get(lastRenderedHtmlCommentIndex);
+      if (gapCount !== undefined) {
+        incomingSep = '\n' + '\n'.repeat(gapCount);
+      }
+      lastRenderedHtmlCommentIndex = undefined;
+    } else if (lastWasSectionSentinel) {
+      // Use after-gap metadata from the last sentinel if available
+      const afterGap = lastSentinelAfterGapKey && sentinelGaps ? sentinelGaps[lastSentinelAfterGapKey] : undefined;
+      if (afterGap !== undefined) {
+        incomingSep = '\n' + '\n'.repeat(afterGap);
+      } else {
+        incomingSep = '\n';
+      }
+      lastWasSectionSentinel = false;
+      lastSentinelAfterGapKey = undefined;
+    }
 
     if (item.type === 'para') {
       // Code block grouping: collect consecutive code-block paragraphs into a fenced block
@@ -3744,6 +3909,8 @@ export function buildMarkdown(
       if (output.length > 0) {
         if (lastListType && isCurrentList && item.listMeta!.type === lastListType) {
           output.push('\n');
+        } else if (incomingSep !== null) {
+          output.push(incomingSep);
         } else if (
           blockquoteGaps &&
           item.blockquoteLevel &&
@@ -3859,26 +4026,6 @@ export function buildMarkdown(
           } else {
             output.push('\n\n');
           }
-        } else if (
-          htmlCommentGaps &&
-          !item.headingLevel &&
-          !item.listMeta &&
-          !item.blockquoteLevel &&
-          !item.isCodeBlock
-        ) {
-          // Check if this paragraph is an HTML comment paragraph
-          const nextItem = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
-          if (nextItem && nextItem.type === 'html_comment') {
-            const gapCount = htmlCommentGaps.get(htmlCommentIndex);
-            if (gapCount !== undefined) {
-              // gapCount blank lines = gapCount+1 newline characters
-              output.push('\n' + '\n'.repeat(gapCount));
-            } else {
-              output.push('\n\n');
-            }
-          } else {
-            output.push('\n\n');
-          }
         } else {
           output.push('\n\n');
         }
@@ -3979,6 +4126,8 @@ export function buildMarkdown(
     }
 
     if (item.type === 'landscape_open') {
+      const gapKey = 'lo' + sentinelLoIdx;
+      sentinelLoIdx++;
       // Check if this is a single-table landscape section (table-only, no title/notes).
       // If the custom property says so, suppress the fences and let the table's
       // data-orientation attribute handle it instead.
@@ -3994,28 +4143,44 @@ export function buildMarkdown(
           continue;
         }
       }
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+      if (emitSentinelSep(gapKey)) {
+        // gap metadata handled it
+      } else if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
       output.push('<!-- landscape -->');
+      lastWasSectionSentinel = true;
+      lastSentinelAfterGapKey = gapKey.replace('lo', 'loa');
       i++;
       continue;
     }
     if (item.type === 'landscape_close') {
+      const gapKey = 'lc' + sentinelLcIdx;
+      sentinelLcIdx++;
       if (skipNextLandscapeClose) {
         skipNextLandscapeClose = false;
         i++;
         continue;
       }
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+      if (emitSentinelSep(gapKey)) {
+        // gap metadata handled it
+      } else if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
       output.push('<!-- /landscape -->');
+      lastWasSectionSentinel = true;
+      lastSentinelAfterGapKey = gapKey.replace('lc', 'lca');
       i++;
       continue;
     }
 
     if (item.type === 'portrait_open') {
+      const gapKey = 'po' + sentinelPoIdx;
+      sentinelPoIdx++;
       if (renderOpts?.portraitTableIndices?.has(tableIndex)) {
         const nextItem = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
         const afterTable = i + 2 < mergedContent.length ? mergedContent[i + 2] : undefined;
@@ -4025,23 +4190,37 @@ export function buildMarkdown(
           continue;
         }
       }
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+      if (emitSentinelSep(gapKey)) {
+        // gap metadata handled it
+      } else if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
       output.push('<!-- portrait -->');
+      lastWasSectionSentinel = true;
+      lastSentinelAfterGapKey = gapKey.replace('po', 'poa');
       i++;
       continue;
     }
     if (item.type === 'portrait_close') {
+      const gapKey = 'pc' + sentinelPcIdx;
+      sentinelPcIdx++;
       if (skipNextPortraitClose) {
         skipNextPortraitClose = false;
         i++;
         continue;
       }
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+      if (emitSentinelSep(gapKey)) {
+        // gap metadata handled it
+      } else if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
       output.push('<!-- /portrait -->');
+      lastWasSectionSentinel = true;
+      lastSentinelAfterGapKey = gapKey.replace('pc', 'pca');
       i++;
       continue;
     }
@@ -4080,7 +4259,9 @@ export function buildMarkdown(
     }
 
     if (item.type === 'table') {
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+      if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
       const storedFormat = renderOpts?.tableFormatMapping?.get(String(tableIndex));
@@ -4096,8 +4277,54 @@ export function buildMarkdown(
       continue;
     }
 
-    // Track HTML comment paragraph index for gap metadata
+    // Track HTML comment paragraph index for gap metadata and emit separator
     if (item.type === 'html_comment') {
+      if (output.length > 0) {
+        if (incomingSep !== null) {
+          output.push(incomingSep);
+        } else {
+          // Use before-gap metadata for this html_comment.
+          // The empty para marker that precedes the html_comment item may have
+          // already contributed newlines to the output (via the para separator
+          // chain).  Count existing trailing newlines and only add the delta so
+          // the total matches the original source gap.
+          const gapCount = htmlCommentGaps?.get(htmlCommentIndex);
+          if (gapCount !== undefined) {
+            const desiredNewlines = gapCount + 1; // gapCount blank lines = gapCount+1 \n
+            // Count trailing newlines already in output
+            let existingNewlines = 0;
+            for (let oi = output.length - 1; oi >= 0; oi--) {
+              const s = output[oi];
+              let j = s.length - 1;
+              while (j >= 0 && s[j] === '\n') { existingNewlines++; j--; }
+              if (j >= 0) break; // hit non-newline content, stop
+            }
+            const needed = desiredNewlines - existingNewlines;
+            if (needed > 0) {
+              output.push('\n'.repeat(needed));
+            } else if (needed < 0) {
+              // Too many trailing newlines — trim excess from the output tail
+              let toRemove = -needed;
+              while (toRemove > 0 && output.length > 0) {
+                const last = output[output.length - 1];
+                let trailingNL = 0;
+                for (let j = last.length - 1; j >= 0 && last[j] === '\n'; j--) trailingNL++;
+                if (trailingNL === 0) break;
+                const removeFromThis = Math.min(toRemove, trailingNL);
+                if (removeFromThis === last.length) {
+                  output.pop();
+                } else {
+                  output[output.length - 1] = last.slice(0, last.length - removeFromThis);
+                }
+                toRemove -= removeFromThis;
+              }
+            }
+          } else if (!output[output.length - 1].endsWith('\n\n')) {
+            output.push('\n\n');
+          }
+        }
+      }
+      lastRenderedHtmlCommentIndex = htmlCommentIndex;
       htmlCommentIndex++;
     }
 
@@ -4455,7 +4682,7 @@ export async function extractAuthor(zip: JSZip): Promise<string | undefined> {
 // Main conversion
 
 /** Extract heading/title font properties from word/styles.xml for round-trip. */
-function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter> {
+function extractFontOverridesFromStyles(stylesXml: string, opts?: { explicitTableFontSize?: boolean }): Partial<Frontmatter> {
   const result: Partial<Frontmatter> = {};
 
   // Helper: find a style block by styleId and extract rPr content
@@ -4522,6 +4749,11 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
   // Extract Normal (body) font for comparison
   const normalRpr = getStyleRPr('Normal');
   const bodyFont = normalRpr ? extractFont(normalRpr) : undefined;
+  const bodySizeHp = normalRpr ? extractSizeHp(normalRpr) : undefined;
+
+  // Emit body font/fontSize when they differ from Word defaults
+  if (bodyFont && bodyFont !== 'Calibri') result.font = bodyFont;
+  if (bodySizeHp !== undefined && bodySizeHp !== 22) result.fontSize = bodySizeHp / 2;
 
   // Default heading sizes in half-points
   const defaultHp: Record<string, number> = {
@@ -4592,11 +4824,12 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
     if (tblFont && tblFont !== bodyFont) result.tableFont = tblFont;
     const tblSizeHp = extractSizeHp(tableRpr);
     if (tblSizeHp !== undefined) {
-      const bodySizeHp = normalRpr ? (extractSizeHp(normalRpr) ?? 22) : 22;
+      const bsHp = bodySizeHp ?? 22;
       // Suppress table-font-size when it matches auto-shrink default (body - 4hp),
-      // since auto-shrink always reproduces it on import.
-      const autoDefault = Math.max(1, bodySizeHp - 4);
-      if (tblSizeHp !== autoDefault) {
+      // since auto-shrink always reproduces it on import — unless the original
+      // frontmatter explicitly set table-font-size (explicitTableFontSize flag).
+      const autoDefault = Math.max(1, bsHp - 4);
+      if (opts?.explicitTableFontSize || tblSizeHp !== autoDefault) {
         result.tableFontSize = tblSizeHp / 2;
       }
     }
@@ -4611,7 +4844,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number; gridTableMaxLineWidth?: number; gridTableMaxLineWidthDefault?: number; existingBibtex?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, tableFontSizeMapping, tableFontMapping, storedPipeTableMaxLineWidth, storedGridTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData, landscapeTableMapping, portraitTableMapping, portraitBreaks] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, pipeTableAlignedMapping, tableFontSizeMapping, tableFontMapping, storedPipeTableMaxLineWidth, storedGridTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData, landscapeTableMapping, portraitTableMapping, portraitBreaks, explicitTableFontSize, storedFieldOrder, htmlCommentAfterGapMapping, sentinelGapMapping] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4627,6 +4860,7 @@ export async function convertDocx(
     extractBlockquoteAlertStyleMapping(zip),
     extractImageFormatMapping(zip),
     extractTableFormatMapping(zip),
+    extractPipeTableAlignedMapping(zip),
     extractTableFontSizeMapping(zip),
     extractTableFontMapping(zip),
     extractPipeTableMaxLineWidth(zip),
@@ -4640,6 +4874,10 @@ export async function convertDocx(
     extractLandscapeTableMapping(zip),
     extractPortraitTableMapping(zip),
     extractPortraitBreakOrdinals(zip),
+    extractExplicitTableFontSize(zip),
+    extractFrontmatterFieldOrder(zip),
+    extractHtmlCommentAfterGapMapping(zip),
+    extractSentinelGapMapping(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -4766,12 +5004,15 @@ export async function convertDocx(
     blockquoteAlertInlineByGroup: blockquoteAlertStyleMapping,
     imageFormatMapping,
     tableFormatMapping,
+    pipeTableAlignedMapping,
     tableFontSizeMapping,
     tableFontMapping,
     landscapeTableIndices: landscapeTableMapping,
     portraitTableIndices: portraitTableMapping,
     listIndent: storedListIndent ?? 'spaces',
     htmlCommentGaps: htmlCommentGapMapping,
+    htmlCommentAfterGaps: htmlCommentAfterGapMapping,
+    sentinelGaps: sentinelGapMapping,
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
@@ -4813,7 +5054,7 @@ export async function convertDocx(
   const stylesFile = zip.file('word/styles.xml');
   if (stylesFile) {
     const stylesStr = await stylesFile.async('string');
-    const fontFields = extractFontOverridesFromStyles(stylesStr);
+    const fontFields = extractFontOverridesFromStyles(stylesStr, { explicitTableFontSize });
     Object.assign(fm, fontFields);
   }
   if (codeBlockStyling) {
@@ -4833,7 +5074,7 @@ export async function convertDocx(
   if (resolvedGridTableMaxLineWidth !== 120 || storedGridTableMaxLineWidth != null || validWidth(options?.gridTableMaxLineWidth) != null) {
     fm.gridTableMaxLineWidth = resolvedGridTableMaxLineWidth;
   }
-  const frontmatterStr = serializeFrontmatter(fm);
+  const frontmatterStr = serializeFrontmatter(fm, storedFieldOrder ?? undefined);
   if (frontmatterStr) {
     // Restore the original number of blank lines after frontmatter.
     // Default to 1 blank line (conventional) when no stored value exists.

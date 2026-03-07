@@ -911,8 +911,8 @@ describe('Grid table renderer', () => {
     // Replace the stored table format from 'html' to 'grid'
     const customXml = await zip.file('docProps/custom.xml')?.async('string') || '';
     const updatedXml = customXml.replace(
-      '&quot;html&quot;',
-      '&quot;grid&quot;'
+      '{"0":"html"}',
+      '{"0":"grid"}'
     );
     zip.file('docProps/custom.xml', updatedXml);
     const modifiedDocx = await zip.generateAsync({ type: 'uint8array' });
@@ -973,6 +973,35 @@ describe('Grid table round-trip', () => {
     expect(result.markdown).toContain('Cell 2');
     expect(result.markdown).toContain('line 2');
     expect(result.markdown).not.toContain('<table>');
+  });
+
+  test('grid table preserves vertically offset cell content on round-trip', async () => {
+    const gridMd = [
+      '+------+------+------+',
+      '| Col1 |      |      |',
+      '|      | Col2 |      |',
+      '|      |      | Col3 |',
+      '+======+======+======+',
+      '| A    | B    | C    |',
+      '+------+------+------+',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(gridMd);
+    const result = await convertDocx(docx);
+    // Content vertical position must survive: Col3 on line 3, Col2 on line 2
+    const lines = result.markdown.split('\n');
+    // Find the header content rows (between first border and === border)
+    const firstBorder = lines.findIndex(l => /^\+[-=]/.test(l));
+    const eqBorder = lines.findIndex(l => /^\+=/.test(l));
+    const headerLines = lines.slice(firstBorder + 1, eqBorder);
+    // Col1 should appear on the first header line
+    expect(headerLines[0]).toContain('Col1');
+    expect(headerLines[0]).not.toContain('Col2');
+    // Col2 should appear on the second header line
+    expect(headerLines[1]).toContain('Col2');
+    expect(headerLines[1]).not.toContain('Col1');
+    // Col3 should appear on the third header line
+    expect(headerLines[2]).toContain('Col3');
+    expect(headerLines[2]).not.toContain('Col2');
   });
 
   test('simple grid table without multi-line cells preserves grid format', async () => {
@@ -1051,6 +1080,56 @@ describe('HTML comment blank line round-trip', () => {
     expect(result.markdown).not.toContain('Paragraph one.\n\n\n<!-- A comment -->');
   });
 
+  test('tight comment before grid table preserves zero-gap spacing', async () => {
+    const md = '<!-- portrait -->\n## Table 1\n\nParagraph text\n<!-- Begin Table 1 -->\n+---+---+\n| A | B |\n+===+===+\n| 1 | 2 |\n+---+---+';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // 0 blank lines before comment (tight against paragraph)
+    expect(result.markdown).toContain('Paragraph text\n<!-- Begin Table 1 -->');
+    expect(result.markdown).not.toContain('Paragraph text\n\n<!-- Begin Table 1 -->');
+    // 0 blank lines after comment (tight against grid table)
+    expect(result.markdown).toContain('<!-- Begin Table 1 -->\n+');
+    expect(result.markdown).not.toContain('<!-- Begin Table 1 -->\n\n+');
+  });
+
+  test('tight comment after-gap (0 blank lines after comment)', async () => {
+    const md = '<!-- comment -->\nNext paragraph.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- comment -->\nNext paragraph');
+    expect(result.markdown).not.toContain('<!-- comment -->\n\nNext paragraph');
+  });
+
+  test('default comment after-gap (1 blank line) is preserved', async () => {
+    const md = '<!-- comment -->\n\nNext paragraph.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- comment -->\n\nNext paragraph');
+    expect(result.markdown).not.toContain('<!-- comment -->\n\n\nNext paragraph');
+  });
+
+  test('duplicate single-line comments get correct gaps', async () => {
+    const md = '<!-- note -->\nText\n\n\n<!-- note -->\n\nMore';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // First comment: 0 gap after (tight against Text)
+    expect(result.markdown).toContain('<!-- note -->\nText');
+    expect(result.markdown).not.toContain('<!-- note -->\n\nText');
+    // Second comment: default 1 blank line gap after
+    expect(result.markdown).toContain('<!-- note -->\n\nMore');
+    expect(result.markdown).not.toContain('<!-- note -->\n\n\nMore');
+  });
+
+  test('multi-line comment gap preservation', async () => {
+    const md = 'Before\n<!--\nmulti\n-->\nAfter';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // Tight gaps (0 blank lines) before and after
+    expect(result.markdown).toContain('Before\n<!--\nmulti\n-->\nAfter');
+    expect(result.markdown).not.toContain('Before\n\n<!--');
+    expect(result.markdown).not.toContain('-->\n\nAfter');
+  });
+
   test('multiline HTML comments preserve internal newlines', async () => {
     const md = 'Before\n\n<!--\n\nLine one\n\nLine two\n\n-->\n\nAfter';
     const { docx } = await convertMdToDocx(md);
@@ -1101,6 +1180,64 @@ describe('HTML comment blank line round-trip', () => {
     const buf = await buildSyntheticDocx(xml);
     const result = await convertDocx(buf);
     expect(result.markdown).toContain('<!--\nLine one\n-->');
+  });
+});
+
+describe('Sentinel gap round-trip', () => {
+  test('portrait sentinel with no blank line after opening', async () => {
+    const md = 'Before.\n\n<!-- portrait -->\n## Table 1\n\nSome text.\n\n<!-- /portrait -->\n\nAfter.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- portrait -->\n## Table 1');
+    expect(result.markdown).not.toContain('<!-- portrait -->\n\n## Table 1');
+  });
+
+  test('portrait sentinel with blank line after opening', async () => {
+    const md = 'Before.\n\n<!-- portrait -->\n\n## Table 1\n\nSome text.\n\n<!-- /portrait -->\n\nAfter.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- portrait -->\n\n## Table 1');
+    expect(result.markdown).not.toContain('<!-- portrait -->\n\n\n## Table 1');
+  });
+
+  test('tight /portrait before-gap (no blank line before close)', async () => {
+    const md = 'Before.\n\n<!-- portrait -->\n\nSome text.\n<!-- /portrait -->\n\nAfter.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('Some text.\n<!-- /portrait -->');
+    expect(result.markdown).not.toContain('Some text.\n\n<!-- /portrait -->');
+  });
+
+  test('blank line before /portrait', async () => {
+    const md = 'Before.\n\n<!-- portrait -->\n\nSome text.\n\n<!-- /portrait -->\n\nAfter.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('Some text.\n\n<!-- /portrait -->');
+    expect(result.markdown).not.toContain('Some text.\n\n\n<!-- /portrait -->');
+  });
+
+  test('tight consecutive portrait close then open', async () => {
+    const md = 'Before.\n\n<!-- portrait -->\n\nFirst section.\n\n<!-- /portrait -->\n<!-- portrait -->\n\nSecond section.\n\n<!-- /portrait -->\n\nAfter.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- /portrait -->\n<!-- portrait -->');
+    expect(result.markdown).not.toContain('<!-- /portrait -->\n\n<!-- portrait -->');
+  });
+
+  test('blank line between portrait close and open', async () => {
+    const md = 'Before.\n\n<!-- portrait -->\n\nFirst section.\n\n<!-- /portrait -->\n\n<!-- portrait -->\n\nSecond section.\n\n<!-- /portrait -->\n\nAfter.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- /portrait -->\n\n<!-- portrait -->');
+    expect(result.markdown).not.toContain('<!-- /portrait -->\n\n\n<!-- portrait -->');
+  });
+
+  test('landscape sentinel gaps preserved', async () => {
+    const md = 'Before.\n\n<!-- landscape -->\n## Wide Table\n\nContent.\n<!-- /landscape -->\n\nAfter.';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('<!-- landscape -->\n## Wide Table');
+    expect(result.markdown).toContain('Content.\n<!-- /landscape -->');
   });
 });
 
@@ -4077,7 +4214,11 @@ describe('Landscape section round-trip', () => {
     const zip = await JSZip.loadAsync(docx);
     const docXml = await zip.file('word/document.xml')!.async('string');
     // Should have a closing sectPr with US Letter portrait dimensions
-    expect(docXml).toContain('<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>');
+    // Extract final sectPr block and verify it contains expected page dimensions
+    const sectPrMatch = docXml.match(/<w:sectPr[^>]*>[\s\S]*?<\/w:sectPr>\s*<\/w:body>/);
+    expect(sectPrMatch).not.toBeNull();
+    expect(sectPrMatch![0]).toContain('w:w="12240"');
+    expect(sectPrMatch![0]).toContain('w:h="15840"');
   });
 });
 
@@ -4192,6 +4333,92 @@ describe('Portrait section round-trip', () => {
       s.includes('w:orient="landscape"') && s.includes('w:w="15840"') && s.includes('w:h="12240"')
     );
     expect(landscapeSectPrs.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('round-trip regression: image path preservation', () => {
+  // Minimal 1x1 white PNG (67 bytes)
+  const TINY_PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB' +
+    'Nl7BcQAAAABJRU5ErkJggg==', 'base64');
+
+  test('image with directory components round-trips full path', async () => {
+    const tmpDir = join(require('os').tmpdir(), 'mms-test-img-' + Date.now());
+    const { mkdirSync, writeFileSync, rmSync } = require('fs');
+    mkdirSync(join(tmpDir, 'output'), { recursive: true });
+    writeFileSync(join(tmpDir, 'output', 'figure_1.png'), TINY_PNG);
+    try {
+      // markdown references image relative to a subdir
+      const md = '![alt text](output/figure_1.png){width=200 height=150}\n';
+      const { docx } = await convertMdToDocx(md, { sourceDir: tmpDir });
+      const result = await convertDocx(docx);
+      expect(result.markdown).toContain('![alt text](output/figure_1.png)');
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('image with simple filename round-trips correctly', async () => {
+    const tmpDir = join(require('os').tmpdir(), 'mms-test-img2-' + Date.now());
+    const { mkdirSync, writeFileSync, rmSync } = require('fs');
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(join(tmpDir, 'image.png'), TINY_PNG);
+    try {
+      const md = '![](image.png){width=100 height=100}\n';
+      const { docx } = await convertMdToDocx(md, { sourceDir: tmpDir });
+      const result = await convertDocx(docx);
+      expect(result.markdown).toContain('![](image.png)');
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('round-trip regression: LaTeX nary subscript-only', () => {
+  test('\\sum\\limits_w does not gain spurious ^{}', async () => {
+    const md = '$\\sum\\limits_w$\n';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    expect(result.markdown).toContain('\\sum\\limits_w');
+    expect(result.markdown).not.toContain('^{}');
+  });
+});
+
+describe('round-trip regression: pipe table alignment', () => {
+  test('aligned pipe table preserves column padding', async () => {
+    const md = [
+      '| Name   | Value |',
+      '| ------ | ----- |',
+      '| Alpha  | 1     |',
+      '| Beta   | 2     |',
+      '',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // The separator should have dashes longer than minimum 3
+    const lines = result.markdown.split('\n');
+    const sepLine = lines.find(l => /^\|[\s\-:|]+\|$/.test(l));
+    expect(sepLine).toBeDefined();
+    // Should have padded dashes, not minimal ---
+    const segments = sepLine!.split('|').slice(1, -1);
+    expect(segments.some(s => s.replace(/[^-]/g, '').length > 3)).toBe(true);
+  });
+
+  test('compact pipe table stays compact', async () => {
+    const md = [
+      '| Name | Value |',
+      '| --- | --- |',
+      '| A | 1 |',
+      '',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    const lines = result.markdown.split('\n');
+    const sepLine = lines.find(l => /^\|[\s\-:|]+\|$/.test(l));
+    expect(sepLine).toBeDefined();
+    const segments = sepLine!.split('|').slice(1, -1);
+    // All segments should have exactly 3 dashes (compact)
+    expect(segments.every(s => s.replace(/[^-]/g, '').length === 3)).toBe(true);
   });
 });
 

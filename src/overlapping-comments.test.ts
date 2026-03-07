@@ -537,7 +537,10 @@ describe('Overlapping comments: round-trip', () => {
     const customXml = await zip.file('docProps/custom.xml')?.async('string');
     expect(customXml).toBeDefined();
     expect(customXml || '').toContain('MANUSCRIPT_COMMENT_IDS_1');
-    expect(customXml || '').toContain('&quot;0&quot;:&quot;intro-note&quot;');
+    const rawValue = (customXml || '').match(/name="MANUSCRIPT_COMMENT_IDS_1"[\s\S]*?<vt:lpwstr>([^<]*)<\/vt:lpwstr>/);
+    expect(rawValue).not.toBeNull();
+    const parsed = JSON.parse(rawValue![1]);
+    expect(parsed['0']).toBe('intro-note');
   });
 
   test('{====text====} round-trips with highlighted text in comment', async () => {
