@@ -3587,12 +3587,12 @@ function renderTableOrFallback(
   if (tableIndex !== undefined && renderOpts) {
     const fontSize = renderOpts.tableFontSizeMapping?.get(String(tableIndex));
     const font = renderOpts.tableFontMapping?.get(String(tableIndex));
-    if (fontSize) fontPrefix += '<!-- table-font-size: ' + fontSize + ' -->\n\n';
+    if (fontSize) fontPrefix += '<!-- table-font-size: ' + fontSize + ' -->\n';
     if (font) {
       if (font.includes('-->')) {
         forceHtmlTable = true;
       } else {
-        fontPrefix += '<!-- table-font: ' + font + ' -->\n\n';
+        fontPrefix += '<!-- table-font: ' + font + ' -->\n';
       }
     }
     const colWidths = renderOpts.tableColWidthsMapping?.get(String(tableIndex));
@@ -3600,11 +3600,11 @@ function renderTableOrFallback(
       if (colWidths.includes('-->')) {
         forceHtmlTable = true;
       } else {
-        fontPrefix += '<!-- table-col-widths: ' + colWidths + ' -->\n\n';
+        fontPrefix += '<!-- table-col-widths: ' + colWidths + ' -->\n';
       }
     }
-    if (isLandscapeTable) fontPrefix += '<!-- table-orientation: landscape -->\n\n';
-    if (isPortraitTable) fontPrefix += '<!-- table-orientation: portrait -->\n\n';
+    if (isLandscapeTable) fontPrefix += '<!-- table-orientation: landscape -->\n';
+    if (isPortraitTable) fontPrefix += '<!-- table-orientation: portrait -->\n';
     if (fontSize) htmlFontAttrs += ' data-font-size="' + escapeHtmlAttr(fontSize) + '"';
     if (font) htmlFontAttrs += ' data-font="' + escapeHtmlAttr(font) + '"';
     if (colWidths) htmlFontAttrs += ' data-col-widths="' + escapeHtmlAttr(colWidths) + '"';
@@ -4304,27 +4304,29 @@ export function buildMarkdown(
       // Insert directive prefix before any immediately-preceding HTML comment entries
       // so that directives appear above user sentinel comments (preserving original order).
       if (tableResult.directivePrefix) {
-        let insertIdx = output.length;
-        while (insertIdx > 0) {
-          const prev = output[insertIdx - 1];
-          // Skip separator-only entries (whitespace/newlines)
-          if (/^\s*$/.test(prev)) {
-            insertIdx--;
-            continue;
+        // Scan backwards past HTML comments and their inter-comment separators,
+        // but stop at (preserve) the separator between non-comment content and
+        // the first comment — that separator was computed from gap metadata.
+        let scanIdx = output.length;
+        while (scanIdx > 0) {
+          const prev = output[scanIdx - 1];
+          if (/^<!--[\s\S]*?-->$/.test(prev.trim())) { scanIdx--; continue; }
+          // Whitespace separator: skip only if it sits between two comments
+          if (/^\s*$/.test(prev) && scanIdx >= 2 && /^<!--[\s\S]*?-->$/.test(output[scanIdx - 2].trim())) {
+            scanIdx--; continue;
           }
-          if (/^<!--[\s\S]*?-->$/.test(prev.trim())) {
-            insertIdx--;
-          } else {
-            break;
-          }
+          break;
         }
-        const needsSep = insertIdx > 0 && !output[insertIdx - 1].endsWith('\n\n');
-        // If the next entry is a separator, don't add trailing newlines to the prefix
-        const nextIsSep = insertIdx < output.length && /^\s*$/.test(output[insertIdx]);
-        const prefix = tableResult.directivePrefix.replace(/\n+$/, '') + (nextIsSep ? '' : '\n\n');
-        output.splice(insertIdx, 0, (needsSep ? '\n\n' : '') + prefix);
+        // Splice out the comment entries (and any inter-comment seps + trailing table sep)
+        const commentBlock = output.splice(scanIdx);
+        const userComments = commentBlock.filter(e => !/^\s*$/.test(e));
+        const combined = tableResult.directivePrefix.replace(/\n+$/, '')
+          + (userComments.length > 0 ? '\n' + userComments.join('\n') : '');
+        output.push(combined);
+        output.push('\n' + tableResult.body);
+      } else {
+        output.push(tableResult.body);
       }
-      output.push(tableResult.body);
       tableIndex++;
       lastListType = undefined;
       lastAlertParagraphKey = undefined;
