@@ -631,8 +631,7 @@ describe('Font customization unit tests', () => {
       const zip = await JSZip.loadAsync(result.docx);
       const docXml = await zip.file('word/document.xml')!.async('string');
       expect(docXml).toContain('<w:tblW w:w="5000" w:type="pct"/>');
-      expect(docXml).toContain('<w:gridCol w:w="2500"/>');
-      expect(docXml).toContain('<w:gridCol w:w="1250"/>');
+      expect(docXml).toContain('<w:gridCol/><w:gridCol/><w:gridCol/>');
       expect(docXml).toContain('<w:tcW w:w="2500" w:type="pct"/>');
     });
 
@@ -676,6 +675,14 @@ describe('Font customization unit tests', () => {
       // The table with auto should have tblW auto (no column widths)
       // Note: there's only one table, so check for auto
       expect(docXml).toContain('<w:tblW w:w="0" w:type="auto"/>');
+    });
+
+    it('round-trips col-widths directive on a footnote table', async () => {
+      const markdown = 'Text[^fn1]\n\n[^fn1]: <!-- table-col-widths: 3 1 -->\n\n    | A | B |\n    |---|---|\n    | 1 | 2 |';
+      const result = await convertMdToDocx(markdown);
+      const { convertDocx } = await import('./converter');
+      const converted = await convertDocx(result.docx);
+      expect(converted.markdown).toContain('table-col-widths: 3 1');
     });
   });
 });

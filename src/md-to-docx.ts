@@ -4557,7 +4557,7 @@ export function generateTable(token: MdToken, state: DocxGenState, options?: MdT
   if (hasSpans || colWidthPcts) {
     xml += '<w:tblGrid>';
     for (let c = 0; c < totalCols; c++) {
-      xml += colWidthPcts ? '<w:gridCol w:w="' + colWidthPcts[c] + '"/>' : '<w:gridCol/>';
+      xml += '<w:gridCol/>';
     }
     xml += '</w:tblGrid>';
   }
@@ -5349,6 +5349,12 @@ export async function convertMdToDocx(
           if (t.pipeAligned) state.pipeTableAligned.set(state.tableIndex, true);
           if (t.tableFontSize !== undefined) state.tableFontSizes.set(state.tableIndex, t.tableFontSize);
           if (t.tableFont) state.tableFonts.set(state.tableIndex, t.tableFont);
+          if (t.tableColWidths) {
+            const val = t.tableColWidths === 'equal' ? 'equal'
+              : t.tableColWidths === 'auto' ? 'auto'
+              : t.tableColWidths.join(' ');
+            state.tableColWidths.set(state.tableIndex, val);
+          }
           bodyXml += '<w:p>' + paragraphPPr + selfRefRun + '</w:p>';
           bodyXml += generateTable(t, state, options, bibEntries, citeprocEngine);
           state.tableIndex++;
@@ -5362,6 +5368,12 @@ export async function convertMdToDocx(
           if (t.pipeAligned) state.pipeTableAligned.set(state.tableIndex, true);
           if (t.tableFontSize !== undefined) state.tableFontSizes.set(state.tableIndex, t.tableFontSize);
           if (t.tableFont) state.tableFonts.set(state.tableIndex, t.tableFont);
+          if (t.tableColWidths) {
+            const val = t.tableColWidths === 'equal' ? 'equal'
+              : t.tableColWidths === 'auto' ? 'auto'
+              : t.tableColWidths.join(' ');
+            state.tableColWidths.set(state.tableIndex, val);
+          }
           bodyXml += generateTable(t, state, options, bibEntries, citeprocEngine);
           state.tableIndex++;
         } else {

@@ -123,8 +123,8 @@ export function parseColWidths(raw: string): number[] | 'equal' | 'auto' | undef
   if (inner.startsWith('[') && inner.endsWith(']')) inner = inner.slice(1, -1);
   const parts = inner.split(/[\s,]+/).filter(s => s.length > 0);
   if (parts.length === 0) return undefined;
-  const nums = parts.map(s => parseFloat(s));
-  if (nums.some(n => !isFinite(n) || n <= 0)) return undefined;
+  const nums = parts.map(s => Number(s));
+  if (nums.some(n => !Number.isFinite(n) || n <= 0)) return undefined;
   return nums;
 }
 
@@ -143,11 +143,14 @@ export function colWidthsToPct(ratios: number[]): number[] {
   const total = ratios.reduce((a, b) => a + b, 0);
   if (total === 0) return ratios.map(() => Math.floor(5000 / ratios.length));
   const raw = ratios.map(r => r / total * 5000);
-  // Round and adjust to ensure exact sum of 5000
-  const rounded = raw.map(v => Math.round(v));
-  const diff = 5000 - rounded.reduce((a, b) => a + b, 0);
-  if (diff !== 0) rounded[0] += diff;
-  return rounded;
+  // Largest-remainder rounding to ensure exact sum of 5000
+  const widths = raw.map(v => Math.floor(v));
+  let remaining = 5000 - widths.reduce((a, b) => a + b, 0);
+  const byRemainder = raw
+    .map((v, i) => ({ i, frac: v - widths[i] }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < remaining; k++) widths[byRemainder[k].i] += 1;
+  return widths;
 }
 
 /**

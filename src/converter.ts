@@ -3612,15 +3612,16 @@ function renderTableOrFallback(
     if (isPortraitTable) htmlFontAttrs += ' data-orientation="portrait"';
   }
   const r = (body: string) => ({ directivePrefix: fontPrefix, body });
+  const rHtml = (body: string) => ({ directivePrefix: '', body });
   // If the original format was HTML or font value is comment-unsafe, emit HTML directly
   if (storedFormat === 'html' || forceHtmlTable) {
-    return r(renderHtmlTable(item, comments, options?.tableIndent, renderOpts, htmlFontAttrs));
+    return rHtml(renderHtmlTable(item, comments, options?.tableIndent, renderOpts, htmlFontAttrs));
   }
   // If original was grid, try grid then fall back to HTML (skip pipe, skip width check to preserve format)
   if (storedFormat === 'grid') {
     const gridResult = tryRenderGridTable(item, comments, renderOpts);
     if (gridResult !== null) return r(gridResult);
-    return r(renderHtmlTable(item, comments, options?.tableIndent, renderOpts, htmlFontAttrs));
+    return rHtml(renderHtmlTable(item, comments, options?.tableIndent, renderOpts, htmlFontAttrs));
   }
   // When the original was a pipe table, skip the width check to preserve format
   const pipeMax = storedFormat === 'pipe' ? Infinity : (options?.pipeTableMaxLineWidth ?? 120);
@@ -3634,7 +3635,7 @@ function renderTableOrFallback(
     const gridResult = tryRenderGridTable(item, comments, renderOpts, options?.gridTableMaxLineWidth);
     if (gridResult !== null) return r(gridResult);
   }
-  return r(renderHtmlTable(item, comments, options?.tableIndent, renderOpts, htmlFontAttrs));
+  return rHtml(renderHtmlTable(item, comments, options?.tableIndent, renderOpts, htmlFontAttrs));
 }
 
 export function buildMarkdown(
@@ -4472,7 +4473,11 @@ export function buildMarkdown(
           }
           const noteStoredFormat = renderOpts?.tableFormatMapping?.get(String(tableIndex));
           const noteTableResult = renderTableOrFallback(item, comments, options, renderOpts, noteStoredFormat, tableIndex);
-          bodyParts.push(noteTableResult.directivePrefix + noteTableResult.body);
+          if (noteTableResult.directivePrefix) {
+            bodyParts.push(noteTableResult.directivePrefix.replace(/\n+$/, '') + '\n' + noteTableResult.body);
+          } else {
+            bodyParts.push(noteTableResult.body);
+          }
           tableIndex++;
           partStart = bi + 1;
         }

@@ -40,8 +40,8 @@ function parseColWidthsAttr(raw: string): number[] | 'equal' | 'auto' | undefine
   if (inner.startsWith('[') && inner.endsWith(']')) inner = inner.slice(1, -1);
   const parts = inner.split(/[\s,]+/).filter(s => s.length > 0);
   if (parts.length === 0) return undefined;
-  const nums = parts.map(s => parseFloat(s));
-  if (nums.some(n => !isFinite(n) || n <= 0)) return undefined;
+  const nums = parts.map(s => Number(s));
+  if (nums.some(n => !Number.isFinite(n) || n <= 0)) return undefined;
   return nums;
 }
 

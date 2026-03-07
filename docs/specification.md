@@ -177,7 +177,7 @@ The `table-col-widths` frontmatter field controls column width ratios for all ta
 </table>
 ```
 
-**`auto` keyword**: use `auto` in a per-table directive to override a frontmatter default and restore Word's default auto-sizing for that specific table.
+**`auto` keyword**: use `auto` in a per-table directive (`<!-- table-col-widths: auto -->` or `data-col-widths="auto"`) to override a frontmatter default and restore Word's default auto-sizing for that specific table.
 
 **Priority** (highest to lowest): per-table override → frontmatter default → auto (Word default).
 

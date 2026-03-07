@@ -1117,9 +1117,8 @@ describe('generateTable', () => {
     const result = generateTable(token, makeState());
     // tblW should be pct-based
     expect(result).toContain('<w:tblW w:w="5000" w:type="pct"/>');
-    // gridCol elements should have widths
-    expect(result).toContain('<w:gridCol w:w="2500"/>');
-    expect(result).toContain('<w:gridCol w:w="1250"/>');
+    // gridCol elements should be bare (Word computes grid from tcW pct)
+    expect(result).toContain('<w:gridCol/><w:gridCol/><w:gridCol/>');
     // Each cell should have tcW
     expect(result).toContain('<w:tcW w:w="2500" w:type="pct"/>');
     expect(result).toContain('<w:tcW w:w="1250" w:type="pct"/>');
@@ -1210,6 +1209,11 @@ describe('parseColWidths', () => {
     expect(parseColWidths('2 0 1')).toBeUndefined();
     expect(parseColWidths('2 -1 1')).toBeUndefined();
   });
+  it('rejects malformed tokens like "2x"', () => {
+    expect(parseColWidths('2x 1 1')).toBeUndefined();
+    expect(parseColWidths('1 abc 2')).toBeUndefined();
+    expect(parseColWidths('1e2x')).toBeUndefined();
+  });
   it('rejects empty', () => {
     expect(parseColWidths('')).toBeUndefined();
   });
@@ -1238,6 +1242,11 @@ describe('colWidthsToPct', () => {
   it('handles equal distribution with rounding', () => {
     const pcts = colWidthsToPct([1, 1, 1]);
     expect(pcts.reduce((a, b) => a + b, 0)).toBe(5000);
+  });
+  it('produces all-positive values for skewed ratios', () => {
+    const pcts = colWidthsToPct([1, 100, 100]);
+    expect(pcts.reduce((a, b) => a + b, 0)).toBe(5000);
+    expect(pcts.every(v => v > 0)).toBe(true);
   });
 });
 
