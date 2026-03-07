@@ -22,6 +22,32 @@ export { extractHtmlTables } from './html-table-parser';
 // - CriticMarkup recursive formatting: parse inner payloads with markdown-it
 //   (Critic/comment/citation/math/footnote rules disabled); carry structured
 //   inner runs on MdRun (innerRuns / oldRuns / newRuns)
+//
+// --- Word dirty-flag prevention ---
+// The following invariants prevent Word from marking generated .docx files as
+// modified upon opening. Violating any of these causes Word to normalize the
+// XML on open and set the "unsaved changes" flag:
+//
+// 1. xml:space="preserve": only emit on <w:t> when text starts/ends with a
+//    space. Word strips it from text that doesn't need it. Use wt() helper.
+// 2. Zip directory entries: do not include explicit folder entries (word/,
+//    _rels/, etc.) in the zip. Word omits them and normalizes if present.
+//    Delete dir entries from zip.files before generateAsync().
+// 3. pPr element ordering: pBdr before spacing before ind. Word normalizes
+//    out-of-order elements. Applies to styles AND inline paragraph properties.
+// 4. rPr element ordering: color before shd, color before sz/szCs.
+// 5. Redundant style properties: do not emit w:sz/w:szCs on a derived style
+//    when the value matches the base style (e.g. Heading4 sz=22 from Normal).
+//    Do not emit w:before="0" (it's the default and Word strips it).
+// 6. Sequential rId numbering: all relationship IDs must be sequential with no
+//    gaps. Gaps trigger Word to renumber all rIds on open.
+// 7. vt:lpwstr encoding: only escape &, <, > in custom property text values.
+//    Do NOT escape quotes — Word decodes &quot; to " and marks dirty.
+// 8. w:proofState: do not include. Word removes it from third-party files.
+// 9. Font completeness: include w:sig on all fonts, and include Calibri Light
+//    (referenced by theme minorFont/majorFont).
+// 10. Heading styles: include w:outlineLvl in pPr for all heading levels.
+// 11. sectPr completeness: include w:cols w:space="720" and w:rsidR.
 
 // Placeholder for deferred bibliography insertion (NUL bytes cannot appear in valid XML)
 const BIBL_PLACEHOLDER = '\x00MANUSCRIPT_BIBL_MARKER\x00';
@@ -2869,7 +2895,9 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     : szPair(22);
   const normalRpr = '<w:rPr>' + bodyFontStr + normalSz + '</w:rPr>\n';
 
-  // Heading helper: per-heading font/style/size overrides with defaults
+  // Heading helper: per-heading font/style/size overrides with defaults.
+  // Pass null for defaultHp when the size matches the base style (Normal) to
+  // avoid emitting redundant sz that Word strips — see dirty-flag invariant #5.
   function headingRpr(styleId: string, defaultHp: number | null): string {
     const font = overrides?.headingFonts?.get(styleId)
       ? rFonts(overrides.headingFonts.get(styleId)!)
@@ -3527,6 +3555,7 @@ function documentRelsXml(opts: DocumentRelsOptions): string {
   const { relationships, hasList, hasComments, hasTheme, hasFootnotes, hasEndnotes, hasCommentsExtended, hasCommentsIds, hasCommentsExtensible, hasPeople, imageRelationships } = opts;
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
+  // All rIds must be sequential with no gaps — see dirty-flag invariant #6.
   let nextFixed = 1;
   xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
   nextFixed++;
@@ -3607,6 +3636,9 @@ export function generateRPr(run: MdRun, extraRPr?: string): string {
   return parts.length > 0 ? '<w:rPr>' + parts.join('') + '</w:rPr>' : '';
 }
 
+// Wrap text in <w:t>, adding xml:space="preserve" only when the text has
+// leading or trailing spaces. Word strips the attribute from text that doesn't
+// need it, which sets the dirty flag. See dirty-flag invariant #1.
 function wt(text: string): string {
   const escaped = escapeXml(text);
   if (escaped.length > 0 && (escaped[0] === ' ' || escaped[escaped.length - 1] === ' ')) {
@@ -4222,6 +4254,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
     const borderPPr = '<w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr>';
     const indPPr = '<w:ind w:left="' + spacerLeftIndent + '"/>';
     if (token.alertFirst) {
+      // pPr ordering: pBdr before spacing before ind — see dirty-flag invariant #3.
       const firstPPr = '<w:pPr>' + borderPPr + '<w:spacing w:after="0" w:line="1" w:lineRule="exact"/>' + indPPr + '</w:pPr>';
       xml = '<w:p>' + firstPPr + '</w:p>' + xml;
     }
