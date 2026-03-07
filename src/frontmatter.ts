@@ -108,8 +108,46 @@ export interface Frontmatter {
   gridTableMaxLineWidth?: number;
   tableFont?: string;
   tableFontSize?: number;
+  tableColWidths?: number[] | 'equal';
   blockquoteStyle?: BlockquoteStyle;
   colors?: ColorScheme;
+}
+
+/** Parse a col-widths value: "2 1 1", "2,1,1", "[2, 1, 1]", "equal", "auto". */
+export function parseColWidths(raw: string): number[] | 'equal' | 'auto' | undefined {
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return undefined;
+  if (trimmed === 'equal') return 'equal';
+  if (trimmed === 'auto') return 'auto';
+  let inner = trimmed;
+  if (inner.startsWith('[') && inner.endsWith(']')) inner = inner.slice(1, -1);
+  const parts = inner.split(/[\s,]+/).filter(s => s.length > 0);
+  if (parts.length === 0) return undefined;
+  const nums = parts.map(s => parseFloat(s));
+  if (nums.some(n => !isFinite(n) || n <= 0)) return undefined;
+  return nums;
+}
+
+/** Expand ratios to match numCols by repeating the last value. */
+export function expandColWidths(ratios: number[] | 'equal', numCols: number): number[] {
+  if (ratios === 'equal') return Array(numCols).fill(1);
+  if (ratios.length >= numCols) return ratios.slice(0, numCols);
+  const result = [...ratios];
+  const last = ratios[ratios.length - 1];
+  while (result.length < numCols) result.push(last);
+  return result;
+}
+
+/** Convert ratios to OOXML fiftieths-of-percent (sum = 5000). */
+export function colWidthsToPct(ratios: number[]): number[] {
+  const total = ratios.reduce((a, b) => a + b, 0);
+  if (total === 0) return ratios.map(() => Math.floor(5000 / ratios.length));
+  const raw = ratios.map(r => r / total * 5000);
+  // Round and adjust to ensure exact sum of 5000
+  const rounded = raw.map(v => Math.round(v));
+  const diff = 5000 - rounded.reduce((a, b) => a + b, 0);
+  if (diff !== 0) rounded[0] += diff;
+  return rounded;
 }
 
 /**
@@ -266,6 +304,11 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
         }
         break;
       }
+      case 'table-col-widths': {
+        const parsed = parseColWidths(value);
+        if (parsed && parsed !== 'auto') metadata.tableColWidths = parsed;
+        break;
+      }
       case 'blockquote-style': {
         const style = normalizeBlockquoteStyle(value);
         if (style) metadata.blockquoteStyle = style;
@@ -327,6 +370,7 @@ export function serializeFrontmatter(metadata: Frontmatter, fieldOrder?: string[
     'title-font-style': () => emitArr('title-font-style', metadata.titleFontStyle),
     'table-font': () => { if (metadata.tableFont) lines.push('table-font: ' + metadata.tableFont); },
     'table-font-size': () => { if (metadata.tableFontSize !== undefined) lines.push('table-font-size: ' + metadata.tableFontSize); },
+    'table-col-widths': () => { if (metadata.tableColWidths) lines.push('table-col-widths: ' + (metadata.tableColWidths === 'equal' ? 'equal' : metadata.tableColWidths.join(' '))); },
     'code-background-color': () => { if (metadata.codeBackgroundColor) lines.push('code-background-color: ' + metadata.codeBackgroundColor); },
     'code-background': () => emitters['code-background-color'](),
     'code-font-color': () => { if (metadata.codeFontColor) lines.push('code-font-color: ' + metadata.codeFontColor); },
@@ -344,7 +388,7 @@ export function serializeFrontmatter(metadata: Frontmatter, fieldOrder?: string[
     'bibliography', 'font', 'code-font', 'font-size', 'code-font-size',
     'header-font', 'header-font-size', 'header-font-style',
     'title-font', 'title-font-size', 'title-font-style',
-    'table-font', 'table-font-size',
+    'table-font', 'table-font-size', 'table-col-widths',
     'code-background-color', 'code-font-color', 'code-block-inset',
     'pipe-table-max-line-width', 'grid-table-max-line-width',
     'blockquote-style', 'colors',

@@ -3,7 +3,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { ommlToLatex } from './omml';
 import { resolveMarkdownColor } from './highlight-colors';
 import { wrapColoredHighlight } from './formatting';
-import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber } from './frontmatter';
+import { Frontmatter, NotesMode, serializeFrontmatter, noteTypeFromNumber, parseColWidths } from './frontmatter';
 import { gfmAlertTitle, parseGfmAlertMarker, toGfmAlertMarker, type GfmAlertType } from './gfm';
 import { emuToPixels, isSupportedImageFormat, resolveImageFilename } from './image-utils';
 import { parseBibtex, mergeBibtex } from './bibtex-parser';
@@ -1025,6 +1025,29 @@ export async function extractTableFontSizeMapping(data: Uint8Array | JSZip): Pro
 
 export async function extractTableFontMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
   return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_TABLE_FONTS');
+}
+
+export async function extractTableColWidthsMapping(data: Uint8Array | JSZip): Promise<Map<string, string> | null> {
+  return extractIdMappingFromCustomXml(data, 'MANUSCRIPT_TABLE_COL_WIDTHS');
+}
+
+export async function extractDefaultTableColWidths(data: Uint8Array | JSZip): Promise<string | null> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return null;
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_DEFAULT_TABLE_COL_WIDTHS') continue;
+    const children = propNode?.property ?? propNode?.['property'] ?? (Array.isArray(propNode) ? propNode : [propNode]);
+    for (const child of (Array.isArray(children) ? children : [children])) {
+      if (child?.['vt:lpwstr'] !== undefined) {
+        const raw = nodeText(child['vt:lpwstr'] || []).trim();
+        return raw || null;
+      }
+    }
+  }
+  return null;
 }
 
 export async function extractLandscapeTableMapping(data: Uint8Array | JSZip): Promise<Set<number> | null> {
@@ -3177,7 +3200,7 @@ function renderHtmlTable(table: { rows: TableRow[] }, comments: Map<string, Comm
   return lines.join('\n');
 }
 
-type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string>; tableFormatMapping?: Map<string, string>; pipeTableAlignedMapping?: Map<string, string>; tableFontSizeMapping?: Map<string, string>; tableFontMapping?: Map<string, string>; landscapeTableIndices?: Set<number>; portraitTableIndices?: Set<number> };
+type RenderOpts = { alwaysUseCommentIds?: boolean; commentIdRemap?: Map<string, string>; forceIdCommentIds?: Set<string>; emittedIdCommentBodies?: Set<string>; noteLabels?: Map<string, string>; imageFormatMapping?: Map<string, string>; tableFormatMapping?: Map<string, string>; pipeTableAlignedMapping?: Map<string, string>; tableFontSizeMapping?: Map<string, string>; tableFontMapping?: Map<string, string>; tableColWidthsMapping?: Map<string, string>; landscapeTableIndices?: Set<number>; portraitTableIndices?: Set<number> };
 
 // East Asian Wide / Fullwidth code-point ranges (UAX #11).  Characters in
 // these ranges occupy two terminal columns; everything else is treated as
@@ -3571,10 +3594,19 @@ function renderTableOrFallback(
         fontPrefix += '<!-- table-font: ' + font + ' -->\n\n';
       }
     }
+    const colWidths = renderOpts.tableColWidthsMapping?.get(String(tableIndex));
+    if (colWidths) {
+      if (colWidths.includes('-->')) {
+        forceHtmlTable = true;
+      } else {
+        fontPrefix += '<!-- table-col-widths: ' + colWidths + ' -->\n\n';
+      }
+    }
     if (isLandscapeTable) fontPrefix += '<!-- table-orientation: landscape -->\n\n';
     if (isPortraitTable) fontPrefix += '<!-- table-orientation: portrait -->\n\n';
     if (fontSize) htmlFontAttrs += ' data-font-size="' + escapeHtmlAttr(fontSize) + '"';
     if (font) htmlFontAttrs += ' data-font="' + escapeHtmlAttr(font) + '"';
+    if (colWidths) htmlFontAttrs += ' data-col-widths="' + escapeHtmlAttr(colWidths) + '"';
     if (isLandscapeTable) htmlFontAttrs += ' data-orientation="landscape"';
     if (isPortraitTable) htmlFontAttrs += ' data-orientation="portrait"';
   }
@@ -3606,7 +3638,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; gridTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; pipeTableAlignedMapping?: Map<string, string> | null; tableFontSizeMapping?: Map<string, string> | null; tableFontMapping?: Map<string, string> | null; landscapeTableIndices?: Set<number> | null; portraitTableIndices?: Set<number> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null; htmlCommentAfterGaps?: Map<number, number> | null; sentinelGaps?: Record<string, number> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; gridTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; pipeTableAlignedMapping?: Map<string, string> | null; tableFontSizeMapping?: Map<string, string> | null; tableFontMapping?: Map<string, string> | null; tableColWidthsMapping?: Map<string, string> | null; landscapeTableIndices?: Set<number> | null; portraitTableIndices?: Set<number> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null; htmlCommentAfterGaps?: Map<number, number> | null; sentinelGaps?: Record<string, number> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3725,6 +3757,7 @@ export function buildMarkdown(
     pipeTableAlignedMapping: options?.pipeTableAlignedMapping ?? undefined,
     tableFontSizeMapping: options?.tableFontSizeMapping ?? undefined,
     tableFontMapping: options?.tableFontMapping ?? undefined,
+    tableColWidthsMapping: options?.tableColWidthsMapping ?? undefined,
     landscapeTableIndices: options?.landscapeTableIndices ?? undefined,
     portraitTableIndices: options?.portraitTableIndices ?? undefined,
   };
@@ -4844,7 +4877,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number; gridTableMaxLineWidth?: number; gridTableMaxLineWidthDefault?: number; existingBibtex?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, pipeTableAlignedMapping, tableFontSizeMapping, tableFontMapping, storedPipeTableMaxLineWidth, storedGridTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData, landscapeTableMapping, portraitTableMapping, portraitBreaks, explicitTableFontSize, storedFieldOrder, htmlCommentAfterGapMapping, sentinelGapMapping] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, pipeTableAlignedMapping, tableFontSizeMapping, tableFontMapping, tableColWidthsMapping, storedPipeTableMaxLineWidth, storedGridTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData, landscapeTableMapping, portraitTableMapping, portraitBreaks, explicitTableFontSize, storedFieldOrder, htmlCommentAfterGapMapping, sentinelGapMapping, defaultTableColWidths] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4863,6 +4896,7 @@ export async function convertDocx(
     extractPipeTableAlignedMapping(zip),
     extractTableFontSizeMapping(zip),
     extractTableFontMapping(zip),
+    extractTableColWidthsMapping(zip),
     extractPipeTableMaxLineWidth(zip),
     extractGridTableMaxLineWidth(zip),
     extractListIndent(zip),
@@ -4878,6 +4912,7 @@ export async function convertDocx(
     extractFrontmatterFieldOrder(zip),
     extractHtmlCommentAfterGapMapping(zip),
     extractSentinelGapMapping(zip),
+    extractDefaultTableColWidths(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -5007,6 +5042,7 @@ export async function convertDocx(
     pipeTableAlignedMapping,
     tableFontSizeMapping,
     tableFontMapping,
+    tableColWidthsMapping,
     landscapeTableIndices: landscapeTableMapping,
     portraitTableIndices: portraitTableMapping,
     listIndent: storedListIndent ?? 'spaces',
@@ -5073,6 +5109,11 @@ export async function convertDocx(
   }
   if (resolvedGridTableMaxLineWidth !== 120 || storedGridTableMaxLineWidth != null || validWidth(options?.gridTableMaxLineWidth) != null) {
     fm.gridTableMaxLineWidth = resolvedGridTableMaxLineWidth;
+  }
+  // Reconstruct table-col-widths from stored default custom property
+  if (defaultTableColWidths) {
+    const parsed = parseColWidths(defaultTableColWidths);
+    if (parsed && parsed !== 'auto') fm.tableColWidths = parsed;
   }
   const frontmatterStr = serializeFrontmatter(fm, storedFieldOrder ?? undefined);
   if (frontmatterStr) {
