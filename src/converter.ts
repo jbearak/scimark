@@ -161,6 +161,12 @@ export interface RunFormatting {
   code: boolean;
 }
 
+/** Returns true when any formatting flag is set (text won't survive GFM autolink). */
+function hasFormatting(fmt: RunFormatting): boolean {
+  return fmt.bold || fmt.italic || fmt.underline || fmt.strikethrough ||
+    fmt.highlight || fmt.superscript || fmt.subscript || fmt.code;
+}
+
 /** List metadata for a paragraph */
 export interface ListMeta {
   type: 'bullet' | 'ordered';
@@ -2876,7 +2882,7 @@ function renderInlineRange(
         // producing {====text====} (highlight nested inside comment delimiters).
         let segText = wrapWithFormatting(seg.text, seg.formatting);
         if (seg.href) {
-          if (seg.text !== seg.href) {
+          if (seg.text !== seg.href || hasFormatting(seg.formatting)) {
             segText = `[${segText}](${formatHrefForMarkdown(seg.href)})`;
           }
         }
@@ -2901,7 +2907,7 @@ function renderInlineRange(
 
     let formattedText = wrapWithFormatting(item.text, item.formatting);
     if (item.href) {
-      if (item.text !== item.href) {
+      if (item.text !== item.href || hasFormatting(item.formatting)) {
         formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
       }
     }
@@ -3117,7 +3123,7 @@ function renderInlineRangeWithIds(
 
     let formattedText = wrapWithFormatting(item.text, item.formatting);
     if (item.href) {
-      if (item.text !== item.href) {
+      if (item.text !== item.href || hasFormatting(item.formatting)) {
         formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
       }
     }
