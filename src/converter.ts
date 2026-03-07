@@ -3705,32 +3705,25 @@ export function buildMarkdown(
   let htmlCommentIndex = 0;
   let lastRenderedHtmlCommentIndex: number | undefined;
   let lastWasSectionSentinel = false; // true after landscape/portrait open/close rendering
-  // Separator for landscape/portrait sentinels: uses after-gap metadata if available,
-  // falls back to \n (no blank line) after another sentinel, or \n\n otherwise.
-  function sectionSentinelSeparator(): string {
-    if (output.length === 0) return '';
-    if (lastWasSectionSentinel) {
-      lastWasSectionSentinel = false;
-      return '\n';
-    }
-    // Check if the previous item was an HTML comment with after-gap metadata
-    if (lastRenderedHtmlCommentIndex !== undefined && htmlCommentAfterGaps) {
-      const gapCount = htmlCommentAfterGaps.get(lastRenderedHtmlCommentIndex);
-      lastRenderedHtmlCommentIndex = undefined;
-      if (gapCount !== undefined) {
-        return '\n' + '\n'.repeat(gapCount);
-      }
-      return '\n\n';
-    }
-    lastRenderedHtmlCommentIndex = undefined;
-    if (output[output.length - 1].endsWith('\n\n')) return '';
-    return '\n\n';
-  }
   let skipNextLandscapeClose = false;
   let skipNextPortraitClose = false;
 
   while (i < mergedContent.length) {
     const item = mergedContent[i];
+
+    // Compute incoming separator from the previous item (consumed once per iteration).
+    // null means "no special handling, use default \n\n".
+    let incomingSep: string | null = null;
+    if (lastRenderedHtmlCommentIndex !== undefined) {
+      const gapCount = htmlCommentAfterGaps?.get(lastRenderedHtmlCommentIndex);
+      if (gapCount !== undefined) {
+        incomingSep = '\n' + '\n'.repeat(gapCount);
+      }
+      lastRenderedHtmlCommentIndex = undefined;
+    } else if (lastWasSectionSentinel) {
+      incomingSep = '\n';
+      lastWasSectionSentinel = false;
+    }
 
     if (item.type === 'para') {
       // Code block grouping: collect consecutive code-block paragraphs into a fenced block
@@ -3816,41 +3809,10 @@ export function buildMarkdown(
       const isCurrentList = item.listMeta !== undefined;
 
       if (output.length > 0) {
-        // Consume after-comment gap tracking for this separator
-        const pendingAfterCommentIdx = lastRenderedHtmlCommentIndex;
-        lastRenderedHtmlCommentIndex = undefined;
-        const wasSectionSentinel = lastWasSectionSentinel;
-        lastWasSectionSentinel = false;
-
         if (lastListType && isCurrentList && item.listMeta!.type === lastListType) {
           output.push('\n');
-        } else if (
-          pendingAfterCommentIdx !== undefined &&
-          htmlCommentAfterGaps
-        ) {
-          // After an HTML comment: use after-gap metadata to preserve spacing
-          const gapCount = htmlCommentAfterGaps.get(pendingAfterCommentIdx);
-          if (gapCount !== undefined) {
-            output.push('\n' + '\n'.repeat(gapCount));
-          } else {
-            output.push('\n\n');
-          }
-        } else if (
-          htmlCommentGaps &&
-          i + 1 < mergedContent.length &&
-          mergedContent[i + 1]?.type === 'html_comment'
-        ) {
-          // Next item is an HTML comment: use before-gap metadata
-          const gapCount = htmlCommentGaps.get(htmlCommentIndex);
-          if (gapCount !== undefined) {
-            output.push('\n' + '\n'.repeat(gapCount));
-          } else {
-            output.push('\n\n');
-          }
-        } else if (wasSectionSentinel) {
-          // After landscape/portrait open/close: emit single newline (no blank line)
-          // to match the source markdown where these comments are flush with content.
-          output.push('\n');
+        } else if (incomingSep !== null) {
+          output.push(incomingSep);
         } else if (
           blockquoteGaps &&
           item.blockquoteLevel &&
@@ -4081,7 +4043,11 @@ export function buildMarkdown(
           continue;
         }
       }
-      output.push(sectionSentinelSeparator());
+      if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+        output.push('\n\n');
+      }
       output.push('<!-- landscape -->');
       lastWasSectionSentinel = true;
       i++;
@@ -4093,7 +4059,11 @@ export function buildMarkdown(
         i++;
         continue;
       }
-      output.push(sectionSentinelSeparator());
+      if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+        output.push('\n\n');
+      }
       output.push('<!-- /landscape -->');
       lastWasSectionSentinel = true;
       i++;
@@ -4110,7 +4080,11 @@ export function buildMarkdown(
           continue;
         }
       }
-      output.push(sectionSentinelSeparator());
+      if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+        output.push('\n\n');
+      }
       output.push('<!-- portrait -->');
       lastWasSectionSentinel = true;
       i++;
@@ -4122,7 +4096,11 @@ export function buildMarkdown(
         i++;
         continue;
       }
-      output.push(sectionSentinelSeparator());
+      if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+        output.push('\n\n');
+      }
       output.push('<!-- /portrait -->');
       lastWasSectionSentinel = true;
       i++;
@@ -4163,7 +4141,9 @@ export function buildMarkdown(
     }
 
     if (item.type === 'table') {
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
+      if (incomingSep !== null) {
+        output.push(incomingSep);
+      } else if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
         output.push('\n\n');
       }
       const storedFormat = renderOpts?.tableFormatMapping?.get(String(tableIndex));
@@ -4179,8 +4159,37 @@ export function buildMarkdown(
       continue;
     }
 
-    // Track HTML comment paragraph index for gap metadata
+    // Track HTML comment paragraph index for gap metadata and emit separator
     if (item.type === 'html_comment') {
+      if (output.length > 0) {
+        if (incomingSep !== null) {
+          output.push(incomingSep);
+        } else {
+          // Use before-gap metadata for this html_comment.
+          // The empty para marker that precedes the html_comment item may have
+          // already contributed newlines to the output (via the para separator
+          // chain).  Count existing trailing newlines and only add the delta so
+          // the total matches the original source gap.
+          const gapCount = htmlCommentGaps?.get(htmlCommentIndex);
+          if (gapCount !== undefined) {
+            const desiredNewlines = gapCount + 1; // gapCount blank lines = gapCount+1 \n
+            // Count trailing newlines already in output
+            let existingNewlines = 0;
+            for (let oi = output.length - 1; oi >= 0; oi--) {
+              const s = output[oi];
+              let j = s.length - 1;
+              while (j >= 0 && s[j] === '\n') { existingNewlines++; j--; }
+              if (j >= 0) break; // hit non-newline content, stop
+            }
+            const needed = desiredNewlines - existingNewlines;
+            if (needed > 0) {
+              output.push('\n'.repeat(needed));
+            }
+          } else if (!output[output.length - 1].endsWith('\n\n')) {
+            output.push('\n\n');
+          }
+        }
+      }
       lastRenderedHtmlCommentIndex = htmlCommentIndex;
       htmlCommentIndex++;
     }
