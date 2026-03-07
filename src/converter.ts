@@ -1123,6 +1123,50 @@ export async function extractFrontmatterBlankLines(data: Uint8Array | JSZip): Pr
   return null;
 }
 
+export async function extractHtmlCommentAfterGapMapping(data: Uint8Array | JSZip): Promise<Map<number, number> | null> {
+  const mappingJson = await extractChunkedCustomProp(data, 'MANUSCRIPT_HTML_COMMENT_AFTER_GAPS_');
+  if (!mappingJson) return null;
+  try {
+    const parsedJson = JSON.parse(mappingJson);
+    if (!parsedJson || typeof parsedJson !== 'object') return null;
+    const mapping = new Map<number, number>();
+    for (const [key, count] of Object.entries(parsedJson)) {
+      const commentIdx = parseInt(key, 10);
+      if (isNaN(commentIdx) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) continue;
+      mapping.set(commentIdx, count);
+    }
+    return mapping.size > 0 ? mapping : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function extractFrontmatterFieldOrder(data: Uint8Array | JSZip): Promise<string[] | null> {
+  const json = await extractChunkedCustomProp(data, 'MANUSCRIPT_FRONTMATTER_FIELD_ORDER_');
+  if (!json) return null;
+  try {
+    const arr = JSON.parse(json);
+    if (!Array.isArray(arr)) return null;
+    return arr.filter((s: unknown): s is string => typeof s === 'string');
+  } catch {
+    return null;
+  }
+}
+
+export async function extractExplicitTableFontSize(data: Uint8Array | JSZip): Promise<boolean> {
+  const zip = data instanceof JSZip ? data : await loadZip(data);
+  const parsed = await readZipXml(zip, 'docProps/custom.xml');
+  if (!parsed) return false;
+
+  const propertyNodes = findAllDeep(parsed, 'property');
+  for (const propNode of propertyNodes) {
+    const name: string = propNode?.[':@']?.['@_name'] ?? getAttr(propNode, 'name');
+    if (name !== 'MANUSCRIPT_EXPLICIT_TABLE_FONT_SIZE') continue;
+    return true;
+  }
+  return false;
+}
+
 /** Layer 2: read comma-separated bib key order from chunked MANUSCRIPT_BIB_KEY_ORDER_* custom props. */
 export async function extractBibKeyOrder(data: Uint8Array | JSZip): Promise<string[] | null> {
   const csv = await extractChunkedCustomProp(data, 'MANUSCRIPT_BIB_KEY_ORDER_');
@@ -2812,7 +2856,9 @@ function renderInlineRange(
         // producing {====text====} (highlight nested inside comment delimiters).
         let segText = wrapWithFormatting(seg.text, seg.formatting);
         if (seg.href) {
-          segText = `[${segText}](${formatHrefForMarkdown(seg.href)})`;
+          if (seg.text !== seg.href) {
+            segText = `[${segText}](${formatHrefForMarkdown(seg.href)})`;
+          }
         }
         segText = wrapWithRevision(segText, seg.revision);
         groupedCommentText.push(segText);
@@ -2835,7 +2881,9 @@ function renderInlineRange(
 
     let formattedText = wrapWithFormatting(item.text, item.formatting);
     if (item.href) {
-      formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
+      if (item.text !== item.href) {
+        formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
+      }
     }
     out += wrapWithRevision(formattedText, item.revision);
     i++;
@@ -3049,7 +3097,9 @@ function renderInlineRangeWithIds(
 
     let formattedText = wrapWithFormatting(item.text, item.formatting);
     if (item.href) {
-      formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
+      if (item.text !== item.href) {
+        formattedText = `[${formattedText}](${formatHrefForMarkdown(item.href)})`;
+      }
     }
     out += wrapWithRevision(formattedText, item.revision);
     i++;
@@ -3504,7 +3554,7 @@ function renderTableOrFallback(
 export function buildMarkdown(
   content: ContentItem[],
   comments: Map<string, Comment>,
-  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; gridTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; tableFontSizeMapping?: Map<string, string> | null; tableFontMapping?: Map<string, string> | null; landscapeTableIndices?: Set<number> | null; portraitTableIndices?: Set<number> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null },
+  options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; pipeTableMaxLineWidth?: number; gridTableMaxLineWidth?: number; commentIdMapping?: Map<string, string> | null; notes?: { map: Map<string, { label: string; body: ContentItem[]; noteKind: 'footnote' | 'endnote' }>; assignedLabels: Map<string, string> }; codeBlockLangs?: Map<string, string> | null; blockquoteGaps?: Map<number, number> | null; blockquotePreContentBlankLines?: Map<number, number> | null; blockquotePostContentBlankLines?: Map<number, number> | null; blockquoteAlertInlineByGroup?: Map<number, boolean> | null; imageFormatMapping?: Map<string, string> | null; tableFormatMapping?: Map<string, string> | null; tableFontSizeMapping?: Map<string, string> | null; tableFontMapping?: Map<string, string> | null; landscapeTableIndices?: Set<number> | null; portraitTableIndices?: Set<number> | null; listIndent?: 'tab' | 'spaces'; htmlCommentGaps?: Map<number, number> | null; htmlCommentAfterGaps?: Map<number, number> | null },
 ): string {
   const mergedContent = mergeConsecutiveRuns(content);
 
@@ -3651,7 +3701,31 @@ export function buildMarkdown(
   const blockquotePostContentBlankLines = options?.blockquotePostContentBlankLines;
   const blockquoteAlertInlineByGroup = options?.blockquoteAlertInlineByGroup;
   const htmlCommentGaps = options?.htmlCommentGaps;
+  const htmlCommentAfterGaps = options?.htmlCommentAfterGaps;
   let htmlCommentIndex = 0;
+  let lastRenderedHtmlCommentIndex: number | undefined;
+  let lastWasSectionSentinel = false; // true after landscape/portrait open/close rendering
+  // Separator for landscape/portrait sentinels: uses after-gap metadata if available,
+  // falls back to \n (no blank line) after another sentinel, or \n\n otherwise.
+  function sectionSentinelSeparator(): string {
+    if (output.length === 0) return '';
+    if (lastWasSectionSentinel) {
+      lastWasSectionSentinel = false;
+      return '\n';
+    }
+    // Check if the previous item was an HTML comment with after-gap metadata
+    if (lastRenderedHtmlCommentIndex !== undefined && htmlCommentAfterGaps) {
+      const gapCount = htmlCommentAfterGaps.get(lastRenderedHtmlCommentIndex);
+      lastRenderedHtmlCommentIndex = undefined;
+      if (gapCount !== undefined) {
+        return '\n' + '\n'.repeat(gapCount);
+      }
+      return '\n\n';
+    }
+    lastRenderedHtmlCommentIndex = undefined;
+    if (output[output.length - 1].endsWith('\n\n')) return '';
+    return '\n\n';
+  }
   let skipNextLandscapeClose = false;
   let skipNextPortraitClose = false;
 
@@ -3742,7 +3816,40 @@ export function buildMarkdown(
       const isCurrentList = item.listMeta !== undefined;
 
       if (output.length > 0) {
+        // Consume after-comment gap tracking for this separator
+        const pendingAfterCommentIdx = lastRenderedHtmlCommentIndex;
+        lastRenderedHtmlCommentIndex = undefined;
+        const wasSectionSentinel = lastWasSectionSentinel;
+        lastWasSectionSentinel = false;
+
         if (lastListType && isCurrentList && item.listMeta!.type === lastListType) {
+          output.push('\n');
+        } else if (
+          pendingAfterCommentIdx !== undefined &&
+          htmlCommentAfterGaps
+        ) {
+          // After an HTML comment: use after-gap metadata to preserve spacing
+          const gapCount = htmlCommentAfterGaps.get(pendingAfterCommentIdx);
+          if (gapCount !== undefined) {
+            output.push('\n' + '\n'.repeat(gapCount));
+          } else {
+            output.push('\n\n');
+          }
+        } else if (
+          htmlCommentGaps &&
+          i + 1 < mergedContent.length &&
+          mergedContent[i + 1]?.type === 'html_comment'
+        ) {
+          // Next item is an HTML comment: use before-gap metadata
+          const gapCount = htmlCommentGaps.get(htmlCommentIndex);
+          if (gapCount !== undefined) {
+            output.push('\n' + '\n'.repeat(gapCount));
+          } else {
+            output.push('\n\n');
+          }
+        } else if (wasSectionSentinel) {
+          // After landscape/portrait open/close: emit single newline (no blank line)
+          // to match the source markdown where these comments are flush with content.
           output.push('\n');
         } else if (
           blockquoteGaps &&
@@ -3856,26 +3963,6 @@ export function buildMarkdown(
           const nextIsBlockquotePara = next?.type === 'para' && !!next.blockquoteLevel;
           if (gapCount !== undefined && (gapCount >= 0 || gapCount === -1) && nextIsBlockquotePara) {
             // Suppress — gap handled at next blockquote para transition
-          } else {
-            output.push('\n\n');
-          }
-        } else if (
-          htmlCommentGaps &&
-          !item.headingLevel &&
-          !item.listMeta &&
-          !item.blockquoteLevel &&
-          !item.isCodeBlock
-        ) {
-          // Check if this paragraph is an HTML comment paragraph
-          const nextItem = i + 1 < mergedContent.length ? mergedContent[i + 1] : undefined;
-          if (nextItem && nextItem.type === 'html_comment') {
-            const gapCount = htmlCommentGaps.get(htmlCommentIndex);
-            if (gapCount !== undefined) {
-              // gapCount blank lines = gapCount+1 newline characters
-              output.push('\n' + '\n'.repeat(gapCount));
-            } else {
-              output.push('\n\n');
-            }
           } else {
             output.push('\n\n');
           }
@@ -3994,10 +4081,9 @@ export function buildMarkdown(
           continue;
         }
       }
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
-        output.push('\n\n');
-      }
+      output.push(sectionSentinelSeparator());
       output.push('<!-- landscape -->');
+      lastWasSectionSentinel = true;
       i++;
       continue;
     }
@@ -4007,10 +4093,9 @@ export function buildMarkdown(
         i++;
         continue;
       }
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
-        output.push('\n\n');
-      }
+      output.push(sectionSentinelSeparator());
       output.push('<!-- /landscape -->');
+      lastWasSectionSentinel = true;
       i++;
       continue;
     }
@@ -4025,10 +4110,9 @@ export function buildMarkdown(
           continue;
         }
       }
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
-        output.push('\n\n');
-      }
+      output.push(sectionSentinelSeparator());
       output.push('<!-- portrait -->');
+      lastWasSectionSentinel = true;
       i++;
       continue;
     }
@@ -4038,10 +4122,9 @@ export function buildMarkdown(
         i++;
         continue;
       }
-      if (output.length > 0 && !output[output.length - 1].endsWith('\n\n')) {
-        output.push('\n\n');
-      }
+      output.push(sectionSentinelSeparator());
       output.push('<!-- /portrait -->');
+      lastWasSectionSentinel = true;
       i++;
       continue;
     }
@@ -4098,6 +4181,7 @@ export function buildMarkdown(
 
     // Track HTML comment paragraph index for gap metadata
     if (item.type === 'html_comment') {
+      lastRenderedHtmlCommentIndex = htmlCommentIndex;
       htmlCommentIndex++;
     }
 
@@ -4455,7 +4539,7 @@ export async function extractAuthor(zip: JSZip): Promise<string | undefined> {
 // Main conversion
 
 /** Extract heading/title font properties from word/styles.xml for round-trip. */
-function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter> {
+function extractFontOverridesFromStyles(stylesXml: string, opts?: { explicitTableFontSize?: boolean }): Partial<Frontmatter> {
   const result: Partial<Frontmatter> = {};
 
   // Helper: find a style block by styleId and extract rPr content
@@ -4522,6 +4606,11 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
   // Extract Normal (body) font for comparison
   const normalRpr = getStyleRPr('Normal');
   const bodyFont = normalRpr ? extractFont(normalRpr) : undefined;
+  const bodySizeHp = normalRpr ? extractSizeHp(normalRpr) : undefined;
+
+  // Emit body font/fontSize when they differ from Word defaults
+  if (bodyFont && bodyFont !== 'Calibri') result.font = bodyFont;
+  if (bodySizeHp !== undefined && bodySizeHp !== 22) result.fontSize = bodySizeHp / 2;
 
   // Default heading sizes in half-points
   const defaultHp: Record<string, number> = {
@@ -4592,11 +4681,12 @@ function extractFontOverridesFromStyles(stylesXml: string): Partial<Frontmatter>
     if (tblFont && tblFont !== bodyFont) result.tableFont = tblFont;
     const tblSizeHp = extractSizeHp(tableRpr);
     if (tblSizeHp !== undefined) {
-      const bodySizeHp = normalRpr ? (extractSizeHp(normalRpr) ?? 22) : 22;
+      const bsHp = bodySizeHp ?? 22;
       // Suppress table-font-size when it matches auto-shrink default (body - 4hp),
-      // since auto-shrink always reproduces it on import.
-      const autoDefault = Math.max(1, bodySizeHp - 4);
-      if (tblSizeHp !== autoDefault) {
+      // since auto-shrink always reproduces it on import — unless the original
+      // frontmatter explicitly set table-font-size (explicitTableFontSize flag).
+      const autoDefault = Math.max(1, bsHp - 4);
+      if (opts?.explicitTableFontSize || tblSizeHp !== autoDefault) {
         result.tableFontSize = tblSizeHp / 2;
       }
     }
@@ -4611,7 +4701,7 @@ export async function convertDocx(
   options?: { tableIndent?: string; alwaysUseCommentIds?: boolean; imageFolder?: string; pipeTableMaxLineWidth?: number; pipeTableMaxLineWidthDefault?: number; gridTableMaxLineWidth?: number; gridTableMaxLineWidthDefault?: number; existingBibtex?: string },
 ): Promise<ConvertResult> {
   const zip = await loadZip(data);
-  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, tableFontSizeMapping, tableFontMapping, storedPipeTableMaxLineWidth, storedGridTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData, landscapeTableMapping, portraitTableMapping, portraitBreaks] = await Promise.all([
+  const [comments, zoteroCitations, zoteroPrefs, author, commentIdMapping, footnoteIdMapping, codeBlockLangMapping, threads, codeBlockStyling, blockquoteGapMapping, blockquotePreContentBlankLineMapping, blockquotePostContentBlankLineMapping, blockquoteAlertStyleMapping, imageFormatMapping, tableFormatMapping, tableFontSizeMapping, tableFontMapping, storedPipeTableMaxLineWidth, storedGridTableMaxLineWidth, storedListIndent, consecutiveReplyParaIds, storedFrontmatterBlankLines, htmlCommentGapMapping, bibKeyOrder, storedBibData, landscapeTableMapping, portraitTableMapping, portraitBreaks, explicitTableFontSize, storedFieldOrder, htmlCommentAfterGapMapping] = await Promise.all([
     extractComments(zip),
     extractZoteroCitations(zip),
     extractZoteroPrefs(zip),
@@ -4640,6 +4730,9 @@ export async function convertDocx(
     extractLandscapeTableMapping(zip),
     extractPortraitTableMapping(zip),
     extractPortraitBreakOrdinals(zip),
+    extractExplicitTableFontSize(zip),
+    extractFrontmatterFieldOrder(zip),
+    extractHtmlCommentAfterGapMapping(zip),
   ]);
 
   // Resolve pipeTableMaxLineWidth: explicit override > stored DOCX value > caller default > 120
@@ -4772,6 +4865,7 @@ export async function convertDocx(
     portraitTableIndices: portraitTableMapping,
     listIndent: storedListIndent ?? 'spaces',
     htmlCommentGaps: htmlCommentGapMapping,
+    htmlCommentAfterGaps: htmlCommentAfterGapMapping,
   });
 
   // Strip Sources section if present (fallback for docs without ZOTERO_BIBL field codes)
@@ -4813,7 +4907,7 @@ export async function convertDocx(
   const stylesFile = zip.file('word/styles.xml');
   if (stylesFile) {
     const stylesStr = await stylesFile.async('string');
-    const fontFields = extractFontOverridesFromStyles(stylesStr);
+    const fontFields = extractFontOverridesFromStyles(stylesStr, { explicitTableFontSize });
     Object.assign(fm, fontFields);
   }
   if (codeBlockStyling) {
@@ -4833,7 +4927,7 @@ export async function convertDocx(
   if (resolvedGridTableMaxLineWidth !== 120 || storedGridTableMaxLineWidth != null || validWidth(options?.gridTableMaxLineWidth) != null) {
     fm.gridTableMaxLineWidth = resolvedGridTableMaxLineWidth;
   }
-  const frontmatterStr = serializeFrontmatter(fm);
+  const frontmatterStr = serializeFrontmatter(fm, storedFieldOrder ?? undefined);
   if (frontmatterStr) {
     // Restore the original number of blank lines after frontmatter.
     // Default to 1 blank line (conventional) when no stored value exists.

@@ -66,6 +66,7 @@ function makeState(): DocxGenState {
     tableFormats: new Map(),
     consecutiveReplyParaIds: new Set(),
     htmlCommentGaps: new Map(),
+    htmlCommentAfterGaps: new Map(),
     listIndent: 'spaces',
     tableFontSizes: new Map(),
     tableFonts: new Map(),

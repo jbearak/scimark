@@ -67,6 +67,7 @@ export interface MdToken {
   blockquoteGroupIndex?: number; // sequential index of the blockquote group this token belongs to
   trailingBlankLine?: boolean;   // for code blocks: blank line follows in source markdown
   blankLinesBefore?: number;     // for HTML comments: blank lines before this token in source
+  blankLinesAfter?: number;      // for HTML comments: blank lines after this token in source
   htmlCommentIndex?: number;     // sequential index of HTML comment paragraphs
   runs: MdRun[];            // inline content
   rows?: MdTableRow[];      // for tables
@@ -1588,9 +1589,20 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0, warnin
             }
           }
           const blankLines = Math.max(0, thisStart - prevEnd);
+          // Compute blank lines after this HTML comment
+          const thisEnd = token.map?.[1] ?? 0;
+          let nextStart = thisEnd;
+          for (let ni = i + 1; ni < tokens.length; ni++) {
+            if (tokens[ni].map) {
+              nextStart = tokens[ni].map[0];
+              break;
+            }
+          }
+          const blankLinesAfterVal = Math.max(0, nextStart - thisEnd);
           result.push({
             type: 'paragraph',
             blankLinesBefore: blankLines,
+            blankLinesAfter: blankLinesAfterVal,
             runs: [{ type: 'html_comment' as const, text: htmlContent.replace(/\n$/, '') }]
           });
         } else if (isGfmDisallowedRawHtml(htmlContent)) {
@@ -2332,6 +2344,7 @@ export interface DocxGenState {
   listIndent: 'tab' | 'spaces'; // indentation style for nested list items
   consecutiveReplyParaIds: Set<string>; // parent paraIds whose replies were in consecutive format
   htmlCommentGaps: Map<number, number>; // blank-line-before count per HTML comment index (non-default only)
+  htmlCommentAfterGaps: Map<number, number>; // blank-line-after count per HTML comment index (non-default only)
   tableRunRPrExtra: string; // extra rPr elements injected into every run inside a table cell (per-table font/size overrides)
   landscapeTables: Set<number>; // table indices that have data-orientation="landscape"
   portraitTables: Set<number>;  // table indices that have data-orientation="portrait"
@@ -3497,6 +3510,11 @@ function frontmatterBlankLineProps(count: number): CustomPropEntry[] {
   return [{ name: 'MANUSCRIPT_FRONTMATTER_BLANK_LINES', value: String(count) }];
 }
 
+function frontmatterFieldOrderProps(order: string[]): CustomPropEntry[] {
+  if (order.length === 0) return [];
+  return chunkCustomProps('MANUSCRIPT_FRONTMATTER_FIELD_ORDER_', JSON.stringify(order));
+}
+
 function bibKeyOrderProps(bibEntries: Map<string, BibtexEntry> | undefined): CustomPropEntry[] {
   if (!bibEntries || bibEntries.size === 0) return [];
   return chunkCustomProps('MANUSCRIPT_BIB_KEY_ORDER_', [...bibEntries.keys()].join(','));
@@ -3509,9 +3527,10 @@ function bibDataProps(bibtex: string | undefined): CustomPropEntry[] {
 }
 
 /** Assign sequential htmlCommentIndex to each HTML comment token and return
- *  a map from index → blankLinesBefore count (only for non-default values). */
-export function annotateHtmlCommentIndices(tokens: MdToken[]): Map<number, number> {
-  const gaps = new Map<number, number>();
+ *  maps from index → blankLinesBefore/After count (only for non-default values). */
+export function annotateHtmlCommentIndices(tokens: MdToken[]): { beforeGaps: Map<number, number>; afterGaps: Map<number, number> } {
+  const beforeGaps = new Map<number, number>();
+  const afterGaps = new Map<number, number>();
   let idx = 0;
   for (const token of tokens) {
     const isHtmlComment = token.type === 'paragraph'
@@ -3520,12 +3539,15 @@ export function annotateHtmlCommentIndices(tokens: MdToken[]): Map<number, numbe
     if (isHtmlComment) {
       token.htmlCommentIndex = idx;
       if (token.blankLinesBefore !== undefined && token.blankLinesBefore !== 1) {
-        gaps.set(idx, token.blankLinesBefore);
+        beforeGaps.set(idx, token.blankLinesBefore);
+      }
+      if (token.blankLinesAfter !== undefined && token.blankLinesAfter !== 1) {
+        afterGaps.set(idx, token.blankLinesAfter);
       }
       idx++;
     }
   }
-  return gaps;
+  return { beforeGaps, afterGaps };
 }
 
 function htmlCommentGapProps(gaps: Map<number, number>): CustomPropEntry[] {
@@ -3535,6 +3557,15 @@ function htmlCommentGapProps(gaps: Map<number, number>): CustomPropEntry[] {
     mapping[String(index)] = count;
   }
   return chunkCustomProps('MANUSCRIPT_HTML_COMMENT_GAPS_', JSON.stringify(mapping));
+}
+
+function htmlCommentAfterGapProps(gaps: Map<number, number>): CustomPropEntry[] {
+  if (gaps.size === 0) return [];
+  const mapping: Record<string, number> = {};
+  for (const [index, count] of gaps) {
+    mapping[String(index)] = count;
+  }
+  return chunkCustomProps('MANUSCRIPT_HTML_COMMENT_AFTER_GAPS_', JSON.stringify(mapping));
 }
 
 interface DocumentRelsOptions {
@@ -4834,7 +4865,7 @@ export async function convertMdToDocx(
   options?: MdToDocxOptions
 ): Promise<MdToDocxResult> {
   // Parse frontmatter for CSL style and other metadata
-  const { metadata: frontmatter, body } = parseFrontmatter(markdown);
+  const { metadata: frontmatter, body, fieldOrder } = parseFrontmatter(markdown);
   // Count blank lines between frontmatter closing --- and body content.
   // parseFrontmatter strips one \n; remaining leading \n's = blank lines.
   const hadFrontmatter = markdown.trimStart().startsWith('---');
@@ -4870,7 +4901,7 @@ export async function convertMdToDocx(
   const blockquotePostContentBlankLines = computeBlockquotePostContentBlankLines(bodyWithoutFootnotes);
   const blockquoteAlertMarkerInlineByGroup = computeBlockquoteAlertMarkerInlineByGroup(bodyWithoutFootnotes);
   annotateBlockquoteGroupIndices(tokens);
-  const htmlCommentGaps = annotateHtmlCommentIndices(tokens);
+  const { beforeGaps: htmlCommentGaps, afterGaps: htmlCommentAfterGaps } = annotateHtmlCommentIndices(tokens);
 
   // Parse BibTeX if provided
   let bibEntries: Map<string, BibtexEntry> | undefined;
@@ -5025,6 +5056,7 @@ export async function convertMdToDocx(
     listIndent: detectListIndent(bodyWithoutFootnotes),
     consecutiveReplyParaIds: new Set(),
     htmlCommentGaps,
+    htmlCommentAfterGaps,
     tableRunRPrExtra: '',
     landscapeTables: new Set(),
     portraitTables: new Set(),
@@ -5232,7 +5264,12 @@ export async function convertMdToDocx(
   customProps.push(...listIndentProps(state));
   customProps.push(...consecutiveReplyProps(state));
   customProps.push(...htmlCommentGapProps(state.htmlCommentGaps));
+  customProps.push(...htmlCommentAfterGapProps(state.htmlCommentAfterGaps));
+  if (frontmatter.tableFontSize !== undefined) {
+    customProps.push({ name: 'MANUSCRIPT_EXPLICIT_TABLE_FONT_SIZE', value: '1' });
+  }
   customProps.push(...frontmatterBlankLineProps(frontmatterBlankLines));
+  customProps.push(...frontmatterFieldOrderProps(fieldOrder));
   customProps.push(...bibKeyOrderProps(bibEntries));
   customProps.push(...bibDataProps(options?.bibtex));
   const hasCustomProps = customProps.length > 0;

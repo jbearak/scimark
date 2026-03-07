@@ -116,15 +116,15 @@ export interface Frontmatter {
  * Split YAML frontmatter (delimited by `---`) from the markdown body.
  * Returns the parsed metadata and the remaining body text.
  */
-export function parseFrontmatter(markdown: string): { metadata: Frontmatter; body: string } {
+export function parseFrontmatter(markdown: string): { metadata: Frontmatter; body: string; fieldOrder: string[] } {
   const trimmed = markdown.trimStart();
   if (!trimmed.startsWith('---')) {
-    return { metadata: {}, body: markdown };
+    return { metadata: {}, body: markdown, fieldOrder: [] };
   }
 
   const endMatch = trimmed.substring(3).match(/\n---(?:\r?\n|$)/);
   if (!endMatch) {
-    return { metadata: {}, body: markdown };
+    return { metadata: {}, body: markdown, fieldOrder: [] };
   }
   const endIdx = endMatch.index! + 3;
 
@@ -132,11 +132,17 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
   const body = trimmed.slice(endIdx + 4).replace(/^\r?\n/, '');
 
   const metadata: Frontmatter = {};
+  const fieldOrder: string[] = [];
+  const seenFields = new Set<string>();
   for (const line of yamlBlock.split('\n')) {
     const colonIdx = line.indexOf(':');
     if (colonIdx < 0) continue;
     const key = line.slice(0, colonIdx).trim();
     const value = line.slice(colonIdx + 1).trim().replace(/^["']|["']$/g, '');
+    if (!seenFields.has(key)) {
+      seenFields.add(key);
+      fieldOrder.push(key);
+    }
     switch (key) {
       case 'title':
         if (!metadata.title) metadata.title = [];
@@ -281,51 +287,87 @@ export function parseFrontmatter(markdown: string): { metadata: Frontmatter; bod
     }
   }
 
-  return { metadata, body };
+  return { metadata, body, fieldOrder };
 }
 
 /**
  * Serialize a Frontmatter object to a YAML frontmatter string.
  * Returns empty string if metadata has no fields.
  */
-export function serializeFrontmatter(metadata: Frontmatter): string {
+export function serializeFrontmatter(metadata: Frontmatter, fieldOrder?: string[]): string {
   const lines: string[] = [];
-  if (metadata.title && metadata.title.length > 0) {
-    for (const t of metadata.title) {
-      lines.push(`title: ${t}`);
-    }
-  }
-  if (metadata.author) lines.push(`author: ${metadata.author}`);
-  if (metadata.csl) lines.push(`csl: ${metadata.csl}`);
-  if (metadata.locale) lines.push(`locale: ${metadata.locale}`);
-  if (metadata.zoteroNotes) lines.push(`zotero-notes: ${metadata.zoteroNotes}`);
-  if (metadata.notes === 'endnotes') lines.push(`notes: endnotes`);
-  if (metadata.timezone) lines.push(`timezone: ${metadata.timezone}`);
-  if (metadata.bibliography) lines.push(`bibliography: ${metadata.bibliography}`);
-  if (metadata.font) lines.push('font: ' + metadata.font);
-  if (metadata.codeFont) lines.push('code-font: ' + metadata.codeFont);
-  if (metadata.fontSize !== undefined) lines.push('font-size: ' + metadata.fontSize);
-  if (metadata.codeFontSize !== undefined) lines.push('code-font-size: ' + metadata.codeFontSize);
   const emitArr = (key: string, arr: (string | number)[] | undefined) => {
     if (!arr || arr.length === 0) return;
     if (arr.length === 1) lines.push(key + ': ' + arr[0]);
     else lines.push(key + ': [' + arr.join(', ') + ']');
   };
-  emitArr('header-font', metadata.headerFont);
-  emitArr('header-font-size', metadata.headerFontSize);
-  emitArr('header-font-style', metadata.headerFontStyle);
-  emitArr('title-font', metadata.titleFont);
-  emitArr('title-font-size', metadata.titleFontSize);
-  emitArr('title-font-style', metadata.titleFontStyle);
-  if (metadata.tableFont) lines.push('table-font: ' + metadata.tableFont);
-  if (metadata.tableFontSize !== undefined) lines.push('table-font-size: ' + metadata.tableFontSize);
-  if (metadata.codeBackgroundColor) lines.push('code-background-color: ' + metadata.codeBackgroundColor);
-  if (metadata.codeFontColor) lines.push('code-font-color: ' + metadata.codeFontColor);
-  if (metadata.codeBlockInset !== undefined) lines.push('code-block-inset: ' + metadata.codeBlockInset);
-  if (metadata.pipeTableMaxLineWidth !== undefined) lines.push('pipe-table-max-line-width: ' + metadata.pipeTableMaxLineWidth);
-  if (metadata.gridTableMaxLineWidth !== undefined) lines.push('grid-table-max-line-width: ' + metadata.gridTableMaxLineWidth);
-  if (metadata.blockquoteStyle) lines.push('blockquote-style: ' + metadata.blockquoteStyle);
-  if (metadata.colors) lines.push('colors: ' + metadata.colors);
+
+  // Map from YAML key name to emission function
+  const emitters: Record<string, () => void> = {
+    'title': () => { if (metadata.title && metadata.title.length > 0) { for (const t of metadata.title) lines.push(`title: ${t}`); } },
+    'author': () => { if (metadata.author) lines.push(`author: ${metadata.author}`); },
+    'csl': () => { if (metadata.csl) lines.push(`csl: ${metadata.csl}`); },
+    'locale': () => { if (metadata.locale) lines.push(`locale: ${metadata.locale}`); },
+    'zotero-notes': () => { if (metadata.zoteroNotes) lines.push(`zotero-notes: ${metadata.zoteroNotes}`); },
+    'note-type': () => { /* alias handled by zotero-notes */ },
+    'notes': () => { if (metadata.notes === 'endnotes') lines.push(`notes: endnotes`); },
+    'timezone': () => { if (metadata.timezone) lines.push(`timezone: ${metadata.timezone}`); },
+    'bibliography': () => { if (metadata.bibliography) lines.push(`bibliography: ${metadata.bibliography}`); },
+    'bib': () => { /* alias handled by bibliography */ },
+    'bibtex': () => { /* alias handled by bibliography */ },
+    'font': () => { if (metadata.font) lines.push('font: ' + metadata.font); },
+    'code-font': () => { if (metadata.codeFont) lines.push('code-font: ' + metadata.codeFont); },
+    'font-size': () => { if (metadata.fontSize !== undefined) lines.push('font-size: ' + metadata.fontSize); },
+    'code-font-size': () => { if (metadata.codeFontSize !== undefined) lines.push('code-font-size: ' + metadata.codeFontSize); },
+    'header-font': () => emitArr('header-font', metadata.headerFont),
+    'header-font-size': () => emitArr('header-font-size', metadata.headerFontSize),
+    'header-font-style': () => emitArr('header-font-style', metadata.headerFontStyle),
+    'title-font': () => emitArr('title-font', metadata.titleFont),
+    'title-font-size': () => emitArr('title-font-size', metadata.titleFontSize),
+    'title-font-style': () => emitArr('title-font-style', metadata.titleFontStyle),
+    'table-font': () => { if (metadata.tableFont) lines.push('table-font: ' + metadata.tableFont); },
+    'table-font-size': () => { if (metadata.tableFontSize !== undefined) lines.push('table-font-size: ' + metadata.tableFontSize); },
+    'code-background-color': () => { if (metadata.codeBackgroundColor) lines.push('code-background-color: ' + metadata.codeBackgroundColor); },
+    'code-background': () => { /* alias handled by code-background-color */ },
+    'code-font-color': () => { if (metadata.codeFontColor) lines.push('code-font-color: ' + metadata.codeFontColor); },
+    'code-color': () => { /* alias handled by code-font-color */ },
+    'code-block-inset': () => { if (metadata.codeBlockInset !== undefined) lines.push('code-block-inset: ' + metadata.codeBlockInset); },
+    'pipe-table-max-line-width': () => { if (metadata.pipeTableMaxLineWidth !== undefined) lines.push('pipe-table-max-line-width: ' + metadata.pipeTableMaxLineWidth); },
+    'grid-table-max-line-width': () => { if (metadata.gridTableMaxLineWidth !== undefined) lines.push('grid-table-max-line-width: ' + metadata.gridTableMaxLineWidth); },
+    'blockquote-style': () => { if (metadata.blockquoteStyle) lines.push('blockquote-style: ' + metadata.blockquoteStyle); },
+    'colors': () => { if (metadata.colors) lines.push('colors: ' + metadata.colors); },
+  };
+
+  // Default emission order (backward compatible)
+  const defaultOrder = [
+    'title', 'author', 'csl', 'locale', 'zotero-notes', 'notes', 'timezone',
+    'bibliography', 'font', 'code-font', 'font-size', 'code-font-size',
+    'header-font', 'header-font-size', 'header-font-style',
+    'title-font', 'title-font-size', 'title-font-style',
+    'table-font', 'table-font-size',
+    'code-background-color', 'code-font-color', 'code-block-inset',
+    'pipe-table-max-line-width', 'grid-table-max-line-width',
+    'blockquote-style', 'colors',
+  ];
+
+  const order = fieldOrder && fieldOrder.length > 0 ? fieldOrder : defaultOrder;
+  const emitted = new Set<string>();
+
+  for (const key of order) {
+    if (emitted.has(key)) continue;
+    emitted.add(key);
+    const emitter = emitters[key];
+    if (emitter) emitter();
+  }
+
+  // Emit any remaining fields not in the provided order
+  for (const key of defaultOrder) {
+    if (emitted.has(key)) continue;
+    emitted.add(key);
+    const emitter = emitters[key];
+    if (emitter) emitter();
+  }
+
   if (lines.length === 0) return '';
   return '---\n' + lines.join('\n') + '\n---\n';
 }
