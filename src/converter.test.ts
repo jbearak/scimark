@@ -1051,6 +1051,18 @@ describe('HTML comment blank line round-trip', () => {
     expect(result.markdown).not.toContain('Paragraph one.\n\n\n<!-- A comment -->');
   });
 
+  test('tight comment before grid table preserves zero-gap spacing', async () => {
+    const md = '<!-- portrait -->\n## Table 1\n\nParagraph text\n<!-- Begin Table 1 -->\n+---+---+\n| A | B |\n+===+===+\n| 1 | 2 |\n+---+---+';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // 0 blank lines before comment (tight against paragraph)
+    expect(result.markdown).toContain('Paragraph text\n<!-- Begin Table 1 -->');
+    expect(result.markdown).not.toContain('Paragraph text\n\n<!-- Begin Table 1 -->');
+    // 0 blank lines after comment (tight against grid table)
+    expect(result.markdown).toContain('<!-- Begin Table 1 -->\n+');
+    expect(result.markdown).not.toContain('<!-- Begin Table 1 -->\n\n+');
+  });
+
   test('multiline HTML comments preserve internal newlines', async () => {
     const md = 'Before\n\n<!--\n\nLine one\n\nLine two\n\n-->\n\nAfter';
     const { docx } = await convertMdToDocx(md);
