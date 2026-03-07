@@ -1647,7 +1647,9 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0, warnin
           if (startLine + 1 < endLine) {
             const sepLine = sourceLines[startLine + 1];
             if (sepLine) {
-              const segments = sepLine.split('|').slice(1, -1); // trim leading/trailing empty from outer pipes
+              let segments = sepLine.split('|');
+              if (segments[0].trim() === '') segments = segments.slice(1);
+              if (segments.length > 0 && segments[segments.length - 1].trim() === '') segments = segments.slice(0, -1);
               pipeAligned = segments.some(s => s.replace(/[^-]/g, '').length > 3);
             }
           }
@@ -3179,19 +3181,19 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:style w:type="paragraph" w:styleId="Heading4">\n' +
     '<w:name w:val="heading 4"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:outlineLvl w:val="3"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:after="0"/><w:outlineLvl w:val="3"/></w:pPr>\n' +
     headingRpr('Heading4', null) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading5">\n' +
     '<w:name w:val="heading 5"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:outlineLvl w:val="4"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:after="0"/><w:outlineLvl w:val="4"/></w:pPr>\n' +
     headingRpr('Heading5', 20) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading6">\n' +
     '<w:name w:val="heading 6"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:outlineLvl w:val="5"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:after="0"/><w:outlineLvl w:val="5"/></w:pPr>\n' +
     headingRpr('Heading6', 18) +
     '</w:style>\n' +
     '<w:style w:type="character" w:default="1" w:styleId="DefaultParagraphFont">\n' +
@@ -4669,7 +4671,7 @@ function commentsXml(comments: CommentEntry[]): string {
 
 function footnotesXml(entries: FootnoteEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-  xml += '<w:footnotes xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\">';
+  xml += '<w:footnotes xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">';
   // Separator (id=-1)
   xml += '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>';
   // Continuation separator (id=0)
@@ -4683,7 +4685,7 @@ function footnotesXml(entries: FootnoteEntry[]): string {
 
 function endnotesXml(entries: FootnoteEntry[]): string {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-  xml += '<w:endnotes xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\">';
+  xml += '<w:endnotes xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">';
   // Separator (id=-1)
   xml += '<w:endnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:endnote>';
   // Continuation separator (id=0)
@@ -5269,6 +5271,7 @@ export async function convertMdToDocx(
       if (ti === 0) {
         if (t.type === 'table') {
           if (t.sourceFormat) state.tableFormats.set(state.tableIndex, t.sourceFormat);
+          if (t.pipeAligned) state.pipeTableAligned.set(state.tableIndex, true);
           if (t.tableFontSize !== undefined) state.tableFontSizes.set(state.tableIndex, t.tableFontSize);
           if (t.tableFont) state.tableFonts.set(state.tableIndex, t.tableFont);
           bodyXml += '<w:p>' + paragraphPPr + selfRefRun + '</w:p>';
@@ -5281,6 +5284,7 @@ export async function convertMdToDocx(
       } else {
         if (t.type === 'table') {
           if (t.sourceFormat) state.tableFormats.set(state.tableIndex, t.sourceFormat);
+          if (t.pipeAligned) state.pipeTableAligned.set(state.tableIndex, true);
           if (t.tableFontSize !== undefined) state.tableFontSizes.set(state.tableIndex, t.tableFontSize);
           if (t.tableFont) state.tableFonts.set(state.tableIndex, t.tableFont);
           bodyXml += generateTable(t, state, options, bibEntries, citeprocEngine);
