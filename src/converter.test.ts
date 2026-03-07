@@ -975,6 +975,35 @@ describe('Grid table round-trip', () => {
     expect(result.markdown).not.toContain('<table>');
   });
 
+  test('grid table preserves vertically offset cell content on round-trip', async () => {
+    const gridMd = [
+      '+------+------+------+',
+      '| Col1 |      |      |',
+      '|      | Col2 |      |',
+      '|      |      | Col3 |',
+      '+======+======+======+',
+      '| A    | B    | C    |',
+      '+------+------+------+',
+    ].join('\n');
+    const { docx } = await convertMdToDocx(gridMd);
+    const result = await convertDocx(docx);
+    // Content vertical position must survive: Col3 on line 3, Col2 on line 2
+    const lines = result.markdown.split('\n');
+    // Find the header content rows (between first border and === border)
+    const firstBorder = lines.findIndex(l => /^\+[-=]/.test(l));
+    const eqBorder = lines.findIndex(l => /^\+=/.test(l));
+    const headerLines = lines.slice(firstBorder + 1, eqBorder);
+    // Col1 should appear on the first header line
+    expect(headerLines[0]).toContain('Col1');
+    expect(headerLines[0]).not.toContain('Col2');
+    // Col2 should appear on the second header line
+    expect(headerLines[1]).toContain('Col2');
+    expect(headerLines[1]).not.toContain('Col1');
+    // Col3 should appear on the third header line
+    expect(headerLines[2]).toContain('Col3');
+    expect(headerLines[2]).not.toContain('Col2');
+  });
+
   test('simple grid table without multi-line cells preserves grid format', async () => {
     const gridMd = [
       '+------+------+',

@@ -128,8 +128,7 @@ function parseGridTable(lines: string[]): GridTableData | null {
               : contentLine.slice(left);
             cellLines.push(raw.replace(/^\s*\|?\s*/, '').replace(/\s*$/, ''));
           }
-          while (cellLines.length > 0 && cellLines[0].trim() === '') cellLines.shift();
-          while (cellLines.length > 0 && cellLines[cellLines.length - 1].trim() === '') cellLines.pop();
+
           cells.push(cellLines.join('\n'));
         }
         // header=false initially; we'll retroactively mark header rows below
