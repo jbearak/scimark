@@ -911,8 +911,8 @@ describe('Grid table renderer', () => {
     // Replace the stored table format from 'html' to 'grid'
     const customXml = await zip.file('docProps/custom.xml')?.async('string') || '';
     const updatedXml = customXml.replace(
-      '&quot;html&quot;',
-      '&quot;grid&quot;'
+      '"html"',
+      '"grid"'
     );
     zip.file('docProps/custom.xml', updatedXml);
     const modifiedDocx = await zip.generateAsync({ type: 'uint8array' });
@@ -4077,7 +4077,7 @@ describe('Landscape section round-trip', () => {
     const zip = await JSZip.loadAsync(docx);
     const docXml = await zip.file('word/document.xml')!.async('string');
     // Should have a closing sectPr with US Letter portrait dimensions
-    expect(docXml).toContain('<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>');
+    expect(docXml).toMatch(/<w:sectPr[^>]*><w:pgSz w:w="12240" w:h="15840"\/>/);
   });
 });
 

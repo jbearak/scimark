@@ -199,8 +199,13 @@ describe('OOXML Generation Properties', () => {
       const state = { commentId: 0, comments: [], relationships: new Map(), nextRId: 1, rIdOffset: 3, warnings: [], hasList: false, hasComments: false, missingKeys: new Set<string>(), codeFont: 'Consolas' };
 
       const paragraph = generateParagraph(token, state);
-      const expectedIndent = level * 240; // 240 twips per level (GitHub default)
-      expect(paragraph).toContain('<w:ind w:left="' + expectedIndent + '"/>');
+      if (level > 1) {
+        const expectedIndent = level * 240; // 240 twips per level (GitHub default)
+        expect(paragraph).toContain('<w:ind w:left="' + expectedIndent + '"/>');
+      } else {
+        // Level 1 inherits indent from style — no inline override
+        expect(paragraph).not.toContain('<w:ind');
+      }
     }), { numRuns: 100 });
   });
 

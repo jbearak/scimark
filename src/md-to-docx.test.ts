@@ -60,6 +60,7 @@ function makeState(): DocxGenState {
     imageBinaries: new Map(),
     imageFormats: new Map(),
     imageExtensions: new Set(),
+    rsid: '00000001',
     nextImageDocPrId: 1,
     tableIndex: 0,
     tableFormats: new Map(),
@@ -398,17 +399,17 @@ describe('parseMd grid tables', () => {
 describe('generateRun', () => {
   it('generates basic run', () => {
     const result = generateRun('hello', '');
-    expect(result).toBe('<w:r><w:t xml:space="preserve">hello</w:t></w:r>');
+    expect(result).toBe('<w:r><w:t>hello</w:t></w:r>');
   });
 
   it('generates run with formatting', () => {
     const result = generateRun('bold', '<w:rPr><w:b/></w:rPr>');
-    expect(result).toBe('<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">bold</w:t></w:r>');
+    expect(result).toBe('<w:r><w:rPr><w:b/></w:rPr><w:t>bold</w:t></w:r>');
   });
 
   it('escapes XML characters', () => {
     const result = generateRun('<test> & "quotes"', '');
-    expect(result).toBe('<w:r><w:t xml:space="preserve">&lt;test&gt; &amp; &quot;quotes&quot;</w:t></w:r>');
+    expect(result).toBe('<w:r><w:t>&lt;test&gt; &amp; &quot;quotes&quot;</w:t></w:r>');
   });
 });
 
@@ -422,7 +423,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:r><w:t xml:space="preserve">Hello world</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:r><w:t>Hello world</w:t></w:r></w:p>');
   });
 
   it('collapses spacing on pure HTML-comment paragraphs', () => {
@@ -432,7 +433,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toContain('<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>');
+    expect(result).toContain('<w:spacing w:after="0" w:line="1" w:lineRule="exact"/>');
   });
 
   it('collapses spacing on paragraphs with multiple HTML-comment runs', () => {
@@ -445,7 +446,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toContain('<w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>');
+    expect(result).toContain('<w:spacing w:after="0" w:line="1" w:lineRule="exact"/>');
   });
 
   it('does not collapse spacing on paragraphs with mixed runs including html_comment', () => {
@@ -469,7 +470,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t xml:space="preserve">Title</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Title</w:t></w:r></w:p>');
   });
 
   it('generates heading level 6', () => {
@@ -480,7 +481,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="Heading6"/></w:pPr><w:r><w:t xml:space="preserve">Subtitle</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="Heading6"/></w:pPr><w:r><w:t>Subtitle</w:t></w:r></w:p>');
   });
 
   it('generates bullet list item', () => {
@@ -492,7 +493,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">Item 1</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Item 1</w:t></w:r></w:p>');
     expect(state.hasList).toBe(true);
   });
 
@@ -505,7 +506,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">Item 2</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>Item 2</w:t></w:r></w:p>');
     expect(state.hasList).toBe(true);
   });
 
@@ -521,7 +522,7 @@ describe('generateParagraph', () => {
     expect(result).toBe(
       '<w:p><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>' +
       '<w:r><w:t xml:space="preserve">☐ </w:t></w:r>' +
-      '<w:r><w:t xml:space="preserve">todo item</w:t></w:r></w:p>'
+      '<w:r><w:t>todo item</w:t></w:r></w:p>'
     );
     expect(state.hasList).toBe(false);
   });
@@ -538,7 +539,7 @@ describe('generateParagraph', () => {
     expect(result).toBe(
       '<w:p><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>' +
       '<w:r><w:t xml:space="preserve">☒ </w:t></w:r>' +
-      '<w:r><w:t xml:space="preserve">done item</w:t></w:r></w:p>'
+      '<w:r><w:t>done item</w:t></w:r></w:p>'
     );
     expect(state.hasList).toBe(false);
   });
@@ -551,7 +552,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:spacing w:before="0" w:after="0"/><w:ind w:left="240"/></w:pPr><w:r><w:t xml:space="preserve">Quote text</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHubBlockquote"/></w:pPr><w:r><w:t>Quote text</w:t></w:r></w:p>');
   });
 
   it('generates nested blockquote', () => {
@@ -562,7 +563,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHub"/><w:spacing w:before="0" w:after="0"/><w:ind w:left="720"/></w:pPr><w:r><w:t xml:space="preserve">Nested quote</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:pPr><w:pStyle w:val="GitHubBlockquote"/><w:spacing w:after="0"/><w:ind w:left="720"/></w:pPr><w:r><w:t>Nested quote</w:t></w:r></w:p>');
   });
 
   it('generates alert blockquote with GitHub alert style and title prefix', () => {
@@ -636,9 +637,9 @@ describe('generateParagraph', () => {
     const state = createState();
     const result = generateParagraph(token, state);
     expect(result).toBe(
-      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="160" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">line1</w:t></w:r></w:p>' +
-      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">line2</w:t></w:r></w:p>' +
-      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="0" w:after="160" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">line3</w:t></w:r></w:p>'
+      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="160" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t>line1</w:t></w:r></w:p>' +
+      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t>line2</w:t></w:r></w:p>' +
+      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:after="160" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t>line3</w:t></w:r></w:p>'
     );
   });
 
@@ -650,7 +651,7 @@ describe('generateParagraph', () => {
     const state = createState();
     const result = generateParagraph(token, state);
     expect(result).toBe(
-      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="160" w:after="160" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">solo line</w:t></w:r></w:p>'
+      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="160" w:after="160" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t>solo line</w:t></w:r></w:p>'
     );
   });
 
@@ -662,8 +663,8 @@ describe('generateParagraph', () => {
     const state = createState();
     const result = generateParagraph(token, state);
     expect(result).toBe(
-      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="160" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">first</w:t></w:r></w:p>' +
-      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="0" w:after="160" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve">second</w:t></w:r></w:p>'
+      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="160" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t>first</w:t></w:r></w:p>' +
+      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:after="160" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t>second</w:t></w:r></w:p>'
     );
   });
 
@@ -675,7 +676,7 @@ describe('generateParagraph', () => {
     const state = createState();
     const result = generateParagraph(token, state);
     expect(result).toBe(
-      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="160" w:after="160" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t xml:space="preserve"></w:t></w:r></w:p>'
+      '<w:p><w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="160" w:after="160" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr><w:t></w:t></w:r></w:p>'
     );
   });
 
@@ -696,7 +697,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:hyperlink r:id="rId4"><w:r><w:t xml:space="preserve">Link text</w:t></w:r></w:hyperlink></w:p>');
+    expect(result).toBe('<w:p><w:hyperlink r:id="rId4"><w:r><w:t>Link text</w:t></w:r></w:hyperlink></w:p>');
     expect(state.relationships.get('https://example.com')).toBe('rId4');
   });
 
@@ -711,7 +712,7 @@ describe('generateParagraph', () => {
     };
     const state = createState();
     const result = generateParagraph(token, state);
-    expect(result).toBe('<w:p><w:r><w:t xml:space="preserve">Line 1</w:t></w:r><w:r><w:br/></w:r><w:r><w:t xml:space="preserve">Line 2</w:t></w:r></w:p>');
+    expect(result).toBe('<w:p><w:r><w:t>Line 1</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>Line 2</w:t></w:r></w:p>');
   });
 });
 
@@ -1238,7 +1239,7 @@ console.log('code');
     expect(document).toContain('<w:b/>');
     expect(document).toContain('<w:i/>');
     expect(document).toContain('<w:numId w:val="1"/>');
-    expect(document).toContain('<w:pStyle w:val="GitHub"/>');
+    expect(document).toContain('<w:pStyle w:val="GitHubBlockquote"/>');
     expect(document).toContain('<w:pStyle w:val="CodeBlock"/>');
     expect(document).toContain('<w:tbl>');
     expect(document).toContain('<w:pBdr>');
@@ -1948,7 +1949,7 @@ describe('generateParagraph blockquoteStyle option', () => {
     const token: MdToken = { type: 'blockquote', level: 1, runs: [{ type: 'text', text: 'hello' }] };
     const state = makeState();
     const xml = generateParagraph(token, state);
-    expect(xml).toContain('w:pStyle w:val="GitHub"');
+    expect(xml).toContain('w:pStyle w:val="GitHubBlockquote"');
   });
 
   it('uses IntenseQuote style when specified', () => {
@@ -1963,7 +1964,7 @@ describe('generateParagraph blockquoteStyle option', () => {
     const token: MdToken = { type: 'blockquote', level: 1, runs: [{ type: 'text', text: 'hello' }] };
     const state = makeState();
     const xml = generateParagraph(token, state, { blockquoteStyle: 'GitHub' });
-    expect(xml).toContain('w:pStyle w:val="GitHub"');
+    expect(xml).toContain('w:pStyle w:val="GitHubBlockquote"');
   });
 
   it('GitHub nested blockquote uses 240-twip indent unit', () => {
@@ -1971,7 +1972,7 @@ describe('generateParagraph blockquoteStyle option', () => {
     const state = makeState();
     const xml = generateParagraph(token, state, { blockquoteStyle: 'GitHub' });
     expect(xml).toContain('w:ind w:left="480"');
-    expect(xml).toContain('w:pStyle w:val="GitHub"');
+    expect(xml).toContain('w:pStyle w:val="GitHubBlockquote"');
   });
 
   it('Quote style uses 720-twip indent unit for nesting', () => {
@@ -2030,7 +2031,7 @@ describe('blockquote-style frontmatter', () => {
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(docx);
     const docXml = await zip.file('word/document.xml')!.async('string');
-    expect(docXml).toContain('w:pStyle w:val="GitHub"');
+    expect(docXml).toContain('w:pStyle w:val="GitHubBlockquote"');
   });
 
   it('convertMdToDocx emits alert styles and monochrome title prefixes', async () => {
@@ -2115,12 +2116,12 @@ describe('Code block separator between consecutive blocks', () => {
     const docXml = await zip.file('word/document.xml')?.async('string');
     expect(docXml).toBeDefined();
     // The separator should be an empty <w:p .../> between the two code block groups
-    expect(docXml).toMatch(/<w:p w14:paraId="[0-9A-F]+" w14:textId="[0-9A-F]+"\/>/);
+    expect(docXml).toMatch(/<w:p w14:paraId="[0-9A-F]+" w14:textId="[0-9A-F]+"[^/]*\/>/);
   });
 });
 
 describe('Blockquote to paragraph separators in DOCX export', () => {
-  const separatorRe = /<w:p\s[^>]*><w:pPr><w:spacing w:before="0" w:after="0" w:line="276" w:lineRule="auto"\/><\/w:pPr><\/w:p>/g;
+  const separatorRe = /<w:p\s[^>]*><w:pPr><w:spacing w:after="0"\/><\/w:pPr><\/w:p>/g;
   it('inserts empty paragraph after callout when source has blank line before paragraph', async () => {
     const md = '> [!NOTE]\n> This is a note.\n\nThis is a paragraph.';
     const result = await convertMdToDocx(md);
@@ -2540,7 +2541,7 @@ describe('landscape sections', () => {
       const state = makeState();
       const xml = generateDocumentXml(tokens, state);
       // Should have a body-level sectPr with US Letter dimensions
-      expect(xml).toContain('<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>');
+      expect(xml).toMatch(/<w:sectPr[^>]*><w:pgSz w:w="12240" w:h="15840"\/>/);
       expect(xml).toContain('</w:sectPr>\n</w:body>');
     });
 

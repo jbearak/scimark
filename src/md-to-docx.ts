@@ -10,6 +10,7 @@ import { ZoteroBiblData, zoteroStyleFullId } from './converter';
 import { isGfmDisallowedRawHtml, parseTaskListMarker, parseGfmAlertMarker, gfmAlertTitle, type GfmAlertType } from './gfm';
 import { pixelsToEmu, isSupportedImageFormat, getImageContentType, readImageDimensions, computeMissingDimension, IMAGE_WARNINGS } from './image-utils';
 import { preprocessGridTables, GRID_TABLE_PLACEHOLDER_PREFIX, type GridTableData } from './grid-table-preprocess';
+import { LATENT_STYLES } from './latent-styles';
 import { extractHtmlTables, type HtmlTableRow, type HtmlTableRun, type HtmlTableMeta } from './html-table-parser';
 export { preprocessGridTables } from './grid-table-preprocess';
 export { extractHtmlTables } from './html-table-parser';
@@ -146,6 +147,13 @@ const ALERT_STYLE_BY_TYPE: Record<GfmAlertType, string> = {
   important: 'GitHubImportant',
   warning: 'GitHubWarning',
   caution: 'GitHubCaution',
+};
+
+// Map user-facing blockquote style option to OOXML styleId
+const BLOCKQUOTE_STYLE_ID: Record<string, string> = {
+  'GitHub': 'GitHubBlockquote',
+  'Quote': 'Quote',
+  'IntenseQuote': 'IntenseQuote',
 };
 
 const ALERT_GLYPH_BY_TYPE: Record<GfmAlertType, string> = {
@@ -2229,6 +2237,7 @@ function parseTemplateMargins(sectPrXml: string | undefined): string {
 function portraitSectPrXml(pgSz: PageSize, margins: string): string {
   return '<w:sectPr><w:pgSz w:w="' + pgSz.w + '" w:h="' + pgSz.h + '"/>' +
     '<w:pgMar ' + margins + '/>' +
+    '<w:cols w:space="720"/>' +
     '<w:type w:val="nextPage"/></w:sectPr>';
 }
 
@@ -2236,16 +2245,18 @@ function portraitSectPrXml(pgSz: PageSize, margins: string): string {
 function landscapeSectPrXml(pgSz: PageSize, margins: string): string {
   return '<w:sectPr><w:pgSz w:w="' + pgSz.h + '" w:h="' + pgSz.w + '" w:orient="landscape"/>' +
     '<w:pgMar ' + margins + '/>' +
+    '<w:cols w:space="720"/>' +
     '<w:type w:val="nextPage"/></w:sectPr>';
 }
 
 /** Build the final body-level sectPr (no <w:type>, direct child of <w:body>). */
-function bodyClosingSectPrXml(pgSz: PageSize, margins: string, templateSectPr?: string): string {
+function bodyClosingSectPrXml(pgSz: PageSize, margins: string, templateSectPr?: string, rsid?: string): string {
   // If we have an unmodified template sectPr, reuse it as-is to preserve
   // any additional properties (headers, footers, columns, etc.)
   if (templateSectPr) return templateSectPr;
-  return '<w:sectPr><w:pgSz w:w="' + pgSz.w + '" w:h="' + pgSz.h + '"/>' +
-    '<w:pgMar ' + margins + '/></w:sectPr>';
+  return '<w:sectPr' + (rsid ? ' w:rsidR="' + rsid + '"' : '') + '><w:pgSz w:w="' + pgSz.w + '" w:h="' + pgSz.h + '"/>' +
+    '<w:pgMar ' + margins + '/>' +
+    '<w:cols w:space="720"/></w:sectPr>';
 }
 
 export interface DocxGenState {
@@ -2285,6 +2296,7 @@ export interface DocxGenState {
   imageBinaries: Map<string, Uint8Array>; // media path -> binary data
   imageFormats: Map<string, string>; // rId -> syntax ("md" | "html")
   imageExtensions: Set<string>; // collected extensions for content types
+  rsid: string; // Revision Save ID for paragraph-level w:rsidR attributes
   nextImageDocPrId: number;
   tableIndex: number;
   tableFormats: Map<number, TableFormat>; // table index -> source format
@@ -2587,7 +2599,7 @@ export function resolveFontOverrides(fm: Frontmatter): FontOverrides {
 // Style IDs that receive body font/size overrides
 const BODY_STYLE_IDS = new Set([
   'Normal', 'Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6',
-  'Title', 'Quote', 'IntenseQuote', 'GitHub', 'GitHubNote', 'GitHubTip', 'GitHubImportant', 'GitHubWarning', 'GitHubCaution', 'FootnoteText', 'EndnoteText',
+  'Title', 'Quote', 'IntenseQuote', 'GitHub', 'GitHubBlockquote', 'GitHubNote', 'GitHubTip', 'GitHubImportant', 'GitHubWarning', 'GitHubCaution', 'FootnoteText', 'EndnoteText',
 ]);
 // Style IDs that receive code font/size overrides
 const CODE_STYLE_IDS = new Set(['CodeChar', 'CodeBlock']);
@@ -2858,13 +2870,13 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
   const normalRpr = '<w:rPr>' + bodyFontStr + normalSz + '</w:rPr>\n';
 
   // Heading helper: per-heading font/style/size overrides with defaults
-  function headingRpr(styleId: string, defaultHp: number): string {
+  function headingRpr(styleId: string, defaultHp: number | null): string {
     const font = overrides?.headingFonts?.get(styleId)
       ? rFonts(overrides.headingFonts.get(styleId)!)
       : bodyFontStr;
     const sz = overrides?.headingSizesHp?.has(styleId)
       ? szPair(overrides.headingSizesHp.get(styleId)!)
-      : szPair(defaultHp);
+      : (defaultHp !== null ? szPair(defaultHp) : '');
     const style = overrides?.headingStyles?.get(styleId);
     let styleStr: string;
     if (style === 'normal') {
@@ -2887,11 +2899,11 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
   const codeBorderSize = isInsetMode ? undefined : (codeBlockConfig?.codeBlockInset || DEFAULT_CODE_BORDER_SIZE);
   
   let codeCharRprInner = codeFontStr;
-  if (codeBg) {
-    codeCharRprInner += '<w:shd w:val="clear" w:color="auto" w:fill="' + codeBg + '"/>';
-  }
   if (codeFontColor) {
     codeCharRprInner += '<w:color w:val="' + codeFontColor + '"/>';
+  }
+  if (codeBg) {
+    codeCharRprInner += '<w:shd w:val="clear" w:color="auto" w:fill="' + codeBg + '"/>';
   }
   const codeCharRpr = '<w:rPr>' + codeCharRprInner + '</w:rPr>\n';
 
@@ -2899,10 +2911,11 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
   const codeBlockSz = overrides?.codeSizeHp
     ? szPair(overrides.codeSizeHp)
     : szPair(DEFAULT_CODE_BLOCK_HP);
-  let codeBlockRprInner = codeFontStr + codeBlockSz;
+  let codeBlockRprInner = codeFontStr;
   if (codeFontColor) {
     codeBlockRprInner += '<w:color w:val="' + codeFontColor + '"/>';
   }
+  codeBlockRprInner += codeBlockSz;
   const codeBlockRpr = '<w:rPr>' + codeBlockRprInner + '</w:rPr>\n';
 
   // Title: title-specific font/size/style overrides, falling back to body font
@@ -2945,10 +2958,10 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
   // IntenseQuote: body font + existing italic/color
   const intenseQuoteRpr = '<w:rPr><w:i/><w:color w:val="4472C4"/>' + bodyFontStr + '</w:rPr>\n';
   function githubAlertStyle(styleId: string, displayName: string, borderColor: string): string {
-    return '<w:style w:type="paragraph" w:styleId="' + styleId + '">\n' +
+    return '<w:style w:type="paragraph" w:customStyle="1" w:styleId="' + styleId + '">\n' +
       '<w:name w:val="' + displayName + '"/>\n' +
       '<w:basedOn w:val="Normal"/>\n' +
-      '<w:pPr><w:spacing w:before="0" w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr><w:ind w:left="' + GITHUB_BLOCKQUOTE_INDENT + '"/></w:pPr>\n' +
+      '<w:pPr><w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr><w:spacing w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/><w:ind w:left="' + GITHUB_BLOCKQUOTE_INDENT + '"/></w:pPr>\n' +
       (quoteRpr ? quoteRpr : '') +
       '</w:style>\n';
   }
@@ -2958,18 +2971,28 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
   if (isInsetMode) {
     codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/><w:ind w:left="' + CODE_BLOCK_INSET_TWIPS + '" w:right="' + CODE_BLOCK_INSET_TWIPS + '"/></w:pPr>\n';
   } else {
-    codeBlockPPr = '<w:pPr><w:spacing w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/>' +
-      '<w:shd w:val="clear" w:color="auto" w:fill="' + codeBg + '"/>' +
-      '<w:pBdr>' +
+    codeBlockPPr = '<w:pPr><w:pBdr>' +
       '<w:top w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
-      '<w:bottom w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
       '<w:left w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
+      '<w:bottom w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
       '<w:right w:val="single" w:sz="' + codeBorderSize + '" w:space="' + CODE_BORDER_SPACE + '" w:color="' + codeBg + '"/>' +
-      '</w:pBdr><w:ind w:left="' + CODE_BLOCK_MARGIN_INDENT + '" w:right="' + CODE_BLOCK_MARGIN_INDENT + '"/></w:pPr>\n';
+      '</w:pBdr><w:shd w:val="clear" w:color="auto" w:fill="' + codeBg + '"/>' +
+      '<w:spacing w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/>' +
+      '<w:ind w:left="' + CODE_BLOCK_MARGIN_INDENT + '" w:right="' + CODE_BLOCK_MARGIN_INDENT + '"/></w:pPr>\n';
   }
 
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
-    '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">\n' +
+    '<w:styles xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:w16cex="http://schemas.microsoft.com/office/word/2018/wordml/cex" xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid" xmlns:w16="http://schemas.microsoft.com/office/word/2018/wordml" xmlns:w16du="http://schemas.microsoft.com/office/word/2023/wordml/word16du" xmlns:w16sdtdh="http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash" xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex" mc:Ignorable="w14 w15 w16se w16cid w16 w16cex w16sdtdh w16du">\n' +
+    '<w:docDefaults>\n' +
+    '<w:rPrDefault><w:rPr>' +
+    '<w:rFonts w:asciiTheme="minorHAnsi" w:eastAsiaTheme="minorHAnsi" w:hAnsiTheme="minorHAnsi" w:cstheme="minorBidi"/>' +
+    '<w:kern w:val="2"/><w:sz w:val="24"/><w:szCs w:val="24"/>' +
+    '<w:lang w:val="en-US" w:eastAsia="en-US" w:bidi="ar-SA"/>' +
+    '<w14:ligatures w14:val="standardContextual"/>' +
+    '</w:rPr></w:rPrDefault>\n' +
+    '<w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="278" w:lineRule="auto"/></w:pPr></w:pPrDefault>\n' +
+    '</w:docDefaults>\n' +
+    LATENT_STYLES + '\n' +
     '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">\n' +
     '<w:name w:val="Normal"/>\n' +
     '<w:pPr><w:spacing w:after="200" w:line="276" w:lineRule="auto"/></w:pPr>\n' +
@@ -2978,35 +3001,57 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:style w:type="paragraph" w:styleId="Heading1">\n' +
     '<w:name w:val="heading 1"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:spacing w:before="240" w:after="0"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:before="240" w:after="0"/><w:outlineLvl w:val="0"/></w:pPr>\n' +
     headingRpr('Heading1', 32) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading2">\n' +
     '<w:name w:val="heading 2"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:spacing w:before="200" w:after="0"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:before="200" w:after="0"/><w:outlineLvl w:val="1"/></w:pPr>\n' +
     headingRpr('Heading2', 26) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading3">\n' +
     '<w:name w:val="heading 3"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:spacing w:before="200" w:after="0"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:before="200" w:after="0"/><w:outlineLvl w:val="2"/></w:pPr>\n' +
     headingRpr('Heading3', 24) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading4">\n' +
     '<w:name w:val="heading 4"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    headingRpr('Heading4', 22) +
+    '<w:pPr><w:outlineLvl w:val="3"/></w:pPr>\n' +
+    headingRpr('Heading4', null) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading5">\n' +
     '<w:name w:val="heading 5"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
+    '<w:pPr><w:outlineLvl w:val="4"/></w:pPr>\n' +
     headingRpr('Heading5', 20) +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="Heading6">\n' +
     '<w:name w:val="heading 6"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
+    '<w:pPr><w:outlineLvl w:val="5"/></w:pPr>\n' +
     headingRpr('Heading6', 18) +
+    '</w:style>\n' +
+    '<w:style w:type="character" w:default="1" w:styleId="DefaultParagraphFont">\n' +
+    '<w:name w:val="Default Paragraph Font"/>\n' +
+    '<w:uiPriority w:val="1"/>\n' +
+    '<w:semiHidden/>\n' +
+    '<w:unhideWhenUsed/>\n' +
+    '</w:style>\n' +
+    '<w:style w:type="table" w:default="1" w:styleId="TableNormal">\n' +
+    '<w:name w:val="Normal Table"/>\n' +
+    '<w:uiPriority w:val="99"/>\n' +
+    '<w:semiHidden/>\n' +
+    '<w:unhideWhenUsed/>\n' +
+    '<w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr>\n' +
+    '</w:style>\n' +
+    '<w:style w:type="numbering" w:default="1" w:styleId="NoList">\n' +
+    '<w:name w:val="No List"/>\n' +
+    '<w:uiPriority w:val="99"/>\n' +
+    '<w:semiHidden/>\n' +
+    '<w:unhideWhenUsed/>\n' +
     '</w:style>\n' +
     '<w:style w:type="character" w:styleId="Hyperlink">\n' +
     '<w:name w:val="Hyperlink"/>\n' +
@@ -3024,10 +3069,10 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="4" w:color="4472C4"/></w:pBdr><w:ind w:left="720"/></w:pPr>\n' +
     intenseQuoteRpr +
     '</w:style>\n' +
-    '<w:style w:type="paragraph" w:styleId="GitHub">\n' +
+    '<w:style w:type="paragraph" w:customStyle="1" w:styleId="GitHubBlockquote">\n' +
     '<w:name w:val="GitHub Blockquote"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:spacing w:before="0" w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/><w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + GITHUB_BLOCKQUOTE_BORDER_COLOR + '"/></w:pBdr><w:ind w:left="' + GITHUB_BLOCKQUOTE_INDENT + '"/></w:pPr>\n' +
+    '<w:pPr><w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + GITHUB_BLOCKQUOTE_BORDER_COLOR + '"/></w:pBdr><w:spacing w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/><w:ind w:left="' + GITHUB_BLOCKQUOTE_INDENT + '"/></w:pPr>\n' +
     (quoteRpr ? quoteRpr : '') +
     '</w:style>\n' +
     githubAlertStyle('GitHubNote', 'GitHub Note', alertColors.note) +
@@ -3035,11 +3080,11 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     githubAlertStyle('GitHubImportant', 'GitHub Important', alertColors.important) +
     githubAlertStyle('GitHubWarning', 'GitHub Warning', alertColors.warning) +
     githubAlertStyle('GitHubCaution', 'GitHub Caution', alertColors.caution) +
-    '<w:style w:type="character" w:styleId="CodeChar">\n' +
+    '<w:style w:type="character" w:customStyle="1" w:styleId="CodeChar">\n' +
     '<w:name w:val="Code Char"/>\n' +
     codeCharRpr +
     '</w:style>\n' +
-    '<w:style w:type="paragraph" w:styleId="CodeBlock">\n' +
+    '<w:style w:type="paragraph" w:customStyle="1" w:styleId="CodeBlock">\n' +
     '<w:name w:val="Code Block"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
     codeBlockPPr +
@@ -3048,7 +3093,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '<w:style w:type="paragraph" w:styleId="Title">\n' +
     '<w:name w:val="Title"/>\n' +
     '<w:basedOn w:val="Normal"/>\n' +
-    '<w:pPr><w:spacing w:before="0" w:after="300"/></w:pPr>\n' +
+    '<w:pPr><w:spacing w:after="300"/></w:pPr>\n' +
     titleRpr +
     '</w:style>\n' +
     '<w:style w:type="paragraph" w:styleId="FootnoteText">\n' +
@@ -3071,7 +3116,7 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
     '</w:style>\n' +
     // TableParagraph: table-specific font/size style (only when overrides exist)
     (overrides?.tableSizeHp || overrides?.tableFont
-      ? '<w:style w:type="paragraph" w:styleId="TableParagraph">\n' +
+      ? '<w:style w:type="paragraph" w:customStyle="1" w:styleId="TableParagraph">\n' +
         '<w:name w:val="Table Paragraph"/>\n' +
         '<w:basedOn w:val="Normal"/>\n' +
         '<w:rPr>' +
@@ -3103,47 +3148,84 @@ export function stylesXml(overrides?: FontOverrides, codeBlockConfig?: CodeBlock
 }
 
 
+function randomHex8(): string {
+  return Math.floor(Math.random() * 0xFFFFFFFF).toString(16).toUpperCase().padStart(8, '0');
+}
+
 function numberingXml(): string {
+  // Generate random identifiers that Word expects on numbering definitions.
+  // Without these, Word adds them on open, marking the document as modified.
+  function lvlsWithTplc(lvls: string[]): string {
+    return lvls.map((lvl, i) => {
+      const tplc = randomHex8();
+      return lvl.replace('<w:lvl w:ilvl="' + i + '">', '<w:lvl w:ilvl="' + i + '" w:tplc="' + tplc + '">');
+    }).join('\n');
+  }
+
+  const bulletLvls = Array.from({length: 9}, (_, i) => {
+    const indent = (i + 1) * 720;
+    return '<w:lvl w:ilvl="' + i + '"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="' + indent + '" w:hanging="360"/></w:pPr></w:lvl>';
+  });
+
+  const decimalLvls = Array.from({length: 9}, (_, i) => {
+    const indent = (i + 1) * 720;
+    return '<w:lvl w:ilvl="' + i + '"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%' + (i + 1) + '."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="' + indent + '" w:hanging="360"/></w:pPr></w:lvl>';
+  });
+
+  const durableId1 = Math.floor(Math.random() * 2000000000);
+  const durableId2 = Math.floor(Math.random() * 2000000000);
+
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
-    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">\n' +
-    '<w:abstractNum w:abstractNumId="0">\n' +
+    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w15 w16cid">\n' +
+    '<w:abstractNum w:abstractNumId="0" w15:restartNumberingAfterBreak="0">\n' +
+    '<w:nsid w:val="' + randomHex8() + '"/>\n' +
     '<w:multiLevelType w:val="hybridMultilevel"/>\n' +
-    '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="2"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="2160" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="3"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="2880" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="4"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="3600" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="5"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="4320" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="6"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="5040" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="7"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="5760" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="8"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="6480" w:hanging="360"/></w:pPr></w:lvl>\n' +
+    '<w:tmpl w:val="' + randomHex8() + '"/>\n' +
+    lvlsWithTplc(bulletLvls) + '\n' +
     '</w:abstractNum>\n' +
-    '<w:abstractNum w:abstractNumId="1">\n' +
+    '<w:abstractNum w:abstractNumId="1" w15:restartNumberingAfterBreak="0">\n' +
+    '<w:nsid w:val="' + randomHex8() + '"/>\n' +
     '<w:multiLevelType w:val="hybridMultilevel"/>\n' +
-    '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%2."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="2"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%3."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="2160" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="3"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%4."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="2880" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="4"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%5."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="3600" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="5"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%6."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="4320" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="6"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%7."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="5040" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="7"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%8."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="5760" w:hanging="360"/></w:pPr></w:lvl>\n' +
-    '<w:lvl w:ilvl="8"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%9."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="6480" w:hanging="360"/></w:pPr></w:lvl>\n' +
+    '<w:tmpl w:val="' + randomHex8() + '"/>\n' +
+    lvlsWithTplc(decimalLvls) + '\n' +
     '</w:abstractNum>\n' +
-    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>\n' +
-    '<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>\n' +
+    '<w:num w:numId="1" w16cid:durableId="' + durableId1 + '"><w:abstractNumId w:val="0"/></w:num>\n' +
+    '<w:num w:numId="2" w16cid:durableId="' + durableId2 + '"><w:abstractNumId w:val="1"/></w:num>\n' +
     '</w:numbering>';
 }
 
-function settingsXml(hasFootnotes?: boolean, hasEndnotes?: boolean, hasThreadedComments?: boolean): string {
+function settingsXml(rsid: string, hasFootnotes?: boolean, hasEndnotes?: boolean, hasThreadedComments?: boolean): string {
   const ignorable = hasThreadedComments ? 'w14 w15 w16se w16cid w16 w16cex w16sdtdh w16du' : 'w14 w15';
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:w16="http://schemas.microsoft.com/office/word/2018/wordml" xmlns:w16cex="http://schemas.microsoft.com/office/word/2018/wordml/cex" xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid" xmlns:w16du="http://schemas.microsoft.com/office/word/2023/wordml/word16du" xmlns:w16sdtdh="http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash" xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="' + ignorable + '">\n' +
+    '<w:zoom w:percent="100"/>\n' +
+    '<w:defaultTabStop w:val="720"/>\n' +
+    '<w:characterSpacingControl w:val="doNotCompress"/>\n' +
     '<w:compat>\n' +
     '<w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/>\n' +
+    '<w:compatSetting w:name="overrideTableStyleFontSizeAndJustification" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/>\n' +
+    '<w:compatSetting w:name="enableOpenTypeFeatures" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/>\n' +
+    '<w:compatSetting w:name="doNotFlipMirrorIndents" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/>\n' +
+    '<w:compatSetting w:name="differentiateMultirowTableHeaders" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/>\n' +
+    '<w:compatSetting w:name="useWord2013TrackBottomHyphenation" w:uri="http://schemas.microsoft.com/office/word" w:val="0"/>\n' +
     '</w:compat>\n' +
-    '<w:defaultTabStop w:val="720"/>\n' +
-    '<w:characterSpacingControl w:val="doNotCompress"/>\n';
+    '<m:mathPr>\n' +
+    '<m:mathFont m:val="Cambria Math"/>\n' +
+    '<m:brkBin m:val="before"/>\n' +
+    '<m:brkBinSub m:val="--"/>\n' +
+    '<m:smallFrac m:val="0"/>\n' +
+    '<m:dispDef/>\n' +
+    '<m:lMargin m:val="0"/>\n' +
+    '<m:rMargin m:val="0"/>\n' +
+    '<m:defJc m:val="centerGroup"/>\n' +
+    '<m:wrapIndent m:val="1440"/>\n' +
+    '<m:intLim m:val="subSup"/>\n' +
+    '<m:naryLim m:val="undOvr"/>\n' +
+    '</m:mathPr>\n' +
+    '<w:themeFontLang w:val="en-US"/>\n' +
+    '<w:clrSchemeMapping w:bg1="light1" w:t1="dark1" w:bg2="light2" w:t2="dark2" w:accent1="accent1" w:accent2="accent2" w:accent3="accent3" w:accent4="accent4" w:accent5="accent5" w:accent6="accent6" w:hyperlink="hyperlink" w:followedHyperlink="followedHyperlink"/>\n' +
+    '<w:decimalSymbol w:val="."/>\n' +
+    '<w:listSeparator w:val=","/>\n';
   if (hasFootnotes) {
     xml += '<w:footnotePr><w:footnote w:id="-1"/><w:footnote w:id="0"/></w:footnotePr>\n';
   }
@@ -3162,9 +3244,14 @@ function settingsXml(hasFootnotes?: boolean, hasEndnotes?: boolean, hasThreadedC
   // Discovery: raw extension output had correct threading, but OneDrive silently
   // rewrote the file before Word could open it.  Quitting OneDrive made the same
   // file open correctly.  Adding docId + webSettings prevents the rewrite.
+  // rsids (Revision Save IDs): Word uses these to track editing sessions.
+  // The same rsid is used on paragraph-level w:rsidR attributes (see injectParaIds)
+  // so Word treats the document as a coherent single-session output.
+  xml += '<w:rsids><w:rsidRoot w:val="' + rsid + '"/><w:rsid w:val="' + rsid + '"/></w:rsids>\n';
   const hexId = Math.floor(Math.random() * 0x7FFFFFFF).toString(16).toUpperCase().padStart(8, '0');
   xml += '<w14:docId w14:val="' + hexId + '"/>\n';
   xml += '<w15:docId w15:val="{' + crypto.randomUUID().toUpperCase() + '}"/>\n';
+  xml += '<w15:chartTrackingRefBased/>\n';
   xml += '</w:settings>';
   return xml;
 }
@@ -3185,10 +3272,47 @@ function webSettingsXml(): string {
 function fontTableXml(): string {
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">\n' +
-    '<w:font w:name="Calibri"><w:panose1 w:val="020F0502020204030204"/><w:charset w:val="00"/><w:family w:val="swiss"/><w:pitch w:val="variable"/></w:font>\n' +
-    '<w:font w:name="Times New Roman"><w:panose1 w:val="02020603050405020304"/><w:charset w:val="00"/><w:family w:val="roman"/><w:pitch w:val="variable"/></w:font>\n' +
-    '<w:font w:name="Consolas"><w:panose1 w:val="02070309020205020404"/><w:charset w:val="00"/><w:family w:val="modern"/><w:pitch w:val="fixed"/></w:font>\n' +
+    '<w:font w:name="Calibri"><w:panose1 w:val="020F0502020204030204"/><w:charset w:val="00"/><w:family w:val="swiss"/><w:pitch w:val="variable"/>' +
+    '<w:sig w:usb0="E0002AFF" w:usb1="C000247B" w:usb2="00000009" w:usb3="00000000" w:csb0="000001FF" w:csb1="00000000"/></w:font>\n' +
+    '<w:font w:name="Times New Roman"><w:panose1 w:val="02020603050405020304"/><w:charset w:val="00"/><w:family w:val="roman"/><w:pitch w:val="variable"/>' +
+    '<w:sig w:usb0="E0002EFF" w:usb1="C000785B" w:usb2="00000009" w:usb3="00000000" w:csb0="000001FF" w:csb1="00000000"/></w:font>\n' +
+    '<w:font w:name="Consolas"><w:panose1 w:val="020B0609020204030204"/><w:charset w:val="00"/><w:family w:val="modern"/><w:pitch w:val="fixed"/>' +
+    '<w:sig w:usb0="E10002FF" w:usb1="4000FCFF" w:usb2="00000009" w:usb3="00000000" w:csb0="0000019F" w:csb1="00000000"/></w:font>\n' +
+    '<w:font w:name="Calibri Light"><w:panose1 w:val="020F0302020204030204"/><w:charset w:val="00"/><w:family w:val="swiss"/><w:pitch w:val="variable"/>' +
+    '<w:sig w:usb0="E0002AFF" w:usb1="C000247B" w:usb2="00000009" w:usb3="00000000" w:csb0="000001FF" w:csb1="00000000"/></w:font>\n' +
     '</w:fonts>';
+}
+
+function defaultThemeXml(): string {
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">\n' +
+    '<a:themeElements>\n' +
+    '<a:clrScheme name="Office">\n' +
+    '<a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1>\n' +
+    '<a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1>\n' +
+    '<a:dk2><a:srgbClr val="44546A"/></a:dk2>\n' +
+    '<a:lt2><a:srgbClr val="E7E6E6"/></a:lt2>\n' +
+    '<a:accent1><a:srgbClr val="4472C4"/></a:accent1>\n' +
+    '<a:accent2><a:srgbClr val="ED7D31"/></a:accent2>\n' +
+    '<a:accent3><a:srgbClr val="A5A5A5"/></a:accent3>\n' +
+    '<a:accent4><a:srgbClr val="FFC000"/></a:accent4>\n' +
+    '<a:accent5><a:srgbClr val="5B9BD5"/></a:accent5>\n' +
+    '<a:accent6><a:srgbClr val="70AD47"/></a:accent6>\n' +
+    '<a:hlink><a:srgbClr val="0563C1"/></a:hlink>\n' +
+    '<a:folHlink><a:srgbClr val="954F72"/></a:folHlink>\n' +
+    '</a:clrScheme>\n' +
+    '<a:fontScheme name="Office">\n' +
+    '<a:majorFont><a:latin typeface="Calibri Light"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont>\n' +
+    '<a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont>\n' +
+    '</a:fontScheme>\n' +
+    '<a:fmtScheme name="Office">\n' +
+    '<a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst>\n' +
+    '<a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="12700"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst>\n' +
+    '<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>\n' +
+    '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst>\n' +
+    '</a:fmtScheme>\n' +
+    '</a:themeElements>\n' +
+    '</a:theme>';
 }
 
 function corePropsXml(author?: string): string {
@@ -3233,7 +3357,10 @@ function customPropsXml(properties: CustomPropEntry[]): string {
   for (let i = 0; i < properties.length; i++) {
     const pid = i + 2; // fmtid starts at pid=2 per OOXML convention
     xml += '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="' + pid + '" name="' + escapeXml(properties[i].name) + '">';
-    xml += '<vt:lpwstr>' + escapeXml(properties[i].value) + '</vt:lpwstr>';
+    // Use minimal escaping for text content: only <, >, & need escaping.
+    // escapeXml() also escapes " as &quot; which is valid but causes Word to
+    // decode it on open and mark the document as modified.
+    xml += '<vt:lpwstr>' + properties[i].value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</vt:lpwstr>';
     xml += '</property>\n';
   }
   xml += '</Properties>';
@@ -3400,17 +3527,19 @@ function documentRelsXml(opts: DocumentRelsOptions): string {
   const { relationships, hasList, hasComments, hasTheme, hasFootnotes, hasEndnotes, hasCommentsExtended, hasCommentsIds, hasCommentsExtensible, hasPeople, imageRelationships } = opts;
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
-  xml += '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
+  let nextFixed = 1;
+  xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n';
+  nextFixed++;
 
   if (hasList) {
-    xml += '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>\n';
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>\n';
+    nextFixed++;
   }
 
   if (hasComments) {
-    xml += '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>\n';
+    xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>\n';
+    nextFixed++;
   }
-
-  let nextFixed = 4;
   if (hasFootnotes) {
     xml += '<Relationship Id="rId' + nextFixed + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>\n';
     nextFixed++;
@@ -3478,8 +3607,16 @@ export function generateRPr(run: MdRun, extraRPr?: string): string {
   return parts.length > 0 ? '<w:rPr>' + parts.join('') + '</w:rPr>' : '';
 }
 
+function wt(text: string): string {
+  const escaped = escapeXml(text);
+  if (escaped.length > 0 && (escaped[0] === ' ' || escaped[escaped.length - 1] === ' ')) {
+    return '<w:t xml:space="preserve">' + escaped + '</w:t>';
+  }
+  return '<w:t>' + escaped + '</w:t>';
+}
+
 export function generateRun(text: string, rPr: string): string {
-  return '<w:r>' + rPr + '<w:t xml:space="preserve">' + escapeXml(text) + '</w:t></w:r>';
+  return '<w:r>' + rPr + wt(text) + '</w:r>';
 }
 
 function generateHiddenHtmlCommentRun(text: string): string {
@@ -3492,9 +3629,9 @@ function generateHiddenHtmlCommentRun(text: string): string {
     }
     const line = lines[i];
     if (i === 0) {
-      xml += '<w:t xml:space="preserve">' + '\u200B' + escapeXml(line) + '</w:t>';
+      xml += wt('\u200B' + line);
     } else if (line.length > 0) {
-      xml += '<w:t xml:space="preserve">' + escapeXml(line) + '</w:t>';
+      xml += wt(line);
     }
   }
   xml += '</w:r>';
@@ -3997,11 +4134,19 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       }
       break;
     case 'blockquote': {
-      const bqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
+      const bqStyleOpt = options?.blockquoteStyle ?? 'GitHub';
+      const bqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (BLOCKQUOTE_STYLE_ID[bqStyleOpt] ?? bqStyleOpt);
       const bqIndentUnit = bqStyle.startsWith('GitHub') ? GITHUB_BLOCKQUOTE_INDENT : 720;
-      const bqLeftIndent = bqIndentUnit * (token.level || 1);
-      const bqSpacing = '<w:spacing w:before="0" w:after="0"/>';
-      pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/>' + bqSpacing + '<w:ind w:left="' + bqLeftIndent + '"/></w:pPr>';
+      const bqLevel = token.level || 1;
+      const bqLeftIndent = bqIndentUnit * bqLevel;
+      // Only add inline overrides when they differ from the style defaults (level > 1).
+      // Level 1 inherits spacing and indent from the style; redundant overrides
+      // cause Word to strip them on open, setting the dirty flag.
+      if (bqLevel > 1) {
+        pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/><w:spacing w:after="0"/><w:ind w:left="' + bqLeftIndent + '"/></w:pPr>';
+      } else {
+        pPr = '<w:pPr><w:pStyle w:val="' + bqStyle + '"/></w:pPr>';
+      }
       break;
     }
     case 'code_block':
@@ -4019,7 +4164,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   // Pure HTML-comment paragraphs are hidden (vanish) — collapse their spacing
   // so they don't contribute visible gaps in Word's layout engine.
   if (token.type === 'paragraph' && token.runs.length > 0 && token.runs.every(r => r.type === 'html_comment')) {
-    pPr = '<w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/></w:pPr>';
+    pPr = '<w:pPr><w:spacing w:after="0" w:line="1" w:lineRule="exact"/></w:pPr>';
   }
 
   if (token.type === 'code_block') {
@@ -4036,7 +4181,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
       } else if (i === 0) {
         linePPr = '<w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="' + inset + '" w:after="0" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/></w:pPr>';
       } else if (i === lines.length - 1) {
-        linePPr = '<w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:before="0" w:after="' + inset + '" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/></w:pPr>';
+        linePPr = '<w:pPr><w:pStyle w:val="CodeBlock"/><w:spacing w:after="' + inset + '" w:line="' + SINGLE_LINE_SPACING + '" w:lineRule="auto"/></w:pPr>';
       }
       return '<w:p>' + linePPr + generateRun(line, rpr) + '</w:p>';
     }).join('');
@@ -4060,8 +4205,7 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   // Encode blockquoteGroupIndex as a hidden (vanish) run so the docx→md
   // converter can reconstruct group boundaries and correlate with the gap map.
   if (token.type === 'blockquote' && token.blockquoteGroupIndex !== undefined) {
-    const groupTag = '<w:r><w:rPr><w:vanish/></w:rPr><w:t xml:space="preserve">' +
-      '\u200B_bqg' + token.blockquoteGroupIndex + '</w:t></w:r>';
+    const groupTag = '<w:r><w:rPr><w:vanish/></w:rPr>' + wt('\u200B_bqg' + token.blockquoteGroupIndex) + '</w:r>';
     // Insert the hidden run right after pPr inside the <w:p>
     xml = '<w:p>' + pPr + groupTag + alertPrefix + taskPrefix + runs + '</w:p>';
   }
@@ -4071,17 +4215,18 @@ export function generateParagraph(token: MdToken, state: DocxGenState, options?:
   // rule extends symmetrically above/below content regardless of font size.
   if (token.type === 'blockquote' && (token.alertFirst || token.alertLast)) {
     const borderColor = token.alertType ? alertColorMap[token.alertType] : GITHUB_BLOCKQUOTE_BORDER_COLOR;
-    const spacerBqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (options?.blockquoteStyle ?? 'GitHub');
+    const spacerBqStyleOpt = options?.blockquoteStyle ?? 'GitHub';
+    const spacerBqStyle = token.alertType ? ALERT_STYLE_BY_TYPE[token.alertType] : (BLOCKQUOTE_STYLE_ID[spacerBqStyleOpt] ?? spacerBqStyleOpt);
     const spacerIndentUnit = spacerBqStyle.startsWith('GitHub') ? GITHUB_BLOCKQUOTE_INDENT : 720;
     const spacerLeftIndent = spacerIndentUnit * (token.level || 1);
     const borderPPr = '<w:pBdr><w:left w:val="single" w:sz="' + GITHUB_BLOCKQUOTE_BORDER_SIZE + '" w:space="' + GITHUB_BLOCKQUOTE_BORDER_SPACE + '" w:color="' + borderColor + '"/></w:pBdr>';
     const indPPr = '<w:ind w:left="' + spacerLeftIndent + '"/>';
     if (token.alertFirst) {
-      const firstPPr = '<w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' + borderPPr + indPPr + '</w:pPr>';
+      const firstPPr = '<w:pPr>' + borderPPr + '<w:spacing w:after="0" w:line="1" w:lineRule="exact"/>' + indPPr + '</w:pPr>';
       xml = '<w:p>' + firstPPr + '</w:p>' + xml;
     }
     if (token.alertLast) {
-      const lastPPr = '<w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/>' + borderPPr + indPPr + '</w:pPr>';
+      const lastPPr = '<w:pPr>' + borderPPr + '<w:spacing w:after="0" w:line="1" w:lineRule="exact"/>' + indPPr + '</w:pPr>';
       xml = xml + '<w:p>' + lastPPr + '</w:p>';
     }
   }
@@ -4277,11 +4422,12 @@ function generateParaId(state: DocxGenState): string {
  * Skips elements that already have w14:paraId (e.g. comment paragraphs).
  */
 function injectParaIds(xml: string, state: DocxGenState): string {
+  const rsid = state.rsid;
   return xml.replace(/<w:p(\s[^>]*)?(\/?>)/g, (match, attrs, close) => {
     // Already has a paraId (e.g. comment paragraphs) — leave it alone
     if (attrs && attrs.includes('w14:paraId')) return match;
     const pid = generateParaId(state);
-    return '<w:p w14:paraId="' + pid + '" w14:textId="77777777"' + (attrs || '') + close;
+    return '<w:p w14:paraId="' + pid + '" w14:textId="77777777" w:rsidR="' + rsid + '" w:rsidRDefault="' + rsid + '"' + (attrs || '') + close;
   });
 }
 
@@ -4331,7 +4477,7 @@ function commentsXml(comments: CommentEntry[]): string {
       const paraIdAttr = isLast ? ' w14:paraId="' + c.paraId + '" w14:textId="77777777"' : '';
       const annotationRefRun = pi === 0
         ? '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r>' : '';
-      xml += '<w:p' + paraIdAttr + '>' + annotationRefRun + '<w:r><w:t xml:space="preserve">' + escapeXml(paragraphs[pi]) + '</w:t></w:r></w:p>';
+      xml += '<w:p' + paraIdAttr + '>' + annotationRefRun + '<w:r>' + wt(paragraphs[pi]) + '</w:r></w:p>';
     }
     xml += '</w:comment>';
   }
@@ -4423,7 +4569,7 @@ function peopleXml(comments: CommentEntry[]): string {
 
 export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, options?: MdToDocxOptions, bibEntries?: Map<string, BibtexEntry>, citeprocEngine?: any, frontmatter?: Frontmatter): string {
   let body = '';
-  const separatorParagraph = '<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:p>';
+  const separatorParagraph = '<w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p>';
 
   // Pre-scan: assign comment IDs and discover reply relationships so that
   // replyRanges is populated before range start/end markers are emitted.
@@ -4642,7 +4788,7 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
   }
 
   // Append body-closing sectPr (preserves template page layout)
-  const closingSectPr = bodyClosingSectPrXml(pgSz, margins, state.templateSectPr);
+  const closingSectPr = bodyClosingSectPrXml(pgSz, margins, state.templateSectPr, state.rsid);
 
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 w15 wp14">\n' +
@@ -4774,7 +4920,7 @@ export async function convertMdToDocx(
     templateSectPr = extracted.templateSectPr;
   }
 
-  const hasTheme = !!templateParts?.has('word/theme/theme1.xml');
+  const hasTheme = true; // always include a theme (template or default)
 
   // Recompute auto-shrink baseline from template Normal style BEFORE document
   // generation so generateTable() compares per-table sizes against the correct
@@ -4836,6 +4982,7 @@ export async function convertMdToDocx(
     imageBinaries: new Map(),
     imageFormats: new Map(),
     imageExtensions: new Set(),
+    rsid: Math.floor(Math.random() * 0xFFFFFFFF).toString(16).toUpperCase().padStart(8, '0'),
     nextImageDocPrId: 1,
     tableIndex: 0,
     tableFormats: new Map(),
@@ -4979,7 +5126,7 @@ export async function convertMdToDocx(
 
   // Always use generated settings.xml to guarantee compatibilityMode >= 15
   // (template settings.xml may have compatibilityMode < 15, causing "unreadable content" errors)
-  zip.file('word/settings.xml', settingsXml(state.hasFootnotes, state.hasEndnotes, hasThreadedComments));
+  zip.file('word/settings.xml', settingsXml(state.rsid, state.hasFootnotes, state.hasEndnotes, hasThreadedComments));
   zip.file('word/webSettings.xml', webSettingsXml());
 
   // Always include fontTable.xml
@@ -4994,9 +5141,11 @@ export async function convertMdToDocx(
     }
   }
 
-  // Include template theme if available
-  if (hasTheme) {
-    zip.file('word/theme/theme1.xml', templateParts!.get('word/theme/theme1.xml')!);
+  // Include theme: template theme if available, otherwise default
+  if (templateParts?.has('word/theme/theme1.xml')) {
+    zip.file('word/theme/theme1.xml', templateParts.get('word/theme/theme1.xml')!);
+  } else {
+    zip.file('word/theme/theme1.xml', defaultThemeXml());
   }
 
   if (state.hasComments) {
@@ -5098,6 +5247,11 @@ export async function convertMdToDocx(
     }
   }
 
+  // Remove directory entries — Word marks files with explicit folder entries as modified on open.
+  // Cannot use zip.remove() as it also removes children; instead delete from the files map directly.
+  for (const path of Object.keys(zip.files)) {
+    if (zip.files[path]?.dir) delete (zip.files as Record<string, unknown>)[path];
+  }
   const docx = await zip.generateAsync({ type: 'uint8array' });
   return { docx, warnings: state.warnings };
 }
