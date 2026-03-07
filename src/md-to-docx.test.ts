@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'bun:test';
 import * as fc from 'fast-check';
 import { XMLValidator } from 'fast-xml-parser';
+import { LATENT_STYLES } from './latent-styles';
 import {
   generateRPr,
   generateRun,
@@ -2857,5 +2858,16 @@ describe('bibliography marker', () => {
       const afterIdx = xml.indexOf('After');
       expect(beforeIdx).toBeLessThan(afterIdx);
     });
+  });
+});
+
+describe('LATENT_STYLES', () => {
+  it('w:count matches actual lsdException count', () => {
+    const countMatch = LATENT_STYLES.match(/w:count="(\d+)"/);
+    expect(countMatch).not.toBeNull();
+    const declaredCount = parseInt(countMatch![1], 10);
+    const exceptions = LATENT_STYLES.match(/<w:lsdException\b/g);
+    expect(exceptions).not.toBeNull();
+    expect(exceptions!.length).toBe(declaredCount);
   });
 });

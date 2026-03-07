@@ -1193,27 +1193,51 @@ export function parseMd(markdown: string, warnings?: string[]): MdToken[] {
     for (const tok of result) {
       if (tok.type !== 'paragraph' || tok.runs.length !== 1 || tok.runs[0].type !== 'html_comment') continue;
       const commentText = tok.runs[0].text.trim();
+      const commentLines = commentText.split('\n');
       // Find this comment's line in the original markdown (starting after previous match)
       let commentLine = -1;
       for (let li = searchFrom; li < origLines.length; li++) {
-        if (origLines[li].trim() === commentText) {
-          commentLine = li;
-          searchFrom = li + 1;
-          break;
+        if (origLines[li].trim() === commentLines[0].trim()) {
+          if (commentLines.length === 1) {
+            commentLine = li;
+            searchFrom = li + 1;
+            break;
+          }
+          // For multi-line: verify all subsequent lines match
+          let allMatch = li + commentLines.length <= origLines.length;
+          if (allMatch) {
+            for (let ci = 1; ci < commentLines.length; ci++) {
+              if (origLines[li + ci] !== commentLines[ci]) {
+                allMatch = false;
+                break;
+              }
+            }
+          }
+          if (allMatch) {
+            commentLine = li;
+            searchFrom = li + commentLines.length;
+            break;
+          }
         }
       }
       if (commentLine < 0) continue;
+      const commentEndLine = commentLine + commentLines.length - 1;
       // Count blank lines before: scan backwards from commentLine
       let beforeCount = 0;
       for (let li = commentLine - 1; li >= 0; li--) {
         if (origLines[li].trim() === '') beforeCount++;
         else break;
       }
-      // Count blank lines after: scan forward from commentLine
+      // Count blank lines after: scan forward from end of comment
       let afterCount = 0;
-      for (let li = commentLine + 1; li < origLines.length; li++) {
+      for (let li = commentEndLine + 1; li < origLines.length; li++) {
         if (origLines[li].trim() === '') afterCount++;
         else break;
+      }
+      // Ignore a single trailing empty-string element produced by splitting a
+      // string that ends with '\n' — it is not a real blank line.
+      if (afterCount > 0 && commentEndLine + afterCount === origLines.length - 1 && origLines[origLines.length - 1] === '') {
+        afterCount--;
       }
       tok.blankLinesBefore = beforeCount;
       tok.blankLinesAfter = afterCount;
@@ -1566,7 +1590,7 @@ function convertTokens(tokens: any[], listLevel = 0, blockquoteLevel = 0, warnin
         // Intentionally reset listLevel inside blockquotes.
         // In Markdown, `> - item` starts a new list context within the quote,
         // so numbering/indentation should not inherit from outer lists.
-        const blockquoteTokens = convertTokens(tokens.slice(i + 1, blockquoteClose), 0, bqLevel, warnings);
+        const blockquoteTokens = convertTokens(tokens.slice(i + 1, blockquoteClose), 0, bqLevel, warnings, sourceLines);
         result.push(...annotateBlockquoteAlert(blockquoteTokens, bqLevel));
         i = blockquoteClose + 1;
         break;
@@ -2355,16 +2379,16 @@ function parseTemplateMargins(sectPrXml: string | undefined): string {
 }
 
 /** Build a portrait sectPr XML element for section breaks. */
-function portraitSectPrXml(pgSz: PageSize, margins: string): string {
-  return '<w:sectPr><w:pgSz w:w="' + pgSz.w + '" w:h="' + pgSz.h + '"/>' +
+function portraitSectPrXml(pgSz: PageSize, margins: string, rsid?: string): string {
+  return '<w:sectPr' + (rsid ? ' w:rsidR="' + rsid + '"' : '') + '><w:pgSz w:w="' + pgSz.w + '" w:h="' + pgSz.h + '"/>' +
     '<w:pgMar ' + margins + '/>' +
     '<w:cols w:space="720"/>' +
     '<w:type w:val="nextPage"/></w:sectPr>';
 }
 
 /** Build a landscape sectPr XML element for section breaks. */
-function landscapeSectPrXml(pgSz: PageSize, margins: string): string {
-  return '<w:sectPr><w:pgSz w:w="' + pgSz.h + '" w:h="' + pgSz.w + '" w:orient="landscape"/>' +
+function landscapeSectPrXml(pgSz: PageSize, margins: string, rsid?: string): string {
+  return '<w:sectPr' + (rsid ? ' w:rsidR="' + rsid + '"' : '') + '><w:pgSz w:w="' + pgSz.h + '" w:h="' + pgSz.w + '" w:orient="landscape"/>' +
     '<w:pgMar ' + margins + '/>' +
     '<w:cols w:space="720"/>' +
     '<w:type w:val="nextPage"/></w:sectPr>';
@@ -4787,11 +4811,11 @@ export function generateDocumentXml(tokens: MdToken[], state: DocxGenState, opti
 
   // Helper: emit a portrait section break paragraph and increment ordinal
   function emitPortraitBreak(): void {
-    body += '<w:p><w:pPr>' + portraitSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+    body += '<w:p><w:pPr>' + portraitSectPrXml(pgSz, margins, state.rsid) + '</w:pPr></w:p>';
     state.sectionBreakOrdinal++;
   }
   function emitLandscapeBreak(): void {
-    body += '<w:p><w:pPr>' + landscapeSectPrXml(pgSz, margins) + '</w:pPr></w:p>';
+    body += '<w:p><w:pPr>' + landscapeSectPrXml(pgSz, margins, state.rsid) + '</w:pPr></w:p>';
     state.sectionBreakOrdinal++;
   }
 
@@ -5271,9 +5295,68 @@ export async function convertMdToDocx(
     }
   }
 
+  const hasCommentsExtended = state.hasComments && state.comments.some(c => c.parentParaId);
+  const hasThreadedComments = hasCommentsExtended;
+  const hasCommentsIds = hasThreadedComments;
+  const hasCommentsExtensible = hasThreadedComments;
+  const hasPeople = hasThreadedComments;
+
+  // Dirty-flag invariant #6: rIds must be sequential with no gaps.
+  // rIdOffset reserved max slots for optional rels; now that all hasX flags are known,
+  // compute actual fixed count and remap dynamic rIds to close any gap.
+  const actualFixedCount = 1 /* styles */ +
+    (state.hasList ? 1 : 0) +
+    (state.hasComments ? 1 : 0) +
+    (state.hasFootnotes ? 1 : 0) +
+    (state.hasEndnotes ? 1 : 0) +
+    (hasCommentsExtended ? 1 : 0) +
+    (hasCommentsIds ? 1 : 0) +
+    (hasCommentsExtensible ? 1 : 0) +
+    (hasPeople ? 1 : 0) +
+    (hasTheme ? 1 : 0) +
+    3 /* settings + webSettings + fontTable */;
+
+  let finalDocumentXml = documentXml;
+  if (actualFixedCount < state.rIdOffset) {
+    const shift = state.rIdOffset - actualFixedCount;
+    // Remap dynamic rId references in document XML
+    finalDocumentXml = finalDocumentXml.replace(/rId(\d+)/g, (match, numStr) => {
+      const n = parseInt(numStr, 10);
+      return n > state.rIdOffset ? 'rId' + (n - shift) : match;
+    });
+    // Remap relationship maps
+    for (const [url, relId] of state.relationships) {
+      const m = relId.match(/^rId(\d+)$/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > state.rIdOffset) state.relationships.set(url, 'rId' + (n - shift));
+      }
+    }
+    for (const [key, entry] of state.imageRelationships) {
+      const m = entry.rId.match(/^rId(\d+)$/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > state.rIdOffset) state.imageRelationships.set(key, { ...entry, rId: 'rId' + (n - shift) });
+      }
+    }
+    // Remap rId keys in imageFormats (used for MANUSCRIPT_IMAGE_FORMATS_ custom property)
+    const remappedFormats = new Map<string, string>();
+    for (const [rId, syntax] of state.imageFormats) {
+      const m = rId.match(/^rId(\d+)$/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        remappedFormats.set(n > state.rIdOffset ? 'rId' + (n - shift) : rId, syntax);
+      } else {
+        remappedFormats.set(rId, syntax);
+      }
+    }
+    state.imageFormats = remappedFormats;
+    state.rIdOffset = actualFixedCount;
+  }
+
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
-  zip.file('word/document.xml', injectParaIds(documentXml, state));
+  zip.file('word/document.xml', injectParaIds(finalDocumentXml, state));
 
   // Use template styles if available, otherwise default; apply font/color overrides when present
   if (templateParts?.has('word/styles.xml') && fontOverrides) {
@@ -5289,12 +5372,6 @@ export async function convertMdToDocx(
   } else {
     zip.file('word/styles.xml', stylesXml(fontOverrides, codeBlockConfig, effectiveColors));
   }
-
-  const hasCommentsExtended = state.hasComments && state.comments.some(c => c.parentParaId);
-  const hasThreadedComments = hasCommentsExtended;
-  const hasCommentsIds = hasThreadedComments;
-  const hasCommentsExtensible = hasThreadedComments;
-  const hasPeople = hasThreadedComments;
 
   // Always use generated settings.xml to guarantee compatibilityMode >= 15
   // (template settings.xml may have compatibilityMode < 15, causing "unreadable content" errors)

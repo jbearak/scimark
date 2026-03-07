@@ -915,6 +915,19 @@ describe('Unit tests: OMML construct translation', () => {
       expect(result).toBe('\\sum^nx');
       expect(result).not.toContain('_');
     });
+
+    it('inserts space between operator and alpha body when sub/sup are both empty', () => {
+      const node = {
+        'm:nary': [
+          { 'm:naryPr': [{ 'm:chr': [], ':@': { '@_m:val': '∑' } }] },
+          { 'm:sub': [] },
+          { 'm:sup': [] },
+          { 'm:e': [makeRun('x')] },
+        ],
+      };
+      const result = ommlToLatex([node]);
+      expect(result).toBe('\\sum x');
+    });
   });
 
   // --- Delimiter (m:d) --- Req 3.8

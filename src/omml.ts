@@ -508,7 +508,10 @@ function translateNary(children: any[]): string {
   const sub = (subHide || !subLatex) ? '' : '_' + scriptArg(subLatex);
   const sup = (supHide || !supLatex) ? '' : '^' + scriptArg(supLatex);
   const body = ommlToLatex(findChild(children, 'm:e'));
-  return op + limits + sub + sup + body;
+  // When both sub and sup are empty and op is a named command (e.g. \sum),
+  // insert a space before the body to avoid merging like \sumx → \sum x.
+  const needsBodySeparator = !sub && !sup && op.startsWith('\\') && /^[A-Za-z]/.test(body);
+  return op + limits + sub + sup + (needsBodySeparator ? ' ' : '') + body;
 }
 
 

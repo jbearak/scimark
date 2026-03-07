@@ -911,8 +911,8 @@ describe('Grid table renderer', () => {
     // Replace the stored table format from 'html' to 'grid'
     const customXml = await zip.file('docProps/custom.xml')?.async('string') || '';
     const updatedXml = customXml.replace(
-      '"html"',
-      '"grid"'
+      '{"0":"html"}',
+      '{"0":"grid"}'
     );
     zip.file('docProps/custom.xml', updatedXml);
     const modifiedDocx = await zip.generateAsync({ type: 'uint8array' });
@@ -1106,6 +1106,28 @@ describe('HTML comment blank line round-trip', () => {
     const result = await convertDocx(docx);
     expect(result.markdown).toContain('<!-- comment -->\n\nNext paragraph');
     expect(result.markdown).not.toContain('<!-- comment -->\n\n\nNext paragraph');
+  });
+
+  test('duplicate single-line comments get correct gaps', async () => {
+    const md = '<!-- note -->\nText\n\n\n<!-- note -->\n\nMore';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // First comment: 0 gap after (tight against Text)
+    expect(result.markdown).toContain('<!-- note -->\nText');
+    expect(result.markdown).not.toContain('<!-- note -->\n\nText');
+    // Second comment: default 1 blank line gap after
+    expect(result.markdown).toContain('<!-- note -->\n\nMore');
+    expect(result.markdown).not.toContain('<!-- note -->\n\n\nMore');
+  });
+
+  test('multi-line comment gap preservation', async () => {
+    const md = 'Before\n<!--\nmulti\n-->\nAfter';
+    const { docx } = await convertMdToDocx(md);
+    const result = await convertDocx(docx);
+    // Tight gaps (0 blank lines) before and after
+    expect(result.markdown).toContain('Before\n<!--\nmulti\n-->\nAfter');
+    expect(result.markdown).not.toContain('Before\n\n<!--');
+    expect(result.markdown).not.toContain('-->\n\nAfter');
   });
 
   test('multiline HTML comments preserve internal newlines', async () => {
@@ -4192,7 +4214,11 @@ describe('Landscape section round-trip', () => {
     const zip = await JSZip.loadAsync(docx);
     const docXml = await zip.file('word/document.xml')!.async('string');
     // Should have a closing sectPr with US Letter portrait dimensions
-    expect(docXml).toMatch(/<w:sectPr[^>]*><w:pgSz w:w="12240" w:h="15840"\/>/);
+    // Extract final sectPr block and verify it contains expected page dimensions
+    const sectPrMatch = docXml.match(/<w:sectPr[^>]*>[\s\S]*?<\/w:sectPr>\s*<\/w:body>/);
+    expect(sectPrMatch).not.toBeNull();
+    expect(sectPrMatch![0]).toContain('w:w="12240"');
+    expect(sectPrMatch![0]).toContain('w:h="15840"');
   });
 });
 

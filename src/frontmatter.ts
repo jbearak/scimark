@@ -309,12 +309,12 @@ export function serializeFrontmatter(metadata: Frontmatter, fieldOrder?: string[
     'csl': () => { if (metadata.csl) lines.push(`csl: ${metadata.csl}`); },
     'locale': () => { if (metadata.locale) lines.push(`locale: ${metadata.locale}`); },
     'zotero-notes': () => { if (metadata.zoteroNotes) lines.push(`zotero-notes: ${metadata.zoteroNotes}`); },
-    'note-type': () => { /* alias handled by zotero-notes */ },
+    'note-type': () => emitters['zotero-notes'](),
     'notes': () => { if (metadata.notes === 'endnotes') lines.push(`notes: endnotes`); },
     'timezone': () => { if (metadata.timezone) lines.push(`timezone: ${metadata.timezone}`); },
     'bibliography': () => { if (metadata.bibliography) lines.push(`bibliography: ${metadata.bibliography}`); },
-    'bib': () => { /* alias handled by bibliography */ },
-    'bibtex': () => { /* alias handled by bibliography */ },
+    'bib': () => emitters['bibliography'](),
+    'bibtex': () => emitters['bibliography'](),
     'font': () => { if (metadata.font) lines.push('font: ' + metadata.font); },
     'code-font': () => { if (metadata.codeFont) lines.push('code-font: ' + metadata.codeFont); },
     'font-size': () => { if (metadata.fontSize !== undefined) lines.push('font-size: ' + metadata.fontSize); },
@@ -328,9 +328,9 @@ export function serializeFrontmatter(metadata: Frontmatter, fieldOrder?: string[
     'table-font': () => { if (metadata.tableFont) lines.push('table-font: ' + metadata.tableFont); },
     'table-font-size': () => { if (metadata.tableFontSize !== undefined) lines.push('table-font-size: ' + metadata.tableFontSize); },
     'code-background-color': () => { if (metadata.codeBackgroundColor) lines.push('code-background-color: ' + metadata.codeBackgroundColor); },
-    'code-background': () => { /* alias handled by code-background-color */ },
+    'code-background': () => emitters['code-background-color'](),
     'code-font-color': () => { if (metadata.codeFontColor) lines.push('code-font-color: ' + metadata.codeFontColor); },
-    'code-color': () => { /* alias handled by code-font-color */ },
+    'code-color': () => emitters['code-font-color'](),
     'code-block-inset': () => { if (metadata.codeBlockInset !== undefined) lines.push('code-block-inset: ' + metadata.codeBlockInset); },
     'pipe-table-max-line-width': () => { if (metadata.pipeTableMaxLineWidth !== undefined) lines.push('pipe-table-max-line-width: ' + metadata.pipeTableMaxLineWidth); },
     'grid-table-max-line-width': () => { if (metadata.gridTableMaxLineWidth !== undefined) lines.push('grid-table-max-line-width: ' + metadata.gridTableMaxLineWidth); },
@@ -350,12 +350,22 @@ export function serializeFrontmatter(metadata: Frontmatter, fieldOrder?: string[
     'blockquote-style', 'colors',
   ];
 
+  const aliasToCanonical: Record<string, string> = {
+    'note-type': 'zotero-notes',
+    'bib': 'bibliography',
+    'bibtex': 'bibliography',
+    'code-background': 'code-background-color',
+    'code-color': 'code-font-color',
+  };
+
   const order = fieldOrder && fieldOrder.length > 0 ? fieldOrder : defaultOrder;
   const emitted = new Set<string>();
 
   for (const key of order) {
     if (emitted.has(key)) continue;
     emitted.add(key);
+    const canonical = aliasToCanonical[key];
+    if (canonical) emitted.add(canonical);
     const emitter = emitters[key];
     if (emitter) emitter();
   }
